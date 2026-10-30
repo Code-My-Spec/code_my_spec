@@ -50,12 +50,20 @@ defmodule CmsHarness.Agents.Terminal do
   when known. Already serving it: the session is updated, since a resumed
   session binds a new socket.
   """
-  @spec attach(String.t(), map()) :: {:ok, pid()} | {:error, term()}
+  @spec attach(String.t(), map()) :: {:ok, pid()} | {:error, :session_ended | term()}
   def attach(agent_id, %{working_copy: working_copy} = session) do
     case CmsHarness.Agents.whereis(agent_id) do
       {:ok, pid} ->
-        GenServer.call(pid, {:session, session})
-        {:ok, pid}
+        # A terminal can close after the registry lookup but before it answers.
+        # Reconnect treats that as an ended session, not a failed restore task.
+        try do
+          GenServer.call(pid, {:session, session})
+          {:ok, pid}
+        catch
+          :exit, {reason, {GenServer, :call, [^pid, {:session, ^session}, _timeout]}}
+          when reason in [:normal, :noproc] ->
+            {:error, :session_ended}
+        end
 
       {:error, :not_running} ->
         with {:ok, _copy} <- Copy.ensure(working_copy) do
@@ -69,9 +77,14 @@ defmodule CmsHarness.Agents.Terminal do
              session_id: session[:session_id],
              transcript: session[:transcript]}
           )
+          |> started()
         end
     end
   end
+
+  # `init/1` declines a session that already ended, so nothing reports it up.
+  defp started(:ignore), do: {:error, :session_ended}
+  defp started(other), do: other
 
   def start_link(opts) do
     agent_id = Keyword.fetch!(opts, :agent_id)
@@ -104,17 +117,21 @@ defmodule CmsHarness.Agents.Terminal do
       sessions: Keyword.get(opts, :sessions)
     }
 
-    case register(state) do
-      :ok ->
-        register_session(state)
-        Liveness.watch(state.agent_id, self(), state.working_copy)
-        report_up(state)
-        send(self(), :mailbox_ready)
-        schedule_check()
-        {:ok, state}
-
-      {:error, reason} ->
-        {:stop, reason}
+    # Asked before anything says it is up: a reconnect re-attaches every terminal
+    # agent whose session record survives, and one whose session already ended
+    # went up and then down at its first check, a presence flap that let a
+    # message through to a closed session.
+    with :alive <- observe(state),
+         :ok <- register(state) do
+      register_session(state)
+      Liveness.watch(state.agent_id, self(), state.working_copy)
+      report_up(state)
+      send(self(), :mailbox_ready)
+      schedule_check()
+      {:ok, state}
+    else
+      :gone -> :ignore
+      {:error, reason} -> {:stop, reason}
     end
   end
 

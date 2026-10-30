@@ -9,6 +9,7 @@ defmodule CodeMySpec.Agents.AnIdleTeamPicksUpItsReopenedStoryTest do
   use CodeMySpecSpex.Case, async: true
 
   import CodeMySpec.IssuesFixtures
+  import Ecto.Query
 
   alias CodeMySpec.Agents.Agent
   alias CodeMySpec.Agents.Offer
@@ -28,14 +29,25 @@ defmodule CodeMySpec.Agents.AnIdleTeamPicksUpItsReopenedStoryTest do
     ctx = Map.merge(ctx, %{coding: coding, qa: qa}) |> Slice.complete() |> Slice.main_copy()
     story = CodeMySpec.Stories.get_story!(ctx.scope, ctx.story.id)
     at = DateTime.add(DateTime.utc_now(), -3600)
-    {:ok, _} = CodeMySpec.Stories.mark_story_promoted(ctx.scope, story, "0.1.15", at: at)
+
+    {:ok, _} =
+      CodeMySpec.Stories.mark_story_promoted(ctx.scope, story, "0.1.15",
+        at: at,
+        candidate_commit: story.qa_ready_commit,
+        commit: story.qa_ready_commit
+      )
+
     Slice.assert_active(Slice.next(ctx, %{agent_id: coding.id}), ctx, "complete")
 
     # Installed after the fixtures, which swap the transport themselves.
     CodeMySpecTest.RecordingAgentTransport.listen(ctx)
 
     # The backfill: nobody on the copy holds a story.
-    Repo.update_all(Agent, set: [story_id: nil, continuous: true])
+    Repo.update_all(
+      from(agent in Agent, where: agent.id in ^[coding.id, qa.id]),
+      set: [story_id: nil, continuous: true]
+    )
+
     %{ctx | coding: reload(coding), qa: reload(qa)}
   end
 
@@ -50,7 +62,11 @@ defmodule CodeMySpec.Agents.AnIdleTeamPicksUpItsReopenedStoryTest do
   defp release(ctx, false), do: ctx
 
   defp release(ctx, true) do
-    Repo.update_all(Story, set: [working_copy_id: nil])
+    Repo.update_all(
+      from(story in Story, where: story.id == ^ctx.story.id),
+      set: [working_copy_id: nil]
+    )
+
     ctx
   end
 

@@ -55,7 +55,6 @@ defmodule CodeMySpec.GeneratorsTest do
   defp deployable_project(dir) do
     for path <- [
           "Dockerfile",
-          ".github/workflows/build.yml",
           "config/deploy.yml",
           "config/deploy.uat.yml",
           ".sops.yaml",
@@ -71,6 +70,13 @@ defmodule CodeMySpec.GeneratorsTest do
     end
 
     write(dir, @router, good_router())
+
+    write(
+      dir,
+      "lib/my_app_web/controllers/health_controller.ex",
+      "defmodule MyAppWeb.HealthController do\nend\n"
+    )
+
     write(dir, "config/runtime.exs", good_runtime())
   end
 
@@ -103,6 +109,22 @@ defmodule CodeMySpec.GeneratorsTest do
   end
 
   describe "missing artifacts" do
+    test "a router with a health route needs its controller before deploy is ready", %{
+      env: env,
+      dir: dir
+    } do
+      deployable_project(dir)
+      path = "lib/my_app_web/controllers/health_controller.ex"
+      File.rm!(Path.join(dir, path))
+
+      assert {:missing_health_controller, path} in Generators.audit_environment(env, @router)
+      refute Generators.deploy_ready?(%CodeMySpec.Users.Scope{}, @router, env)
+      assert Generators.explain({:missing_health_controller, path}) =~ "/health"
+
+      write(dir, path, "defmodule MyAppWeb.HealthController do\nend\n")
+      assert Generators.audit_environment(env, @router) == []
+    end
+
     test "names each missing file with the reason it matters", %{env: env, dir: dir} do
       deployable_project(dir)
       File.rm!(Path.join(dir, "Dockerfile"))
@@ -113,7 +135,7 @@ defmodule CodeMySpec.GeneratorsTest do
 
       explanation = Generators.explain({:missing_file, artifact})
       assert explanation =~ "Dockerfile"
-      assert explanation =~ "first push"
+      assert explanation =~ "burst-box builder"
     end
 
     test "a missing encrypted env file is reported", %{env: env, dir: dir} do
@@ -353,7 +375,14 @@ defmodule CodeMySpec.GeneratorsTest do
 
     setup %{env: env, dir: dir} do
       {:ok, _written} =
-        DeployArtifacts.generate(env, app: "my-app", host: "example.com", owner: "acme")
+        DeployArtifacts.generate(env,
+          app: "my-app",
+          host: "example.com",
+          owner: "acme",
+          registry: "registry.example.com",
+          image: "registry.example.com/acme/my-app",
+          kamal_image: "acme/my-app"
+        )
 
       %{dir: dir}
     end
@@ -362,18 +391,15 @@ defmodule CodeMySpec.GeneratorsTest do
     # class of bug, and it hid in the one line nobody reads because everything
     # around it interpolated correctly.
     #
-    # `kamal_config`'s own `ssh:` block is the one deliberate exception —
-    # ERB kamal itself renders at deploy time against `CMS_SSH_KEY_PATH`,
-    # which is only known then, not at generation time. That is a genuinely
-    # different thing from the bug this test exists to catch: this generator
-    # never uses EEx at all, so *any other* `<%= %>`/`<% %>` reaching the
-    # output is exactly the old failure — an Elixir interpolation, like
-    # `#{}_host`, that was never substituted — wearing the same syntax kamal
-    # happens to use for its own, later pass.
+    # Kamal renders the SSH key and target architecture ERB expressions at
+    # deploy time. Those values are not known when these files are generated.
+    # The exact expressions below are allowed; every other template tag still
+    # indicates a generator interpolation that was left unsubstituted.
     test "no generated file carries an unrendered template tag", %{dir: dir} do
       allowed = [
         ~s(<% if ENV["CMS_SSH_KEY_PATH"] %>),
         ~s(<%= ENV["CMS_SSH_KEY_PATH"] %>),
+        "<%= ENV.fetch(\"CMS_TARGET_ARCH\") %>",
         "<% end %>"
       ]
 
@@ -395,10 +421,9 @@ defmodule CodeMySpec.GeneratorsTest do
 
              #{Enum.map_join(offenders, "\n", &("  " <> &1))}
 
-             kamal's own config files are ERB, rendered by kamal itself at deploy
-             time against CMS_SSH_KEY_PATH — that one is expected. Anything else
-             here is this generator's own Elixir interpolation left unsubstituted,
-             and a tag that survives generation names a host that cannot exist.
+             Kamal renders the allowed CMS_SSH_KEY_PATH and CMS_TARGET_ARCH
+             expressions at deploy time. Any other template tag is an
+             unsubstituted generator interpolation.
              """
     end
 

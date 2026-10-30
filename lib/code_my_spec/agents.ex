@@ -23,7 +23,6 @@ defmodule CodeMySpec.Agents do
     top_level?: true,
     deps: [
       CodeMySpec.Accounts,
-      CodeMySpec.AgentAttachments,
       CodeMySpec.Agents.Agent,
       CodeMySpec.Agents.RoleProfile,
       CodeMySpec.Analysis,
@@ -36,6 +35,7 @@ defmodule CodeMySpec.Agents do
       CodeMySpec.Paths,
       CodeMySpec.Projects,
       CodeMySpec.Provisioning,
+      CodeMySpec.Qa.Verdict,
       CodeMySpec.PromotionQueue.Waits,
       CodeMySpec.Repo,
       CodeMySpec.Requirements,
@@ -78,6 +78,7 @@ defmodule CodeMySpec.Agents do
   alias CodeMySpec.Agents.Providers
   alias CodeMySpec.Agents.RefusalWake
   alias CodeMySpec.Agents.RoleProfile
+  alias CodeMySpec.Agents.ServedModels
   alias CodeMySpec.Agents.StopDecision
   alias CodeMySpec.Agents.Transport
   alias CodeMySpec.Agents.TurnTimeout
@@ -1782,13 +1783,8 @@ defmodule CodeMySpec.Agents do
     end
   end
 
-  defp ensure_detached_main(scope, agent, copy) do
-    with {:ok, running} <- ensure_detached_running(scope, agent) do
-      if not Agent.off?(running) and copy_connected?(copy),
-        do: attach_main(scope, running, copy),
-        else: {:ok, running}
-    end
-  end
+  # Main has no copy to attach to: it names one on each call (`CopyTools`).
+  defp ensure_detached_main(scope, agent, _copy), do: ensure_detached_running(scope, agent)
 
   @doc "Hand environment setup to main after product records the initial choices."
   def start_project_setup(scope, instructions \\ nil)
@@ -1924,9 +1920,6 @@ defmodule CodeMySpec.Agents do
         start_detached_product(scope)
     end
   end
-
-  defp copy_connected?(copy),
-    do: match?({:ok, _pid, _instance}, HarnessRegistry.executor_holder(copy.id))
 
   defp start_detached_product(scope), do: start_detached_agent(scope, :product)
 
@@ -2383,22 +2376,6 @@ defmodule CodeMySpec.Agents do
     end)
   end
 
-  @doc "Attach onboarding Main to a checkout while keeping Main and Product in their runtimes."
-  @spec attach_setup_working_copy(Scope.t(), map()) ::
-          {:ok, Agent.t()} | {:error, term()} | :none
-  def attach_setup_working_copy(%Scope{} = scope, copy) do
-    case main_agent_anywhere(scope) do
-      nil -> :none
-      agent -> attach_main(scope, agent, copy)
-    end
-  end
-
-  defp attach_main(scope, agent, copy) do
-    with {:ok, _attachment} <- CodeMySpec.AgentAttachments.connect(scope, agent.id, copy.id) do
-      {:ok, agent}
-    end
-  end
-
   @doc """
   Move the project's own agent to a different checkout.
 
@@ -2416,7 +2393,7 @@ defmodule CodeMySpec.Agents do
         :none
 
       %Agent{execution_mode: :detached} = agent ->
-        attach_main(scope, agent, copy)
+        {:ok, agent}
 
       %Agent{working_copy_id: id} when id == :erlang.map_get(:id, copy) ->
         with :ok <- move_main_copy_roster(scope, nil, copy), do: :none
@@ -2945,6 +2922,21 @@ defmodule CodeMySpec.Agents do
     end
   end
 
+  def record_turn_event(
+        %Scope{} = scope,
+        agent_id,
+        %{"kind" => "disk_capacity_refused", "text" => reason} = event,
+        _opts
+      ) do
+    with {:ok, agent} <- AgentsRepository.fetch_agent(scope, agent_id),
+         {:ok, conversation} <- open_conversation(scope, agent) do
+      write_turn_event(conversation, agent, event)
+      notify_main(scope, :teammate_stalled, "Turn refused on #{teammate(agent)}: #{reason}")
+    else
+      _ -> :ok
+    end
+  end
+
   # A failed turn that was neither a provider refusal nor a timeout: said to
   # the agent with the request it failed on, once. A failure on the re-offer is
   # recorded and left, so a repeating failure cannot buy a turn per failure.
@@ -2959,11 +2951,17 @@ defmodule CodeMySpec.Agents do
          {:ok, conversation} <- open_conversation(scope, agent) do
       # A refusal and a timeout each have a reader that finds this line on the
       # transcript (`ProviderRefusal`, `TurnTimeout`), so they stay there.
-      if ProviderRefusal.read(text, DateTime.utc_now()) || TurnTimeout.exec(text) do
-        record_refusal(scope, agent, event)
-        write_turn_event(conversation, agent, event)
-      else
-        reoffer_failed_turn(conversation, agent, text)
+      cond do
+        String.starts_with?(text, "Codex provider fault for agent ") ->
+          write_turn_event(conversation, agent, event)
+          notify_main(scope, :teammate_stalled, "Provider fault on #{teammate(agent)}: #{text}")
+
+        ProviderRefusal.read(text, DateTime.utc_now()) || TurnTimeout.exec(text) ->
+          record_refusal(scope, agent, event)
+          write_turn_event(conversation, agent, event)
+
+        true ->
+          reoffer_failed_turn(conversation, agent, text)
       end
     else
       _ -> :ok
@@ -3696,20 +3694,26 @@ defmodule CodeMySpec.Agents do
 
     scope
     |> AgentsRepository.model_setting(role)
-    |> honour_setting(role, connected)
+    |> honour_setting(scope, role, connected)
   end
 
-  defp honour_setting(%ModelSetting{provider: provider, model: model}, role, connected) do
+  defp honour_setting(%ModelSetting{provider: provider, model: model}, scope, role, connected) do
     if provider in connected,
       do: {:ok, {provider, model}, :set},
-      else: resolved_default(role, connected)
+      else: resolved_default(scope, role, connected)
   end
 
-  defp honour_setting(nil, role, connected), do: resolved_default(role, connected)
+  defp honour_setting(nil, scope, role, connected), do: resolved_default(scope, role, connected)
 
-  defp resolved_default(role, connected) do
-    with {:ok, choice} <- Defaults.resolve(role, connected) do
-      {:ok, choice, :default}
+  # A default model the provider is known not to serve resolves to nil, the
+  # login's own default: a pinned string the provider dropped crash-looped
+  # every Codex coder.
+  defp resolved_default(scope, role, connected) do
+    with {:ok, {provider, model}} <- Defaults.resolve(role, connected) do
+      case ServedModels.served?(scope, provider, model) do
+        false -> {:ok, {provider, nil}, :default}
+        _served_or_unknown -> {:ok, {provider, model}, :default}
+      end
     end
   end
 
@@ -3724,6 +3728,10 @@ defmodule CodeMySpec.Agents do
       nil -> nil
     end
   end
+
+  @doc "The models `provider` serves this project, or `:unknown`: see `ServedModels`."
+  @spec served_models(Scope.t(), String.t()) :: {:ok, [String.t()]} | :unknown
+  defdelegate served_models(scope, provider), to: ServedModels, as: :list
 
   @doc "Whether this user has deliberately chosen agent models."
   def models_configured?(scope), do: AgentsRepository.list_model_settings(scope) != []
@@ -3786,9 +3794,18 @@ defmodule CodeMySpec.Agents do
   def put_model_setting(%Scope{} = scope, role, provider, model) do
     # Refused here: a stored provider the account cannot authenticate yields an
     # agent that fails on its first model call.
-    if provider in connected_providers(scope),
-      do: AgentsRepository.put_model_setting(scope, role, provider, model),
-      else: {:error, :unknown_provider}
+    # And a model the provider is known not to serve: its agents would fail at
+    # start. Unknown (no list reported) is allowed.
+    cond do
+      provider not in connected_providers(scope) ->
+        {:error, :unknown_provider}
+
+      ServedModels.served?(scope, provider, model) == false ->
+        {:error, {:model_not_served, elem(ServedModels.list(scope, provider), 1)}}
+
+      true ->
+        AgentsRepository.put_model_setting(scope, role, provider, model)
+    end
   end
 
   @doc """

@@ -85,6 +85,7 @@ RUN mix assets.setup
 COPY priv priv
 
 COPY lib lib
+COPY lib_server lib_server
 
 # Compile the release
 RUN mix compile
@@ -105,7 +106,7 @@ RUN mix release code_my_spec
 FROM ${RUNNER_IMAGE} AS final
 
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends libstdc++6 openssl libncurses5 locales ca-certificates git openssh-client age \
+  && apt-get install -y --no-install-recommends libstdc++6 openssl libncurses5 locales ca-certificates git openssh-client age procps \
   && rm -rf /var/lib/apt/lists/*
 
 # `age-keygen` (from the `age` package above) mints and derives the

@@ -69,7 +69,9 @@ defmodule CodeMySpec.Agents.AStoryPassingQaAlreadyOnMainFreesItsTeamTest do
   defp landed(ctx) do
     {:ok, story} =
       Stories.mark_story_promoted(ctx.scope, ctx.story, "2.0.11",
-        at: DateTime.add(DateTime.utc_now(), -3600, :second)
+        at: DateTime.add(DateTime.utc_now(), -3600, :second),
+        candidate_commit: "on-main",
+        commit: "on-main"
       )
 
     %{ctx | story: story}

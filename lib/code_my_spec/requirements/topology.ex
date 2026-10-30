@@ -131,15 +131,15 @@ defmodule CodeMySpec.Requirements.Topology do
   def depth_map(nodes, edges) do
     node_keys = MapSet.new(nodes, &key/1)
     valid = Enum.filter(edges, &both_endpoints_in?(&1, node_keys))
-    incoming = group_edges(valid, & &1.to, & &1.from)
+    waiting = valid |> Enum.frequencies_by(& &1.to)
+    sources = Enum.reject(node_keys, &Map.has_key?(waiting, &1))
+    initial = Map.new(node_keys, &{&1, if(Map.has_key?(waiting, &1), do: nil, else: 0)})
 
-    initial =
-      Map.new(nodes, fn n ->
-        k = key(n)
-        if Map.get(incoming, k, []) == [], do: {k, 0}, else: {k, nil}
-      end)
+    depths = resolve_depths(sources, {initial, %{}}, waiting, outgoing(valid))
 
-    resolve_depths(initial, incoming)
+    if Enum.any?(depths, fn {_k, d} -> is_nil(d) end),
+      do: finalize_unresolved(depths),
+      else: depths
   end
 
   defp both_endpoints_in?(%{from: f, to: t}, node_keys) do
@@ -175,11 +175,18 @@ defmodule CodeMySpec.Requirements.Topology do
   nodes?" without enumerating intermediate paths.
   """
   @spec descendants_of([Requirement.t()], [edge()]) :: MapSet.t(node_key())
-  def descendants_of(from_nodes, edges) do
+  def descendants_of(from_nodes, edges), do: descendants(from_nodes, outgoing(edges))
+
+  @doc "`descendants_of/2` over `outgoing/1`, for a caller asking many times."
+  @spec descendants([Requirement.t()], %{node_key() => [node_key()]}) :: MapSet.t(node_key())
+  def descendants(from_nodes, outgoing) do
     from_keys = MapSet.new(from_nodes, &key/1)
-    outgoing = group_edges(edges, & &1.from, & &1.to)
     bfs_descendants(MapSet.to_list(from_keys), MapSet.new(), outgoing)
   end
+
+  @doc "Each node's direct successors."
+  @spec outgoing([edge()]) :: %{node_key() => [node_key()]}
+  def outgoing(edges), do: group_edges(edges, & &1.from, & &1.to)
 
   defp bfs_descendants([], visited, _outgoing), do: visited
 
@@ -187,11 +194,13 @@ defmodule CodeMySpec.Requirements.Topology do
     successors = Map.get(outgoing, k, [])
     to_add = Enum.reject(successors, &MapSet.member?(visited, &1))
     new_visited = Enum.reduce(to_add, visited, &MapSet.put(&2, &1))
-    bfs_descendants(rest ++ to_add, new_visited, outgoing)
+    bfs_descendants(to_add ++ rest, new_visited, outgoing)
   end
 
   @doc """
-  Removes transitive shortcuts while preserving reachability.
+  Removes transitive shortcuts while preserving reachability. For views that
+  draw the graph: stored edges are kept as generated, and readiness reads only
+  reachability, which this does not change.
 
   An edge is removed only when a route through a strictly intermediate
   strongly-connected component carries it. Edges within a cycle and
@@ -200,37 +209,10 @@ defmodule CodeMySpec.Requirements.Topology do
   paths can remove every entrance or destroy the cycle itself.
   """
   @spec transitive_reduction([edge()]) :: [edge()]
-  def transitive_reduction(edges), do: reduce(edges, reach(edges))
-
-  @typedoc """
-  Reachability over one edge set: each node a bit, each node's reachable set
-  one integer, and each node's successors. What `reach/1` answers with and
-  what every reachability question below reads.
-  """
-  @type reach :: %{
-          bit: %{node_key() => pos_integer()},
-          reach: %{node_key() => non_neg_integer()},
-          outgoing: %{node_key() => [node_key()]}
-        }
-
-  @doc """
-  Reachability over `edges`, computed once so it can be asked many times.
-
-  `transitive_reduction/1` is `reduce/2` over this. `Edges` computes it once
-  over the component side and asks it for every story drawn over it.
-  """
-  @spec reach([edge()]) :: reach()
-  def reach(edges) do
+  def transitive_reduction(edges) do
     outgoing = group_edges(edges, & &1.from, & &1.to)
     {bit, reach} = reachability(edges, outgoing)
-    %{bit: bit, reach: reach, outgoing: outgoing}
-  end
 
-  @doc """
-  `edges` with safe transitive shortcuts removed, given reachability over them.
-  """
-  @spec reduce([edge()], reach()) :: [edge()]
-  def reduce(edges, %{bit: bit, reach: reach, outgoing: outgoing}) do
     # Once per source, not once per edge.
     via_successors =
       Map.new(outgoing, fn {a, successors} ->
@@ -242,88 +224,10 @@ defmodule CodeMySpec.Requirements.Topology do
     end)
   end
 
-  @doc """
-  A local reduction that knows about paths it cannot see.
-
-  Each `virtual` edge stands for a path of two or more edges that exists
-  outside `local` — a story's kickoff reaching its exit through the component
-  graph, say. A local edge is redundant when a longer path exists through
-  local and virtual edges together, and a local edge that *is* a virtual one
-  is redundant by the virtual's own claim. Virtual edges are never returned.
-  """
-  @spec reduce_with([edge()], [edge()]) :: [edge()]
-  def reduce_with(local, []), do: transitive_reduction(local)
-
-  def reduce_with(local, virtual) do
-    local_set = MapSet.new(local)
-    virtual_set = MapSet.new(virtual)
-
-    (local ++ virtual)
-    |> Enum.uniq()
-    |> transitive_reduction()
-    |> Enum.filter(&(MapSet.member?(local_set, &1) and not MapSet.member?(virtual_set, &1)))
-  end
-
-  @doc """
-  The members of `keys` that no strictly upstream member reaches.
-  Mutually reachable members are retained together.
-
-  A fan-out to a set of nodes keeps only the edges to nodes none of the others
-  reach, because the path through the one that does enforces the same gating.
-  Exactly what a whole-graph reduction would keep of those edges, without the
-  whole graph.
-  """
-  @spec minimal(reach(), [node_key()]) :: [node_key()]
-  def minimal(%{bit: bit, reach: reach}, keys) do
-    keys = Enum.uniq(keys)
-    via = Enum.reduce(keys, 0, fn k, acc -> acc ||| Map.get(reach, k, 0) end)
-
-    Enum.filter(keys, fn k ->
-      k_bit = Map.get(bit, k, 0)
-
-      cond do
-        (via &&& k_bit) == 0 ->
-          true
-
-        (Map.get(reach, k, 0) &&& k_bit) == 0 ->
-          false
-
-        # Keep members of the same cycle; only a strictly upstream key replaces one.
-        true ->
-          not strictly_upstream_member?(keys, k, k_bit, bit, reach)
-      end
-    end)
-  end
-
-  defp strictly_upstream_member?(keys, key, key_bit, bit, reach) do
-    Enum.any?(keys, fn other ->
-      other != key and (Map.get(reach, other, 0) &&& key_bit) != 0 and
-        (Map.get(reach, key, 0) &&& Map.get(bit, other, 0)) == 0
-    end)
-  end
-
-  @doc "The bits of `keys`, for `reaches?/3` and `in_mask?/3`."
-  @spec mask(reach(), Enumerable.t()) :: non_neg_integer()
-  def mask(%{bit: bit}, keys),
-    do: Enum.reduce(keys, 0, fn k, acc -> acc ||| Map.get(bit, k, 0) end)
-
-  @doc "Whether `from` reaches a node in `mask` by a path of one or more edges."
-  @spec reaches?(reach(), node_key(), non_neg_integer()) :: boolean()
-  def reaches?(%{reach: reach}, from, mask), do: (Map.get(reach, from, 0) &&& mask) != 0
-
-  @doc "Whether `key` is one of the nodes in `mask`."
-  @spec in_mask?(reach(), node_key(), non_neg_integer()) :: boolean()
-  def in_mask?(%{bit: bit}, key, mask), do: (Map.get(bit, key, 0) &&& mask) != 0
-
-  @doc "The direct successors of `key`."
-  @spec successors(reach(), node_key()) :: [node_key()]
-  def successors(%{outgoing: outgoing}, key), do: Map.get(outgoing, key, [])
-
   # Reachability as one integer per node, each bit a node: a bignum `bor`
   # merges a whole reachable set at once, so each edge is visited once.
   # Cycles occur, so strongly-connected components are condensed first; the
   # condensation is a DAG, which makes one reverse-topological pass correct.
-  # See knowledge/requirements_graph/checkers, "Edge derivation".
   defp reachability(edges, outgoing) do
     nodes = edges |> Enum.flat_map(&[&1.from, &1.to]) |> Enum.uniq()
     bit = nodes |> Enum.with_index() |> Map.new(fn {n, i} -> {n, 1 <<< i} end)
@@ -476,32 +380,28 @@ defmodule CodeMySpec.Requirements.Topology do
     end)
   end
 
-  defp resolve_depths(depths, incoming) do
-    {updated, changed?} =
-      Enum.map_reduce(depths, false, &maybe_assign_depth(&1, &2, depths, incoming))
+  # In topological order: a node's depth is final once its last incoming edge
+  # is seen (`deepest` holds the running max until then). A node in or below a
+  # cycle never gets there and stays nil.
+  defp resolve_depths([], {depths, _deepest}, _waiting, _outgoing), do: depths
 
-    updated_map = Map.new(updated)
+  defp resolve_depths([k | rest], {depths, deepest}, waiting, outgoing) do
+    depth = Map.fetch!(depths, k) + 1
 
-    cond do
-      changed? -> resolve_depths(updated_map, incoming)
-      Enum.any?(updated_map, fn {_k, d} -> is_nil(d) end) -> finalize_unresolved(updated_map)
-      true -> updated_map
-    end
-  end
+    {ready, depths, deepest, waiting} =
+      outgoing
+      |> Map.get(k, [])
+      |> Enum.reduce({rest, depths, deepest, waiting}, fn succ,
+                                                          {ready, depths, deepest, waiting} ->
+        deepest = Map.update(deepest, succ, depth, &max(&1, depth))
+        waiting = Map.update!(waiting, succ, &(&1 - 1))
 
-  defp maybe_assign_depth({k, depth}, any_changed, _depths, _incoming) when not is_nil(depth) do
-    {{k, depth}, any_changed}
-  end
+        if waiting[succ] == 0,
+          do: {[succ | ready], Map.put(depths, succ, deepest[succ]), deepest, waiting},
+          else: {ready, depths, deepest, waiting}
+      end)
 
-  defp maybe_assign_depth({k, _nil}, any_changed, depths, incoming) do
-    sources = Map.get(incoming, k, [])
-    source_depths = Enum.map(sources, &Map.get(depths, &1))
-
-    if Enum.all?(source_depths, &(not is_nil(&1))) do
-      {{k, Enum.max(source_depths, fn -> -1 end) + 1}, true}
-    else
-      {{k, nil}, any_changed}
-    end
+    resolve_depths(ready, {depths, deepest}, waiting, outgoing)
   end
 
   # Cyclic nodes (those that never resolved) get sequential depths in

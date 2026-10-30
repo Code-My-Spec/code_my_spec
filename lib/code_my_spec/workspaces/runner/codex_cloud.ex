@@ -67,22 +67,47 @@ defmodule CodeMySpec.Workspaces.Runner.CodexCloud do
         "Installation script — Phoenix (CodeMySpec) — x86_64 Linux",
         installer
       ),
-      section("startup-script", "Startup script", """
+      section("startup-script", "Startup script — reconnect an existing environment", """
       # Run on every fresh or resumed environment, from the generation target's repository.
       python3 "#{state}/codex_cloud.py" start --root "$PWD"
       """),
-      section("setup-environment", "Environment and agent startup", """
-      Generation target: Phoenix (CodeMySpec).
-      Install from the target repository. Its .tool-versions and mix.lock define its toolchain and dependencies.
-      Run the startup script after installation and whenever the environment resumes.
-      Before running project commands in an interactive shell, load the installed toolchain:
-      source "#{state}/environment.sh"
-      Give each Codex conversation its own CODEX_THREAD_ID. At the start of every conversation run:
-      python3 "#{state}/codex_cloud.py" session --root "$PWD"
-      The helper registers the conversation and verifies start_task and evaluate_task after the complete MCP handshake.
-      Keep HTTPS_PROXY and the platform's trusted CA configuration available for cloud networking.
-      Configure project-specific runtime secrets in the environment's secure settings; never paste them into scripts.
+      section("setup-environment", "Cloud environment settings", """
+      Use this project's Phoenix repository, with committed mix.exs, mix.lock and .tool-versions.
+      Add the allowed hosts below and keep network access available during agent turns as well as setup.
+      Keep HTTPS_PROXY and the platform's trusted CA configuration available.
+      Configure project-specific runtime secrets in the environment's secure settings.
       CMS_CLOUD_STATE_DIR optionally overrides the persistent private state directory.
+      Run the installation script in the repository root. Installation prepares the environment;
+      the start-or-resume prompt below connects the agent and handles device authorization.
+      """),
+      section("setup-conversation", "Start or resume — paste into your cloud chat", """
+      Connect this Codex conversation to CodeMySpec at #{server} for project #{project}.
+      Use the existing setup for device #{device}; run from this project's Phoenix repository root.
+
+      1. Verify CODEX_THREAD_ID identifies this actual conversation. If it is missing, use the
+         current conversation ID supplied by the platform and export CODEX_THREAD_ID, or ask me for it. Never invent an ID
+         or reuse another conversation's ID. Keep the same ID when resuming this conversation.
+      2. Run:
+         python3 "#{state}/codex_cloud.py" resume --root "$PWD"
+         If the helper is missing, ask me to run this device's installation script first.
+         If authorization is required, show me the verification URL and user code promptly
+         and let startup continue while I approve it. Never show access or refresh tokens.
+         If a command fails, report its error and the next corrective step before continuing.
+      3. Continue only when startup returns ready=true, agent_id and task_tools_available=true.
+         The helper registers this conversation through the existing SessionStart flow.
+         Load the toolchain before project commands:
+         source "#{state}/environment.sh"
+      4. Discover the CMS tools through the initialized session:
+         printf '%s' '{"jsonrpc":"2.0","id":10,"method":"tools/list","params":{}}' | python3 "#{state}/codex_cloud.py" mcp --root "$PWD"
+         Use the returned tool schemas. Send tools/call JSON through the same mcp command;
+         this reuses the registered agent and MCP session. Follow the CMS onboarding guidance
+         and confirm this conversation's role before taking work as Main. Check existing
+         tasks and messages before starting new work so resumption does not duplicate it.
+      5. Report the connection result and the next pending action. Before ending a work turn,
+         explicitly evaluate any task you changed with evaluate_task and save progress through
+         the available CMS tools. Do not depend on desktop lifecycle hooks in this environment.
+
+      I will resume this chat manually. Do not configure automatic wake-up or another agent runtime.
       """),
       section(
         "setup-hosts",
@@ -92,7 +117,9 @@ defmodule CodeMySpec.Workspaces.Runner.CodexCloud do
       section("setup-auth", "Authorize this dev box", """
       This box uses its own device identity: #{device}.
       Startup displays a device authorization URL and code when approval is required on #{server}.
-      Open that URL, approve the code, then let startup finish. Credentials stay in private files on the box.
+      Open that URL in your browser, approve the code, then let startup finish.
+      Approval is needed again only when saved authorization can no longer be used or refreshed.
+      Credentials stay in private files on the box.
       Do not paste a deploy key or access token into these scripts. Existing desktop authentication is unchanged.
       A box is ready only when target validation passes and its harness is connected and watching the target repository.
       """)

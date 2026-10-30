@@ -37,8 +37,10 @@ defmodule CmsHarness.Credentials do
   """
   @spec for_working_copy(String.t() | nil) :: result()
   def for_working_copy(root) do
-    with {:error, :no_credential} <- from_harness_oauth(Config.server_url_for(root)),
-         {:error, :no_credential} <- from_working_copy(root),
+    server = Config.server_url_for(root)
+
+    with {:error, :no_credential} <- from_harness_oauth(server),
+         {:error, :no_credential} <- from_working_copy(root, server, :legacy_ok),
          {:error, :no_credential} <- from_configured_deploy_key() do
       from_dev_box()
     end
@@ -53,7 +55,7 @@ defmodule CmsHarness.Credentials do
   @spec any() :: result()
   def any do
     with {:error, :no_credential} <- from_harness_oauth(Config.server_url()),
-         {:error, :no_credential} <- from_any_working_copy(),
+         {:error, :no_credential} <- from_any_working_copy(Config.server_url()),
          {:error, :no_credential} <- from_configured_deploy_key() do
       from_dev_box()
     end
@@ -63,11 +65,11 @@ defmodule CmsHarness.Credentials do
   # lives. Served roots and durable hints only, never the cwd (under the suite
   # it is this repo, holding a real key). Hints supply a credential for the
   # boot announce; they never decide what is served.
-  defp from_any_working_copy do
+  defp from_any_working_copy(server) do
     (Projects.list() ++ ServedRoots.list())
     |> Enum.uniq()
     |> Enum.find_value({:error, :no_credential}, fn root ->
-      case from_working_copy(root) do
+      case from_working_copy(root, server, :exact) do
         {:ok, _key, _source} = found -> found
         _ -> nil
       end
@@ -85,17 +87,24 @@ defmodule CmsHarness.Credentials do
     end
   end
 
-  defp from_working_copy(root) when is_binary(root) and root != "" do
+  # A copy's own key goes only to its server. A config with no `server_url`
+  # predates recording it; `Config.server_url_for/1` already connects that copy
+  # to this harness's server, so its own requests may present the key there.
+  # The cross-copy fallback (`any/0`) never takes an unrecorded key, so one
+  # server's key cannot reach another.
+  defp from_working_copy(root, server, mode) when is_binary(root) and root != "" do
     case HarnessConfig.read_file(root) do
-      {:ok, %{deploy_key: key}} when is_binary(key) and key != "" ->
-        {:ok, key, :working_copy_key}
+      {:ok, %{deploy_key: key, server_url: recorded}} when is_binary(key) and key != "" ->
+        if recorded == server or (mode == :legacy_ok and recorded in [nil, ""]),
+          do: {:ok, key, :working_copy_key},
+          else: {:error, :no_credential}
 
       _ ->
         {:error, :no_credential}
     end
   end
 
-  defp from_working_copy(_root), do: {:error, :no_credential}
+  defp from_working_copy(_root, _server, _mode), do: {:error, :no_credential}
 
   # The box token, or none: a cloud box has nothing to send, the proxy does.
   defp from_dev_box do

@@ -87,16 +87,32 @@ defmodule CmsHarness.ChannelClientTransportTest do
   end
 
   test "an analysis result is tagged with its source so the reply can be matched" do
-    payload = %{"source" => "credo", "status" => "ok"}
+    payload = %{"run_id" => 42, "source" => "credo", "status" => "ok"}
 
     assert {:noreply, out} =
              ChannelClient.handle_cast({:analysis_result, payload}, socket(%{analysis_refs: %{}}))
 
     assert_receive {:transport_push, _, "analysis_result", ^payload, ref}
 
-    assert out.assigns.analysis_refs[ref] == "credo",
+    assert out.assigns.analysis_refs[ref] == payload
+
+    assert out.assigns.analysis_pending[42] == payload,
            "a result whose reply cannot be matched back to its source is a run " <>
              "the server may never close"
+  end
+
+  test "a server's word that the read model moved re-requests it at once" do
+    assert {:ok, out} =
+             ChannelClient.handle_message(
+               "harness_project:p1",
+               "read_model_changed",
+               %{},
+               socket(%{})
+             )
+
+    assert_receive {:transport_push, "harness_project:p1", "read_model", _, ref}
+    assert out.assigns.read_model_ref == ref
+    assert out.assigns.read_model_reason == :refresh
   end
 
   test "the read model is re-requested on the refresh tick" do

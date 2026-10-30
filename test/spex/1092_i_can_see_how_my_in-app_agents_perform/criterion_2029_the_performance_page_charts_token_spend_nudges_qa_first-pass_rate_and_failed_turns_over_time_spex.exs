@@ -37,7 +37,7 @@ defmodule CodeMySpecSpex.Story1092.Criterion2029Spex do
 
       when_ "I look at the performance page", context do
         {:ok, index, _html} = live(context.conn, index_path(context))
-        html = render_async(index)
+        html = await_report(index)
         series = chart_data(index, "#performance-chart")["series"] |> Enum.map(& &1["name"])
         {:ok, context |> Map.put(:html, html) |> Map.put(:series, series)}
       end

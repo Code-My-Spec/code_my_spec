@@ -60,7 +60,7 @@ defmodule CodeMySpecSpex.Story997.Criterion8287Spex do
       when_ "he opens that server from whichever project he happens to have open", context do
         {:ok, view, _html} = live(context.conn, "/app/servers/shared-1")
 
-        {:ok, Map.put(context, :html, render_async(view))}
+        {:ok, Map.put(context, :html, render_settled(view))}
       end
 
       then_ "containers from both projects are listed", context do

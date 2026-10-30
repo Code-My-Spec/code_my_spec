@@ -16,7 +16,7 @@ defmodule CodeMySpec.PromotionQueue.Repository do
   @open [:queued, :gating]
 
   @doc """
-  Queue `attrs` for its project. The same copy at the same commit already
+  Queue `attrs` for its project. The same task and copy at the same commit already
   queued or being gated is that entry, not a second one — a promote repeated
   after a harness restart asks for what is already in hand. A copy with a
   candidate still waiting (not yet in a batch) has that candidate moved to the
@@ -25,7 +25,7 @@ defmodule CodeMySpec.PromotionQueue.Repository do
   """
   @spec enqueue(map()) :: {:ok, Entry.t()} | {:error, Ecto.Changeset.t()}
   def enqueue(%{project_id: project_id, working_copy_id: copy_id, commit: commit} = attrs) do
-    case open_at(project_id, copy_id, commit) do
+    case open_at(project_id, copy_id, commit, attrs[:task_id]) do
       %Entry{} = open -> {:ok, open}
       nil -> enqueue_new(attrs)
     end
@@ -43,6 +43,11 @@ defmodule CodeMySpec.PromotionQueue.Repository do
             type -> dynamic([e], e.subject_type == ^type and e.subject_id == ^attrs.subject_id)
           end
 
+        task_match =
+          if is_nil(attrs[:task_id]),
+            do: dynamic([e], is_nil(e.task_id)),
+            else: dynamic([e], e.task_id == ^attrs.task_id)
+
         candidate =
           Repo.one(
             from(e in Entry,
@@ -51,6 +56,7 @@ defmodule CodeMySpec.PromotionQueue.Repository do
                   e.status == :landed and e.result["assignment_held"] == true and
                   not is_nil(e.result["publication"]),
               where: ^subject,
+              where: ^task_match,
               order_by: [desc: e.inserted_at],
               limit: 1,
               lock: "FOR UPDATE"
@@ -78,14 +84,44 @@ defmodule CodeMySpec.PromotionQueue.Repository do
   # lock means that block ends with the row already moved off `:queued`, so
   # it is correctly left alone and a fresh entry is inserted instead.
   defp enqueue_new(%{project_id: project_id, working_copy_id: copy_id} = attrs) do
-    Repo.transaction(fn ->
-      case waiting_for_copy(project_id, copy_id) do
-        nil -> insert_entry(attrs)
-        %Entry{result: %{"publication" => _}} -> insert_entry(attrs)
-        %Entry{} = waiting -> retarget_waiting(waiting, attrs)
-      end
-    end)
-    |> broadcast()
+    result =
+      Repo.transaction(fn ->
+        case waiting_for_copy(project_id, copy_id) do
+          nil ->
+            {insert_entry(attrs), nil}
+
+          %Entry{result: %{"publication" => _}} ->
+            {insert_entry(attrs), nil}
+
+          %Entry{} = waiting ->
+            if waiting.task_id == attrs[:task_id] do
+              {retarget_waiting(waiting, attrs), nil}
+            else
+              {insert_entry(attrs), cancel_waiting(waiting)}
+            end
+        end
+      end)
+
+    case result do
+      {:ok, {entry, nil}} ->
+        broadcast({:ok, entry})
+
+      {:ok, {entry, cancelled}} ->
+        broadcast({:ok, cancelled})
+        broadcast({:ok, entry})
+
+      error ->
+        error
+    end
+  end
+
+  defp cancel_waiting(waiting) do
+    waiting
+    |> Entry.status_changeset(%{
+      status: :cancelled,
+      result: %{"reason" => "superseded by another promotion task"}
+    })
+    |> Repo.update!()
   end
 
   defp insert_entry(attrs) do
@@ -102,6 +138,7 @@ defmodule CodeMySpec.PromotionQueue.Repository do
         subject_type: attrs[:subject_type],
         subject_id: attrs[:subject_id],
         requested_by_agent_id: attrs[:requested_by_agent_id],
+        task_id: attrs[:task_id],
         restart: attrs.restart
       )
 
@@ -111,12 +148,18 @@ defmodule CodeMySpec.PromotionQueue.Repository do
     end
   end
 
-  defp open_at(project_id, copy_id, commit) do
+  defp open_at(project_id, copy_id, commit, task_id) do
+    task_match =
+      if is_nil(task_id),
+        do: dynamic([e], is_nil(e.task_id)),
+        else: dynamic([e], e.task_id == ^task_id)
+
     Repo.one(
       from(e in Entry,
         where:
           e.project_id == ^project_id and e.working_copy_id == ^copy_id and
             e.commit == ^commit and e.status in ^@open,
+        where: ^task_match,
         limit: 1
       )
     )
@@ -149,6 +192,16 @@ defmodule CodeMySpec.PromotionQueue.Repository do
     )
   end
 
+  @doc "Candidates whose gate was active when its worker exited."
+  def gating(project_id) do
+    Repo.all(
+      from(e in Entry,
+        where: e.project_id == ^project_id and e.status == :gating,
+        order_by: [asc: e.inserted_at, asc: e.id]
+      )
+    )
+  end
+
   @doc "1 for the candidate at the front, counting the ones being gated."
   @spec position(Entry.t()) :: pos_integer()
   def position(%Entry{project_id: project_id, inserted_at: inserted_at}) do
@@ -162,6 +215,14 @@ defmodule CodeMySpec.PromotionQueue.Repository do
       )
 
     ahead + 1
+  end
+
+  @doc "Whether an open publication receipt still names this gate copy."
+  def publication_gate_in_use?(project_id, gate_id) do
+    Repo.all(
+      from e in Entry, where: e.project_id == ^project_id and e.status in ^@open, select: e.result
+    )
+    |> Enum.any?(&(get_in(&1 || %{}, ["publication", "gate_id"]) == gate_id))
   end
 
   @doc "Projects with candidates not yet landed or ejected."
@@ -184,6 +245,18 @@ defmodule CodeMySpec.PromotionQueue.Repository do
   @spec get(Ecto.UUID.t()) :: Entry.t() | nil
   def get(id), do: Repo.get(Entry, id)
 
+  @doc "Other open candidates from the same working copy."
+  def other_open_for_copy(%Entry{} = entry) do
+    Repo.all(
+      from(e in Entry,
+        where:
+          e.project_id == ^entry.project_id and e.working_copy_id == ^entry.working_copy_id and
+            e.status in ^@open and e.id != ^entry.id,
+        order_by: [asc: e.inserted_at, asc: e.id]
+      )
+    )
+  end
+
   @doc "Move one entry to `status`, with any of `:batch_id` and `:result`."
   @spec move(Entry.t(), atom(), map()) :: {:ok, Entry.t()} | {:error, Ecto.Changeset.t()}
   def move(%Entry{} = entry, status, attrs \\ %{}) do
@@ -205,6 +278,13 @@ defmodule CodeMySpec.PromotionQueue.Repository do
         # `:queued`, `waiting_for_copy/2` stops matching it and a genuinely
         # new entry is created instead.
         locked = Repo.one!(from(e in Entry, where: e.id == ^entry.id, lock: "FOR UPDATE"))
+
+        # The worker first reserves a queued row, then updates that same
+        # gating row with the batch details. Reject a stale struct whose row
+        # changed state, while allowing both steps of the worker's transition.
+        if status == :gating and
+             (entry.status not in [:queued, :gating] or locked.status != entry.status),
+           do: Repo.rollback(:candidate_no_longer_queued)
 
         if status == :gating and locked.status != :gating and
              not ValidationHolds.promotion_allowed?(locked.project_id),

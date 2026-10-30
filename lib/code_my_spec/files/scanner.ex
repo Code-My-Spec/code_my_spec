@@ -73,6 +73,11 @@ defmodule CodeMySpec.Files.Scanner do
     which file is its spex, so a spex file's story is a lookup. The number
     parse survives only as the fallback for files nothing has claimed yet —
     it is wrong after a migration, because story ids are per-deployment.
+
+    `overlay_records` is what a checkout's file verdicts read beyond its scan,
+    opaque here (`Requirements.CopyOverlay.records/1`); nil from a server that
+    serves none. `fingerprint` names the whole model as served, so a report
+    says which records it answers.
     """
     defstruct component_by_module: %{},
               component_by_path: %{},
@@ -80,7 +85,9 @@ defmodule CodeMySpec.Files.Scanner do
               story_ids: MapSet.new(),
               story_ids_by_number: %{},
               story_by_spec_path: %{},
-              strict?: true
+              strict?: true,
+              overlay_records: nil,
+              fingerprint: nil
 
     @type t :: %__MODULE__{
             component_by_module: %{String.t() => Ecto.UUID.t()},
@@ -89,7 +96,9 @@ defmodule CodeMySpec.Files.Scanner do
             story_ids: MapSet.t(integer()),
             story_ids_by_number: %{integer() => integer()},
             story_by_spec_path: %{String.t() => integer()},
-            strict?: boolean()
+            strict?: boolean(),
+            overlay_records: map() | nil,
+            fingerprint: String.t() | nil
           }
   end
 
@@ -261,12 +270,6 @@ defmodule CodeMySpec.Files.Scanner do
     validate_setup_file(entry, env, &validate_test_support(&1, entry.path))
   end
 
-  # Parsed against the registered `qa_plan` document spec at sync time, so the
-  # requirement reads a verdict instead of a file.
-  def validate_entry(%{role: :qa_plan} = entry, env, _component_by_id, _strict?) do
-    validate_setup_file(entry, env, &validate_qa_plan(&1, entry.path))
-  end
-
   # An integration spec's verdict, decided where the file is, so
   # `Requirements.QaIntegrationPlanChecker` never globs or reads over a harness
   # call on every graph computation. Facts rather than errors: a `pending` spec
@@ -316,13 +319,58 @@ defmodule CodeMySpec.Files.Scanner do
     end
   end
 
+  # Keep proposal references with the synced file row. The server may have no
+  # access to the working copy when it computes the requirement graph.
+  @proposal_path Paths.proposal_path()
+  def validate_entry(
+        %{role: :architecture, path: @proposal_path} = entry,
+        env,
+        component_by_id,
+        _strict?
+      ) do
+    case ExecutionContexts.read_file(env, @proposal_path) do
+      {:ok, content} ->
+        existing_contexts =
+          component_by_id
+          |> Map.values()
+          |> Enum.filter(&(Map.get(&1, :type) in ["context", "coordination_context"]))
+          |> MapSet.new(& &1.module_name)
+
+        context_names =
+          content
+          |> proposal_context_names()
+          |> Enum.filter(&MapSet.member?(existing_contexts, &1))
+
+        numbers =
+          ~r/^\s*-\s*\*\*Stories:\*\*\s*(.+)$/mi
+          |> Regex.scan(content, capture: :all_but_first)
+          |> Enum.flat_map(fn [references] ->
+            ~r/\d+/ |> Regex.scan(references) |> List.flatten()
+          end)
+          |> Enum.map(&String.to_integer/1)
+          |> Enum.uniq()
+
+        Map.merge(entry, %{
+          valid: true,
+          validation_errors: %{
+            "data" => %{"story_numbers" => numbers, "context_names" => context_names}
+          }
+        })
+
+      {:error, reason} ->
+        Map.merge(entry, %{
+          valid: false,
+          validation_errors: %{"reason" => "Read failed: #{inspect(reason)}"}
+        })
+    end
+  end
+
   @valid_by_existence_roles [
     :test,
     :rule,
     :config,
     :lockfile,
     :bdd_spec,
-    :qa_brief,
     :qa_result,
     :qa_script,
     :json,
@@ -344,6 +392,20 @@ defmodule CodeMySpec.Files.Scanner do
     Map.merge(entry, %{valid: nil, validation_errors: nil})
   end
 
+  defp proposal_context_names(content) do
+    case Regex.run(~r/^##\s+Contexts\s*$([\s\S]*?)(?=^##\s|\z)/m, content,
+           capture: :all_but_first
+         ) do
+      [section] ->
+        ~r/^###\s+([A-Za-z_][A-Za-z0-9_.]*)\s*$/m
+        |> Regex.scan(section, capture: :all_but_first)
+        |> Enum.map(&hd/1)
+
+      _ ->
+        []
+    end
+  end
+
   # -- Setup-artifact validators --
   #
   # Each validator returns `%{errors: map, data: map}`:
@@ -356,29 +418,6 @@ defmodule CodeMySpec.Files.Scanner do
   # maps off the persisted File record's `validation_errors` and use the data
   # for cross-file decisions (e.g. TestSupportNamespace needs app_name from
   # mix_exs to know what namespace to look for in conn_case / data_case).
-
-  # Persona and QA-plan rules are decided once at sync and carried in
-  # `validation_errors`, so a server with no working copy can read the verdict.
-  # Two files share the `:qa_plan` role and are different documents: `plan.md`
-  # parses as `qa_plan`, `journey_plan.md` as `qa_journey_plan`.
-  defp validate_qa_plan(content, path) do
-    {doc_type, label} =
-      if path == Paths.qa_journey_plan(),
-        do: {"qa_journey_plan", "journey_plan.md"},
-        else: {"qa_plan", "plan.md"}
-
-    error =
-      if String.trim(content) == "" do
-        "`#{label}` is empty"
-      else
-        case Documents.create_dynamic_document(content, doc_type) do
-          {:ok, _document} -> nil
-          {:error, reason} -> "`#{label}` invalid — #{reason}"
-        end
-      end
-
-    %{errors: %{plan: error}, data: %{}}
-  end
 
   defp validate_persona_summary(content) do
     error =
@@ -850,15 +889,12 @@ defmodule CodeMySpec.Files.Scanner do
 
   defp classify_qa(path) do
     cond do
-      # The plans `qa_setup` and the journey requirements gate on.
-      path in [Paths.qa_plan(), Paths.qa_journey_plan()] -> {path, :qa_plan}
       # The scripts the integration specs point at. The checker asserts each
       # named script exists, so an unclaimed script would not move the graph
       # fingerprint when created. `.code_my_spec/qa/summary.md` and
       # `design/design_system.html` are deliberately unclaimed: no graph
       # node reads them. See knowledge/platform, "File classification".
       match_qa_script?(path) -> {path, :qa_script}
-      match_qa_file?(path, "brief.md") -> {path, :qa_brief}
       match_qa_result?(path) -> {path, :qa_result}
       true -> nil
     end
@@ -880,15 +916,7 @@ defmodule CodeMySpec.Files.Scanner do
     first_segment in @ignored_dirs
   end
 
-  # .code_my_spec/qa/{story_id}/brief.md
-  defp match_qa_file?(path, filename) do
-    qa_prefix = Paths.qa_dir() <> "/"
-    String.starts_with?(path, qa_prefix) and String.ends_with?(path, "/" <> filename)
-  end
-
   # Anything under `.code_my_spec/qa/scripts/`, without pinning an extension.
-  # Checked before `match_qa_file?/2` so a script named `brief.md` is not taken
-  # for a story brief.
   defp match_qa_script?(path) do
     String.starts_with?(path, Paths.qa_scripts_dir() <> "/")
   end
@@ -974,7 +1002,7 @@ defmodule CodeMySpec.Files.Scanner do
   # .code_my_spec/qa/{story_number}/brief.md → story, through the same number
   # map as spex. An unknown number resolves to nothing.
   defp owner_for(%{path: path, role: role}, %ReadModel{} = read_model)
-       when role in [:qa_brief, :qa_result] do
+       when role == :qa_result do
     story_number = extract_story_number_from_qa_path(path)
     {nil, Map.get(read_model.story_ids_by_number, story_number)}
   end

@@ -72,10 +72,11 @@ defmodule CodeMySpec.MixProject do
   end
 
   # Specifies which paths to compile per environment.
-  defp elixirc_paths(:test), do: ["lib", "test/support", ".code_my_spec/content"]
+  defp elixirc_paths(:test), do: ["lib", "lib_server", "test/support", ".code_my_spec/content"]
   # Modules that `use` the desktop-only `desktop` dependency.
-  defp elixirc_paths(:desktop), do: ["lib", "lib_desktop"]
-  defp elixirc_paths(_), do: ["lib"]
+  defp elixirc_paths(:desktop), do: ["lib", "lib_server", "lib_desktop"]
+  defp elixirc_paths(:harness), do: ["lib"]
+  defp elixirc_paths(_), do: ["lib", "lib_server"]
 
   # The version is git's (John, 2026-10-04): a promotion tags the commit the gate
   # certified and commits nothing, so there is no literal to bump here.
@@ -101,19 +102,6 @@ defmodule CodeMySpec.MixProject do
     end
   rescue
     ErlangError -> nil
-  end
-
-  # `client_utils` is checked out beside the main checkout on a dev machine.
-  # Every worktree shares that checkout's git dir, wherever the worktree itself
-  # lives. A machine without it (CI, a release build) takes it from GitHub.
-  defp client_utils do
-    args = ["rev-parse", "--path-format=absolute", "--git-common-dir"]
-    {common, 0} = System.cmd("git", args, cd: __DIR__, stderr_to_stdout: true)
-    path = Path.expand("../../client_utils", String.trim(common))
-
-    if File.dir?(path),
-      do: {:client_utils, path: path},
-      else: {:client_utils, github: "Code-My-Spec/client_utils", branch: "main"}
   end
 
   defp from_describe(described) do
@@ -205,6 +193,16 @@ defmodule CodeMySpec.MixProject do
       {:finch, "~> 0.23", override: true},
       {:telemetry_metrics, "~> 1.0"},
       {:telemetry_poller, "~> 1.0"},
+      # Traces to the box's OTel collector, only where OTEL_EXPORTER_OTLP_ENDPOINT
+      # is set (config/runtime.exs); same set as Metric Flow.
+      {:opentelemetry, "~> 1.5"},
+      {:opentelemetry_api, "~> 1.4"},
+      {:opentelemetry_exporter, "~> 1.8"},
+      {:opentelemetry_phoenix, "~> 2.0"},
+      {:opentelemetry_bandit, "~> 0.2"},
+      {:opentelemetry_ecto, "~> 1.2"},
+      {:opentelemetry_oban, "~> 1.1"},
+      {:opentelemetry_logger_metadata, "~> 0.2"},
       {:gettext, "~> 0.26"},
       {:jason, "~> 1.2"},
       {:dns_cluster, "~> 0.2.0"},
@@ -220,12 +218,12 @@ defmodule CodeMySpec.MixProject do
        git: "https://github.com/Code-My-Spec/spex.git",
        branch: "feature/reusable-givens",
        only: [:dev, :test]},
-      # A path rather than hex, so the harness and the library it shares a
-      # contract with move together. `Onboarding.databases/2` lists the
-      # partitions and `TestDatabase.partition_for/2` uses them; a release
-      # boundary between the two means a window where the harness runs a suite
-      # against a database nothing told anyone to create.
-      client_utils(),
+      # Pinned: the harness shares a contract with it (`Onboarding.databases/2`
+      # lists the partitions `TestDatabase.partition_for/2` uses), so a new
+      # release lands with the harness change that needs it. Not a path dep: a
+      # path dep makes every mix command take the build lock, and a migrate
+      # beside a running :4000 waited on its code reloader.
+      {:client_utils, "== 0.3.1"},
       {:credo, "== 1.7.19"},
       {:ex_slop, "== 0.4.5", only: [:dev, :test], runtime: false},
       {:sobelow, "~> 0.14.1"},
@@ -308,13 +306,11 @@ defmodule CodeMySpec.MixProject do
 
       # Embeddings
       #
-      # No `only:` — the embeddings rework (577de9bb) moves inference onto
-      # the server (OrtexServing, lib/code_my_spec/embeddings/), so :dev and
-      # :prod need Ortex/Tokenizers/Nx now too. They were CLI-only while
-      # only the packaged binary embedded anything.
-      {:ortex, "~> 0.1"},
-      {:tokenizers, "~> 0.5"},
-      {:nx, "~> 0.9"},
+      # Inference runs in the server, not the source harness. Keep the native
+      # dependencies out of :harness so a fresh checkout needs no Rust toolchain.
+      {:ortex, "~> 0.1", only: [:dev, :test, :prod, :desktop]},
+      {:tokenizers, "~> 0.5", only: [:dev, :test, :prod, :desktop]},
+      {:nx, "~> 0.9", only: [:dev, :test, :prod, :desktop]},
       {:flame, "~> 0.1"},
 
       # Harness release
@@ -350,7 +346,6 @@ defmodule CodeMySpec.MixProject do
           steps: [
             :assemble,
             &copy_bcrypt_nif_dll/1,
-            &copy_onnxruntime_dll/1,
             &copy_mcp_relay/1,
             :tar
           ]
@@ -361,10 +356,8 @@ defmodule CodeMySpec.MixProject do
     end
   end
 
-  # Put the bundled runtime beside erl.exe so Windows finds it before the
-  # incompatible Windows ML runtime in System32. Run before tar/MSI packaging.
-  defp copy_onnxruntime_dll(release), do: copy_onnxruntime_dll(release, :os.type())
-
+  # Legacy utility retained for the Windows DLL fixture tests. The source
+  # harness release does not include Ortex and never invokes this function.
   @doc false
   def copy_onnxruntime_dll(release, {:win32, _}) do
     bin =

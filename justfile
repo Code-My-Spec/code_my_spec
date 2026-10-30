@@ -466,11 +466,12 @@ serve:
 # a non-zero exit makes the promote restart instead. A project without this
 # recipe is always restarted.
 #
-# Migrate first: that compiles out of process, and the running app's
-# `Phoenix.CodeReloader` listener then loads what changed on the next request.
-# Requesting a page before migrating would hit Phoenix's "you must restart"
-# check on the promote's own `mix.exs` version bump. The request to `/` is
-# that load; `/health` then says the database answers and nothing is pending.
+# No migrate here: a promote of the checkout CodeMySpec itself runs from
+# migrates inside the running server first (`Promotion.migrate_here/1`). A
+# `mix ecto.migrate` beside it waited for the build lock its code reloader
+# held. The request to `/` makes `Phoenix.CodeReloader` load what changed;
+# `/health` then says the database answers and nothing is pending, and fails
+# the reload, so the app restarts and `serve` migrates, when something is.
 #
 # A change the reloader cannot take (deps, config, application.ex) never gets
 # here: `BootVersion.restart_paths/0` sends those promotes to a restart.
@@ -481,15 +482,14 @@ reload:
     : "${PORT:?PORT must be set}"
     : "${DATABASE_NAME:?DATABASE_NAME must be set}"
 
-    mix ecto.migrate
-
-    # The migrations are in: requests held since the merge (`Steps.merge`,
-    # `CodeMySpecWeb.Plugs.HoldDuringLanding`) may now reload the new code.
-    # Also when the migrate above failed (`set -e` stops before here), where the
-    # hold lapses on its own after two minutes.
+    # Keep agent requests held while the local probe compiles the merged code.
+    # The hold plug lets only these loopback probe paths through.
+    # A wedged endpoint must release the app-instance server promptly so it can
+    # stop the old BEAM and start a fresh one. A slow code reload falls back to
+    # the restart path instead of holding restart_app behind this probe.
+    curl -fsS -o /dev/null --max-time 30 "http://127.0.0.1:$PORT/"
+    curl -fsS --max-time 10 "http://127.0.0.1:$PORT/health"
     rm -f "$(git rev-parse --git-path landing_hold)"
-    curl -sf -o /dev/null --max-time 600 "http://127.0.0.1:$PORT/"
-    curl -sf --max-time 30 "http://127.0.0.1:$PORT/health"
 
 # Story 1108, criterion 4663: the project-specific half of a promote's
 # deployment. `CmsHarness.AppInstance` runs this, if declared, right after
@@ -1011,7 +1011,8 @@ claude-dev *args: _submodules
     # to run *that* copy means overriding this — `claude --plugin-dir
     # "$PWD/plugins/claude"` directly, which is what the moduledoc on
     # `mix cms.harness.onboard` describes.
-    PLUGIN="/Users/johndavenport/Documents/github/code_my_spec/plugins/claude"
+    # The main checkout, wherever it lives: every worktree shares its .git.
+    PLUGIN="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/plugins/claude"
 
     # Unconditionally, not "if the plugin is missing". The plugin is tracked and
     # always there, so that guard would never fire — and the thing actually
@@ -1345,7 +1346,7 @@ ship:
 # Fast-forward only, and refuses a dirty tree. That checkout is where merges get
 # done by hand, so anything else there is someone's work in progress — this is
 # for picking up what is already on origin, never for resolving anything.
-sync-main root="/Users/johndavenport/Documents/github/code_my_spec":
+sync-main root=`dirname "$(git rev-parse --path-format=absolute --git-common-dir)"`:
     #!/usr/bin/env bash
     set -euo pipefail
     root="{{root}}"

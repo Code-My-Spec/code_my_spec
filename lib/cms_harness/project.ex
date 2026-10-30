@@ -10,11 +10,12 @@ defmodule CmsHarness.Project do
     top_level?: true,
     deps: [
       CmsHarness,
-      CmsHarness.Attachments,
+      CmsHarness.CopyTools,
       CmsHarness.Agents,
       CmsHarness.Channel,
       CodeMySpec.BootVersion,
       CodeMySpec.ExecutionContexts,
+      CodeMySpec.DurableRun,
       CodeMySpec.Files,
       CodeMySpec.Paths,
       # The three disk operations a promotion performs. The gate stays on the

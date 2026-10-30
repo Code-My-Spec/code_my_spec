@@ -87,6 +87,12 @@ defmodule CodeMySpec.HttpClientsAreStubbableTest do
     CmsHarness.Token => :dials_configured_server,
     CmsHarness.WorkingCopies => :dials_configured_server,
 
+    # Pinned in config/test.exs, but to a plug answering 404 rather than to
+    # `Req.Test`: every test that connects Anthropic resolves a default model
+    # through it, and an unstubbed `Req.Test` raises. Its own test installs
+    # cassettes in place of the plug.
+    CodeMySpec.Agents.ProviderModels => :pinned_to_a_404_plug,
+
     # No injection point and no test reaches them today. If one ever does, it
     # will reach the internet — give it a plug rather than adding it here.
     CodeMySpec.Auth.OAuthClient => :unreached,

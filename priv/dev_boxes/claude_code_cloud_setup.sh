@@ -4,8 +4,9 @@
 # environment's setup-script box. It runs as root, before Claude starts, and its
 # filesystem result is cached between sessions.
 #
-# It installs the toolchain (OTP, Elixir, sops), installs the published
-# codemyspec plugin, and drops /usr/local/bin/cms-cloud-session, a SessionStart
+# It installs the toolchain (OTP, Elixir, sops), Vibium and its matched
+# Chrome/driver, installs the published codemyspec plugin, and drops
+# /usr/local/bin/cms-cloud-session, a SessionStart
 # hook that onboards this checkout and starts the harness on every session.
 # Nothing in the repo has to change.
 #
@@ -14,6 +15,10 @@
 # The box token is NOT an environment variable: environment variables are readable
 # by anyone using the environment. Add it as a network secret for __SERVER_HOST__.
 set -euo pipefail
+
+mkdir -p "$HOME/.codemyspec"
+exec > >(tee -a "$HOME/.codemyspec/cloud-setup.log") 2>&1
+trap 'status=$?; echo "ERROR: cloud setup failed at line $LINENO (exit $status); see ~/.codemyspec/cloud-setup.log" >&2; exit "$status"' ERR
 
 OTP_VERSION=28.1
 ELIXIR_VERSION=1.19.4
@@ -91,6 +96,22 @@ fi
 apt-get install -y -qq postgresql-16-pgvector >/dev/null 2>&1 \
   || echo "WARN: postgresql-16-pgvector did not install"
 
+# The plugin's Vibium MCP wrapper executes `vibium` from PATH. The cloud
+# sandbox puts npm's registry in NO_PROXY, where direct DNS fails, so route
+# npm and Chrome for Testing downloads through the allowed proxy. npm's
+# postinstall only warns when its browser download fails; the explicit install
+# and readiness check make a missing or mismatched Chrome/driver fail setup.
+install -d -m 0755 /opt/vibium-cache
+vibium_no_proxy="$(printf '%s' "${NO_PROXY:-}" | tr ',' '\n' | awk '
+  $0 != "registry.npmjs.org" &&
+  $0 != "googlechromelabs.github.io" &&
+  $0 != "storage.googleapis.com" &&
+  $0 != "" { if (n++) printf ","; printf "%s", $0 }
+')"
+VIBIUM_CACHE_DIR=/opt/vibium-cache NO_PROXY="$vibium_no_proxy" no_proxy="$vibium_no_proxy" npm install -g vibium
+VIBIUM_CACHE_DIR=/opt/vibium-cache NO_PROXY="$vibium_no_proxy" no_proxy="$vibium_no_proxy" vibium install
+VIBIUM_CACHE_DIR=/opt/vibium-cache vibium ready browser chrome
+
 # ort-sys (behind the ortex NIF) fetches its ONNX Runtime build from pyke's
 # own host, which this sandbox blocks outright. Microsoft's own release is on
 # a different host and is allowed; ORT_LIB_LOCATION/ORT_PREFER_DYNAMIC_LINK
@@ -107,29 +128,32 @@ cat > /usr/local/bin/cms-cloud-session <<'SESSION'
 #!/usr/bin/env bash
 # SessionStart hook: onboard this checkout and start its harness, detached, so
 # the session is never held up (the first boot compiles for minutes). Always
-# exits 0; read ~/.codemyspec/cloud-session.log for what happened.
+# returns after dispatch; background failures are recorded in cloud-session.log.
 cat >/dev/null
 [ "${CLAUDE_CODE_REMOTE:-}" = "true" ] || exit 0
 
 export MIX_HOME=/opt/mix HEX_HOME=/opt/hex
 export PATH="/usr/local/bin:$PATH"
-port=4003
+port="${CMS_HARNESS_PORT:-__HARNESS_PORT__}"
+export CMS_HARNESS_PORT="$port"
 root="${CLAUDE_PROJECT_DIR:-$PWD}"
 server="${CMS_SERVER_URL:-__SERVER_URL__}"
 mkdir -p "$HOME/.codemyspec"
 log="$HOME/.codemyspec/cloud-session.log"
 
-setsid bash -c '
+setsid bash -e -c '
+  trap '\''status=$?; echo "ERROR: cloud session startup failed at line $LINENO (exit $status)" >&2; exit "$status"'\'' ERR
   root="$1"; port="$2"; server="$3"; log="$4"
   echo "== $(date -u +%FT%TZ) session start in $root (server $server)"
-  if curl -fs "localhost:$port/health" >/dev/null; then
+  if curl --noproxy "*" --max-time 5 -fs "http://127.0.0.1:$port/health" >/dev/null; then
     echo "harness already up"
     exit 0
   fi
   (sudo -n service postgresql start || service postgresql start) >/dev/null 2>&1 || true
-  cd "$root" || exit 0
+  cd "$root" || exit 1
+  export CMS_PROJECT_DIR="$root"
   # Run as a dev box: onboarding and the harness trade the box token (which the
-  # environment's proxy supplies) for an access token. No deploy key.
+  # environment proxy supplies) for an access token. No deploy key.
   export CMS_DEV_BOX=1
   # This sandbox exempts index.crates.io from the proxy and then 403s it
   # directly; routing it back through the proxy like everything else fixes
@@ -140,10 +164,10 @@ setsid bash -c '
   export ORT_LIB_LOCATION=/opt/onnxruntime/lib
   export ORT_PREFER_DYNAMIC_LINK=1
   git submodule update --init || echo "WARN: .code_my_spec submodule did not initialise"
-  MIX_ENV=harness mix deps.get >/dev/null
+  MIX_ENV=harness mix deps.get
   if [ ! -f .cms_harness.json ]; then
     MIX_ENV=harness mix cms.harness.onboard "$root" --server-url "$server" --device cloud \
-      || { echo "ERROR: onboard failed"; exit 0; }
+      || { echo "ERROR: onboard failed"; exit 1; }
   fi
   # Backgrounded and detached: the first boot compiles, which takes minutes.
   CMS_HARNESS=1 CMS_DEV_BOX=1 CMS_HARNESS_PORT=$port CMS_SERVER_URL="$server" CMS_ANALYSIS_SLOTS=1 \
@@ -166,9 +190,10 @@ setsid bash -c '
 ' _ "$root" "$port" "$server" "$log" </dev/null >>"$log" 2>&1 &
 exit 0
 SESSION
+bash -n /usr/local/bin/cms-cloud-session
 chmod +x /usr/local/bin/cms-cloud-session
 
-# The published plugin: hooks and MCP on localhost:4003. Installed for every
+# The published plugin uses CMS_HARNESS_PORT from the settings below. Installed for every
 # home that might run Claude, best effort.
 if command -v claude >/dev/null; then
   claude plugin marketplace add Code-My-Spec/plugins >/dev/null 2>&1 || true
@@ -186,6 +211,10 @@ for home in /root /home/*; do
   node -e '
     const fs = require("fs"), f = process.argv[1];
     const s = JSON.parse(fs.readFileSync(f, "utf8"));
+    s.env = Object.assign({}, s.env, {
+      CMS_HARNESS_PORT: process.env.CMS_HARNESS_PORT || "__HARNESS_PORT__",
+      VIBIUM_CACHE_DIR: "/opt/vibium-cache"
+    });
     const hook = {hooks: [{type: "command", command: "/usr/local/bin/cms-cloud-session", timeout: 600}]};
     s.hooks = s.hooks || {};
     const list = (s.hooks.SessionStart = s.hooks.SessionStart || []);

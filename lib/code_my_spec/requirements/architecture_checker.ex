@@ -3,9 +3,9 @@ defmodule CodeMySpec.Requirements.ArchitectureChecker do
   Delegate checker for the `architecture_designed` requirement on
   `project_graph`.
 
-  Satisfied once the project has an initial architectural plan: `proposal.md`
-  was written, or the architecture was authored through the tools (any
-  `:authored` component). Once the plan exists it stays satisfied.
+  Satisfied when the project has an authored component, or a proposal whose
+  referenced stories and formerly present contexts remain active. New stories
+  and uncovered contexts do not invalidate an existing plan.
 
   It used to also demand every released story be linked and every context be
   covered, so one story released unlinked, or one orphan context, held every
@@ -19,6 +19,7 @@ defmodule CodeMySpec.Requirements.ArchitectureChecker do
   alias CodeMySpec.Components
   alias CodeMySpec.Files
   alias CodeMySpec.Paths
+  alias CodeMySpec.Stories
   alias CodeMySpec.Users.Scope
 
   @proposal_path Paths.proposal_path()
@@ -32,7 +33,11 @@ defmodule CodeMySpec.Requirements.ArchitectureChecker do
   @spec complete?(Scope.t(), term()) :: {boolean(), map()}
   def complete?(%Scope{active_project_id: project_id} = scope, _entity)
       when not is_nil(project_id) do
-    verdict(proposal_present?(scope) or Components.any_authored?(scope))
+    proposal_verdict(
+      scope,
+      Files.get_by_path(scope, @proposal_path),
+      Components.any_authored?(scope)
+    )
   end
 
   def complete?(_scope, _entity) do
@@ -45,17 +50,58 @@ defmodule CodeMySpec.Requirements.ArchitectureChecker do
   @spec complete?(Scope.t(), term(), map()) :: {boolean(), map()}
   def complete?(scope, entity, ctx)
 
-  def complete?(_scope, _entity, %{files: files, authored?: authored?}) do
-    verdict(Map.has_key?(files.by_path, @proposal_path) or authored?)
+  # Everything handed in, so a harness with no database answers it.
+  def complete?(_scope, _entity, %{
+        files_by_project: files,
+        authored?: authored?,
+        story_numbers: numbers,
+        context_names: contexts
+      }) do
+    proposal = Enum.find(files, &(&1.path == @proposal_path))
+    verdict(proposal, authored?, MapSet.new(numbers), MapSet.new(contexts))
   end
 
   def complete?(scope, entity, _ctx), do: complete?(scope, entity)
 
-  defp verdict(true), do: {true, %{status: @planned}}
-  defp verdict(false), do: {false, %{reason: @no_architecture}}
+  defp proposal_verdict(_scope, file, true), do: verdict(file, true, nil, nil)
+  defp proposal_verdict(_scope, nil, false), do: verdict(nil, false, nil, nil)
 
-  # Asked of the synced files, not of a disk: on the light harness the server
-  # holds no working copy, and files under `Paths.architecture_dir/0` already
-  # sync with role `:architecture`.
-  defp proposal_present?(scope), do: Files.get_by_path(scope, @proposal_path) != nil
+  defp proposal_verdict(scope, file, false) do
+    {:ok, stories} = Stories.list_project_stories(scope)
+    contexts = Components.list_contexts(scope)
+    verdict(file, false, MapSet.new(stories, & &1.number), MapSet.new(contexts, & &1.module_name))
+  end
+
+  @doc """
+  The verdict from the proposal file, whether a component is authored, and the
+  project's active story numbers and context module names.
+  """
+  @spec verdict(map() | nil, boolean(), MapSet.t() | nil, MapSet.t() | nil) :: {boolean(), map()}
+  def verdict(_file, true, _numbers, _contexts), do: {true, %{status: @planned}}
+  def verdict(nil, false, _numbers, _contexts), do: {false, %{reason: @no_architecture}}
+
+  def verdict(file, false, active_numbers, active_contexts) do
+    data = Map.get(file.validation_errors || %{}, "data", %{})
+
+    stale_stories =
+      Enum.reject(data["story_numbers"] || [], &MapSet.member?(active_numbers, &1))
+
+    stale_contexts =
+      Enum.reject(data["context_names"] || [], &MapSet.member?(active_contexts, &1))
+
+    if stale_stories == [] and stale_contexts == [] do
+      {true, %{status: @planned}}
+    else
+      details =
+        if(stale_stories == [], do: [], else: ["story numbers #{Enum.join(stale_stories, ", ")}"]) ++
+          if stale_contexts == [], do: [], else: ["contexts #{Enum.join(stale_contexts, ", ")}"]
+
+      reason =
+        "Architecture proposal is out of date: " <>
+          Enum.join(details, "; ") <>
+          " are no longer active in this project. Update the proposal."
+
+      {false, %{reason: reason}}
+    end
+  end
 end

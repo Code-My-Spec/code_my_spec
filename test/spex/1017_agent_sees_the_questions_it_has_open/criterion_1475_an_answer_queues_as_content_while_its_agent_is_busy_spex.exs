@@ -55,7 +55,8 @@ defmodule CodeMySpecSpex.Story1017.Criterion3577Spex do
             persona_id: context.persona_id
           )
 
-        agent = Fixtures.running_agent(context.scope, role: "coding", continuous: true)
+        # Start only the explicit held user turn; continuous graph work can race it.
+        agent = Fixtures.running_agent(context.scope, role: "coding", continuous: false)
         frame = %Frame{assigns: %{current_scope: context.scope, agent_id: agent.id}}
 
         started =
@@ -96,6 +97,7 @@ defmodule CodeMySpecSpex.Story1017.Criterion3577Spex do
           Machine.send_message(agent.id, "user-turn-3577", "Finish this user turn")
 
         HeldProvider.await_request()
+        :ok = Fixtures.enable_agent_continuous(agent)
         :ok = Fixtures.put_agent_mid_turn(context.scope, agent.id)
 
         {:ok,

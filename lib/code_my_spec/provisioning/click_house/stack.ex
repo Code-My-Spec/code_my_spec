@@ -9,10 +9,21 @@ defmodule CodeMySpec.Provisioning.ClickHouse.Stack do
   @admin_file "/etc/cms-clickhouse/secrets.env"
   @writer_file "/etc/cms-otel-collector/secrets.env"
 
-  def install(run, credentials, services) do
+  def install(run, credentials, services), do: install(run, credentials, services, :full)
+
+  def install(run, credentials, _services, :collector_only) do
     with :ok <- network(run),
-         :ok <- configuration(run, credentials),
-         :ok <- clickhouse(run, credentials.admin),
+         :ok <- collector_configuration(run, credentials),
+         :ok <- queue_storage(run),
+         :ok <- collector(run, credentials.writer) do
+      await_collector(run, :collector_only)
+    end
+  end
+
+  def install(run, credentials, services, mode) when mode in [:full, :capped] do
+    with :ok <- network(run),
+         :ok <- configuration(run, credentials, mode),
+         :ok <- clickhouse(run, credentials.admin, mode),
          :ok <- await_database(run),
          :ok <- Schema.migrate(run, @admin_file),
          :ok <-
@@ -38,11 +49,22 @@ defmodule CodeMySpec.Provisioning.ClickHouse.Stack do
     )
   end
 
-  defp configuration(run, credentials) do
+  defp collector_configuration(run, credentials) do
+    with :ok <- Runtime.write_file(run, @writer_file, env(credentials.writer)) do
+      Runtime.write_file(
+        run,
+        "/etc/cms-otel-collector/config.yaml",
+        Config.collector(),
+        "644"
+      )
+    end
+  end
+
+  defp configuration(run, credentials, mode) do
     files = [
       {@admin_file, env(credentials.admin) <> "CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT=1\n", "600"},
       {@writer_file, env(credentials.writer), "600"},
-      {"/etc/cms-clickhouse/low-memory.xml", Config.server(), "644"},
+      {"/etc/cms-clickhouse/low-memory.xml", Config.server(mode), "644"},
       {"/etc/cms-clickhouse/zz-networks.xml", Config.users(), "644"},
       {"/etc/cms-otel-collector/config.yaml", Config.collector(), "644"},
       {"/etc/cms-vector/vector.yaml", Config.vector(), "644"}
@@ -56,16 +78,18 @@ defmodule CodeMySpec.Provisioning.ClickHouse.Stack do
     end)
   end
 
-  defp clickhouse(run, admin) do
+  defp clickhouse(run, admin, mode) do
+    memory = if mode == :capped, do: 768, else: 1280
+
     arguments =
-      "--network db_net --memory 1280m --ulimit nofile=262144:262144 " <>
+      "--network db_net --memory #{memory}m --ulimit nofile=262144:262144 " <>
         "--env-file #{@admin_file} " <>
         "-v cms-clickhouse-data:/var/lib/clickhouse " <>
         "-v /etc/cms-clickhouse/low-memory.xml:/etc/clickhouse-server/config.d/low-memory.xml:ro " <>
         "-v /etc/cms-clickhouse/zz-networks.xml:/etc/clickhouse-server/users.d/zz-networks.xml:ro"
 
     Runtime.ensure_container(run, "cms-clickhouse", @clickhouse, arguments, [
-      Config.server(),
+      Config.server(mode),
       Config.users(),
       admin
     ])
@@ -115,7 +139,9 @@ defmodule CodeMySpec.Provisioning.ClickHouse.Stack do
     )
   end
 
-  defp await_collector(run) do
+  defp await_collector(run), do: await_collector(run, :full)
+
+  defp await_collector(run, mode) do
     command = """
     set -eu
     attempt=0
@@ -125,6 +151,17 @@ defmodule CodeMySpec.Provisioning.ClickHouse.Stack do
       sleep 1
     done
     """
+
+    command =
+      if mode == :collector_only,
+        do:
+          String.replace(
+            command,
+            "docker exec cms-clickhouse wget",
+            "docker exec cms-otel-collector wget"
+          )
+          |> String.replace("http://cms-otel-collector:13133/", "http://127.0.0.1:13133/"),
+        else: command
 
     Runtime.execute(run, command, "collector readiness")
   end

@@ -2,8 +2,10 @@ defmodule CodeMySpec.Promotion.DeviceSyncTest do
   use CodeMySpecTest.DataCase, async: true
   import CodeMySpec.UsersFixtures
   import CodeMySpec.DevicesFixtures
+  import ExUnit.CaptureLog
   alias CodeMySpec.Promotion.DeviceSync
   alias CodeMySpec.AppInstances
+  alias CodeMySpec.BootVersion
   alias CodeMySpec.{Repo, WorkingCopies}
 
   defmodule App do
@@ -19,7 +21,23 @@ defmodule CodeMySpec.Promotion.DeviceSyncTest do
       ensure_app_running(nil, nil)
     end
 
-    def restart_app(id, timeout), do: reload_app(id, timeout)
+    def restart_app(id, timeout) do
+      Process.put(:restarts, Process.get(:restarts, 0) + 1)
+      reload_app(id, timeout)
+    end
+  end
+
+  # A restart: true landing restarts the harness with the app, so the restart
+  # reply and the confirmation both find the harness gone.
+  defmodule GoneApp do
+    def ensure_app_running(_, _), do: {:error, :harness_not_connected}
+    def reload_supported?(_), do: true
+
+    def restart_app(_, _) do
+      Process.put(:restarts, Process.get(:restarts, 0) + 1)
+      Process.put(:serving, Process.get(:desired))
+      {:error, {:harness_gone, {:shutdown, :draining}}}
+    end
   end
 
   setup do
@@ -48,11 +66,19 @@ defmodule CodeMySpec.Promotion.DeviceSyncTest do
   test "dirty destination fails separately, then retry applies once", %{scope: scope, copy: copy} do
     DeviceSync.request(scope, "one", "main", "p1", dispatch: false)
 
-    assert {:ok, %{"status" => "failed"}} =
-             DeviceSync.apply_pending(scope, copy.id,
-               sync: fn _, _, _, _, _ -> {:error, :dirty} end,
-               app: App
-             )
+    log =
+      capture_log(fn ->
+        assert {:ok, %{"status" => "failed"}} =
+                 DeviceSync.apply_pending(scope, copy.id,
+                   sync: fn _, _, _, _, _ -> {:error, :dirty} end,
+                   app: App
+                 )
+      end)
+
+    # Recorded on the instance alone, a dirty main checkout refused landings
+    # for hours unseen.
+    assert log =~ "[DeviceSync] #{copy.root} did not take one"
+    assert log =~ ":dirty"
 
     Process.put(:desired, "one")
 
@@ -96,6 +122,77 @@ defmodule CodeMySpec.Promotion.DeviceSyncTest do
 
     assert {:ok, %{"head" => "two", "status" => "pending"}} =
              DeviceSync.apply_pending(scope, copy.id, sync: sync, app: App)
+  end
+
+  # 04:05Z: a landing on the checkout :4000 runs from was reloaded in place,
+  # and the reload hung every request for seven minutes.
+  test "a landing that touches what this server has loaded restarts it", %{
+    scope: scope,
+    copy: copy
+  } do
+    here = here()
+    {:ok, _} = copy |> Ecto.Changeset.change(root: here) |> Repo.update()
+
+    DeviceSync.request(scope, "one", "main", "p1", dispatch: false)
+    Process.put(:desired, "one")
+
+    sync = fn _, _, _, _, _ ->
+      {:ok, %{changed_files: ["lib/code_my_spec/promotion/device_sync.ex"]}}
+    end
+
+    assert {:ok, %{"status" => "applied"}} =
+             DeviceSync.apply_pending(scope, copy.id, sync: sync, app: App)
+
+    assert Process.get(:restarts) == 1
+  end
+
+  # The reload's own `mix ecto.migrate` waited for the build lock :4000's code
+  # reloader held; this server migrates itself before reloading instead.
+  test "a reload of this server's checkout migrates in the server, then reloads", %{
+    scope: scope,
+    copy: copy
+  } do
+    {:ok, _} = copy |> Ecto.Changeset.change(root: here()) |> Repo.update()
+
+    DeviceSync.request(scope, "one", "main", "p1", dispatch: false)
+    Process.put(:desired, "one")
+    sync = fn _, _, _, _, _ -> {:ok, %{changed_files: ["test/example_test.exs"]}} end
+
+    assert {:ok, %{"status" => "applied"}} =
+             DeviceSync.apply_pending(scope, copy.id, sync: sync, app: App)
+
+    assert Process.get(:reloads) == 1
+    assert Process.get(:restarts, 0) == 0
+  end
+
+  # Captured at boot, but node-global: another test may have cleared it, and
+  # then nothing here is "this server's checkout" (2026-10-26 ejection).
+  defp here do
+    with nil <- BootVersion.root() do
+      BootVersion.capture(File.cwd!())
+      BootVersion.root()
+    end
+  end
+
+  test "a restart the harness cannot confirm while it restarts too stays pending, then applies on rejoin",
+       %{scope: scope, copy: copy} do
+    DeviceSync.request(scope, "one", "main", "p1", restart: true, dispatch: false)
+    Process.put(:desired, "one")
+
+    log =
+      capture_log(fn ->
+        assert {:ok, %{"status" => "pending"}} =
+                 DeviceSync.apply_pending(scope, copy.id, sync: &synced/5, app: GoneApp)
+      end)
+
+    assert log =~ "confirming when it rejoins"
+    assert Process.get(:restarts) == 1
+
+    # The harness is back and the app is already on the head: no second restart.
+    assert {:ok, %{"status" => "applied"}} =
+             DeviceSync.apply_pending(scope, copy.id, sync: &synced/5, app: App)
+
+    assert Process.get(:restarts) == 1
   end
 
   defp synced(_, _, _, _, _), do: {:ok, %{changed_files: ["lib/example.ex"]}}

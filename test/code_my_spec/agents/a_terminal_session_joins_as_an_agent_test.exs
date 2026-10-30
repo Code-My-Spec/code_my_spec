@@ -9,10 +9,14 @@ defmodule CodeMySpec.Agents.ATerminalSessionJoinsAsAnAgentTest do
 
   import CodeMySpec.UsersFixtures
   import CodeMySpec.DevicesFixtures
+  import CodeMySpec.IssuesFixtures
 
   alias CodeMySpec.Agents
   alias CodeMySpec.Agents.Agent
   alias CodeMySpec.Agents.AgentsRepository
+  alias CodeMySpec.Agents.LaunchRequest
+  alias CodeMySpec.McpServers.ToolRegistry
+  alias CodeMySpec.Hooks.AgentBriefing
   alias CodeMySpec.Hooks.SessionStart
   alias CodeMySpec.ToolLibrary
 
@@ -48,6 +52,56 @@ defmodule CodeMySpec.Agents.ATerminalSessionJoinsAsAnAgentTest do
     assert agent.working_copy_id == copy.id
     assert agent.working_copy == copy.root
     refute agent.continuous
+  end
+
+  test "SessionStart receives the shared agent briefing", %{scope: scope} do
+    assert {200, body} = SessionStart.handle(scope, %{"session_id" => session_id()})
+    assert {:ok, agent} = Agents.fetch_agent(scope, body.agent_id)
+
+    expected = agent |> LaunchRequest.for(ToolRegistry.registry()) |> AgentBriefing.for_request()
+    context = body.hookSpecificOutput.additionalContext
+
+    assert String.starts_with?(context, expected <> "\n\n")
+    assert context =~ "get_next_requirement"
+    assert context =~ "start_task"
+  end
+
+  test "terminal Codex receives the shared briefing without Alloy tool-call syntax", %{
+    scope: scope
+  } do
+    assert {200, body} =
+             SessionStart.handle(scope, %{"session_id" => session_id(), "engine" => "codex"})
+
+    assert {:ok, agent} = Agents.fetch_agent(scope, body.agent_id)
+    expected = agent |> LaunchRequest.for(ToolRegistry.registry()) |> AgentBriefing.for_request()
+    context = body.hookSpecificOutput.additionalContext
+
+    assert String.starts_with?(context, expected <> "\n\n")
+    refute context =~ "available_tools"
+  end
+
+  test "a newly registered coding session can discover assigned issue work", %{
+    scope: scope,
+    copy: copy
+  } do
+    issue = issue_fixture(scope, %{status: :accepted})
+
+    session = session_id()
+    assert {200, body} = SessionStart.handle(scope, %{"session_id" => session})
+
+    assert {:ok, role} =
+             ToolLibrary.run("set_my_role", %{"role" => "coding", "session_id" => session}, %{
+               scope: scope
+             })
+
+    assert role =~ "coding agent"
+    assert {:ok, _} = Agents.assign_issue_to_working_copy(scope, issue.id, copy.id)
+
+    assert {:ok, offer} =
+             ToolLibrary.run("get_next_requirement", %{}, %{scope: scope, agent_id: body.agent_id})
+
+    assert offer =~ "fix_issue"
+    assert offer =~ issue.id
   end
 
   test "a resumed session gets its agent back", %{scope: scope} do

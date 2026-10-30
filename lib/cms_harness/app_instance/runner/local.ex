@@ -40,6 +40,18 @@ defmodule CmsHarness.AppInstance.Runner.Local do
   end
 
   @impl true
+  def idle_databases_matching(regex) do
+    query =
+      "SELECT datname FROM pg_database WHERE datname ~ '#{String.replace(regex, "'", "''")}' " <>
+        "AND datname NOT IN (SELECT datname FROM pg_stat_activity WHERE datname IS NOT NULL)"
+
+    case System.cmd("psql", @pg ++ ["-tAc", query], stderr_to_stdout: true) do
+      {out, 0} -> String.split(out, "\n", trim: true)
+      _ -> []
+    end
+  end
+
+  @impl true
   def main_database_name(root) do
     with main when is_binary(main) <- main_checkout_path(root),
          {:ok, content} <- ExecutionContexts.read_file(local(main), "config/dev.exs"),
@@ -352,14 +364,44 @@ defmodule CmsHarness.AppInstance.Runner.Local do
     end
   end
 
-  # Also checks the JS bundle (`/assets/js/app.js`, Phoenix's dev path): a
-  # missing `node_modules` builds it empty while `GET /` still answers 200.
+  # Check the real endpoint and its health route before declaring it serving.
+  # The JS bundle check catches a missing frontend build even when HTTP works.
   @impl true
   def probe(port) do
+    case root_get(port) do
+      {:ok, %{status: code}} when code < 500 ->
+        health_probe(port)
+
+      {:ok, %{status: code}} ->
+        Logger.warning("[CmsHarness] endpoint on #{port} answered / with #{code}")
+        :erroring
+
+      {:error, reason} ->
+        Logger.warning("[CmsHarness] endpoint on #{port} did not answer /: #{inspect(reason)}")
+        :down
+    end
+  end
+
+  defp health_probe(port) do
     case health_get(port) do
-      {:ok, %{status: code}} when code < 500 -> js_bundle_probe(port)
-      {:ok, %{status: _code}} -> :erroring
-      _ -> :down
+      {:ok, %{status: 200}} ->
+        js_bundle_probe(port)
+
+      # Older generated projects may not expose /health. Their root and JS
+      # responses still establish whether the application is serving.
+      {:ok, %{status: 404}} ->
+        js_bundle_probe(port)
+
+      {:ok, %{status: code}} ->
+        Logger.warning("[CmsHarness] endpoint on #{port} answered /health with #{code}")
+        :erroring
+
+      {:error, reason} ->
+        Logger.warning(
+          "[CmsHarness] endpoint on #{port} did not answer /health: #{inspect(reason)}"
+        )
+
+        :down
     end
   end
 
@@ -378,9 +420,12 @@ defmodule CmsHarness.AppInstance.Runner.Local do
     end
   end
 
-  defp health_get(port) do
+  defp root_get(port), do: endpoint_get(port, "/")
+  defp health_get(port), do: endpoint_get(port, "/health")
+
+  defp endpoint_get(port, path) do
     Req.get(
-      "http://127.0.0.1:#{port}/",
+      "http://127.0.0.1:#{port}#{path}",
       [retry: false, receive_timeout: 3_000, connect_options: [timeout: 1_500]] ++ req_plug()
     )
   end

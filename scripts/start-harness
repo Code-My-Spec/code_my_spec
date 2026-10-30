@@ -1,0 +1,52 @@
+#!/usr/bin/env bash
+# Source checkout entry point. Run with: bash scripts/start-harness [server URL]
+set -euo pipefail
+
+cd "$(dirname "${BASH_SOURCE[0]}")/.."
+if [[ -f .gitmodules ]]; then
+  git submodule update --init .code_my_spec
+fi
+
+if ! command -v mix >/dev/null 2>&1; then
+  mix_bin=$(bash scripts/install-harness-toolchain)
+  export PATH="$(dirname "$mix_bin"):${CMS_TOOLCHAIN_HOME:-$HOME/.codemyspec/toolchain}/otp-28.1/bin:$PATH"
+fi
+
+server=${1:-${CMS_SERVER_URL:-}}
+if [[ -z $server && -f .cms_harness.json ]]; then
+  server=$(sed -nE 's/.*"server_url"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/p' .cms_harness.json | head -1)
+fi
+if [[ -z $server && -f .code_my_spec/config.yml ]]; then
+  server=$(sed -nE 's/^[[:space:]]*server_url:[[:space:]]*"?([^"#[:space:]]+)"?.*/\1/p' .code_my_spec/config.yml | head -1)
+fi
+if [[ ! $server =~ ^https?://[^/]+ ]]; then
+  echo 'Server URL is missing. Set server_url in .code_my_spec/config.yml, or run bash scripts/start-harness https://your-server.example.' >&2
+  exit 1
+fi
+
+export CMS_SERVER_URL=$server
+export MIX_ENV=harness
+# A fresh HOME has no SQLite parent directory; onboarding and runtime state
+# must have one before any Mix task loads the harness configuration.
+mkdir -p "$HOME/.codemyspec"
+
+if ! mix archive | grep -q 'hex-'; then
+  echo 'Installing missing Hex with mix local.hex --force' >&2
+  mix local.hex --force
+fi
+if [[ ! -x ${MIX_HOME:-$HOME/.mix}/rebar3 ]]; then
+  echo 'Installing missing Rebar with mix local.rebar --force' >&2
+  mix local.rebar --force
+fi
+
+mix deps.get
+mix cms.harness.onboard --server-url "$server"
+
+port=${CMS_HARNESS_PORT:-4004}
+if [[ ! $port =~ ^[0-9]+$ ]] || (( port < 1 || port > 65535 )); then
+  echo "Invalid CMS_HARNESS_PORT: $port. Set it to a port from 1 to 65535." >&2
+  exit 1
+fi
+printf '%s\n' "$port" >"$HOME/.codemyspec/harness.port"
+echo "Starting CodeMySpec harness for $PWD against $server on port $port" >&2
+exec env CMS_HARNESS=1 CMS_HARNESS_PORT="$port" CMS_ANALYSIS_SLOTS=1 mix run --no-halt

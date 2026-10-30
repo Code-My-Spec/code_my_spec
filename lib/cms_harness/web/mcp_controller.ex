@@ -54,7 +54,9 @@ defmodule CmsHarness.Web.McpController do
   @returned ~w(mcp-session-id mcp-protocol-version)
 
   # A POST is one request and one answer; Anubis always replies JSON to it.
-  @post_timeout to_timeout(minute: 5)
+  # Main's bash in a named copy (`CodeMySpec.CopyTools`) may run for its full
+  # hour, so the relay waits past that rather than cutting the answer off.
+  @post_timeout to_timeout(hour: 1, minute: 1)
 
   def proxy(conn, _params) do
     with {:ok, project} <- project(conn),
@@ -306,8 +308,7 @@ defmodule CmsHarness.Web.McpController do
   def message(:no_credential),
     do:
       "The CodeMySpec harness has no credential for the server, so it cannot " <>
-        "forward this. Run `mix cms.harness.onboard` in this working copy, which " <>
-        "records its deploy key in .cms_harness.json, and restart the harness."
+        "forward this. Run /codemyspec:init, which shows the sign-in code to approve."
 
   def message({:refused, status}),
     do:
@@ -337,9 +338,8 @@ defmodule CmsHarness.Web.McpController do
     do:
       "This request does not say which working copy it is about. The MCP " <>
         "server is addressed as /mcp?harness=<id> or by `X-Harness-Id`; the plugin " <>
-        "sends `${CMS_HARNESS_ID}`, which `mix cms.harness.onboard` sets in the " <>
-        "checkout's `.claude/settings.local.json`. Onboard there if it is missing, " <>
-        "then restart the agent from the checkout."
+        "sends `?dir=${CLAUDE_PROJECT_DIR}`, resolved through that directory's " <>
+        "`.cms_harness.json`. Run /codemyspec:init there if it is missing."
 
   def message(:no_project_id),
     do:

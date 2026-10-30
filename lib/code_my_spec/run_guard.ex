@@ -28,10 +28,11 @@ defmodule CodeMySpec.RunGuard do
   """
 
   use GenServer
-  use Boundary, top_level?: true, deps: [CodeMySpec.Paths], exports: :all
+  use Boundary, top_level?: true, deps: [CodeMySpec.Paths, CodeMySpec.DurableRun], exports: :all
 
   require Logger
 
+  alias CodeMySpec.DurableRun
   alias CodeMySpec.Paths
 
   @poll_ms 1_000
@@ -96,10 +97,14 @@ defmodule CodeMySpec.RunGuard do
   @impl true
   def terminate(_reason, state) do
     Enum.each(state.runs, fn {pid, run} ->
-      Logger.warning("[RunGuard] shutting down: killing os_pid=#{pid} (#{run.command})")
-      kill_group(pid, 0)
-      # Kept if the group is somehow still there: the next instance sweeps it.
-      if not group_alive?(pid), do: File.rm(record_path(state, pid))
+      unless DurableRun.protected_pid?(pid) do
+        Logger.warning("[RunGuard] shutting down: killing os_pid=#{pid} (#{run.command})")
+        kill_group(pid, 0)
+      end
+
+      # The manifest owns a protected run after this harness exits.
+      if not group_alive?(pid) or DurableRun.protected_pid?(pid),
+        do: File.rm(record_path(state, pid))
     end)
 
     File.rmdir(own_dir(state))
@@ -165,6 +170,10 @@ defmodule CodeMySpec.RunGuard do
 
       {pid, run}, acc ->
         cond do
+          not MapSet.member?(present, pid) and DurableRun.protected_pid?(pid) ->
+            Logger.info("[RunGuard] os_pid=#{pid} continues under its durable manifest")
+            drop(acc, pid)
+
           not MapSet.member?(present, pid) and group_alive?(pid) ->
             Logger.error(
               "[RunGuard] os_pid=#{pid} lost its owner and is still running — killing it (#{run.command})"
@@ -250,7 +259,9 @@ defmodule CodeMySpec.RunGuard do
   end
 
   defp sweep_run({pid, recorded}, path, beam, watch, grace) do
-    if still_watched?(pid, watch) do
+    protected? = DurableRun.protected_pid?(pid)
+
+    if still_watched?(pid, watch) and not protected? do
       Logger.error(
         "[RunGuard] os_pid=#{pid} was left by BEAM #{beam}, which is gone — killing it (#{recorded})"
       )
@@ -259,7 +270,7 @@ defmodule CodeMySpec.RunGuard do
     end
 
     # Kept if the group survived: the next instance tries again.
-    if not group_alive?(pid), do: File.rm(Path.join(path, Integer.to_string(pid)))
+    if not group_alive?(pid) or protected?, do: File.rm(Path.join(path, Integer.to_string(pid)))
   end
 
   # The pid may have been reused since: only a process that still looks like a

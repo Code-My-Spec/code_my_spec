@@ -155,7 +155,8 @@ defmodule CmsHarness.Channel do
       [] -> {:error, :not_connected}
     end
   catch
-    :exit, _ -> {:error, :no_reply}
+    :exit, {:timeout, _} -> {:error, :no_reply}
+    :exit, _ -> {:error, :not_connected}
   end
 
   @doc """
@@ -315,6 +316,15 @@ defmodule CmsHarness.Channel do
   def deliver_head_commit(root, sha) do
     case Registry.lookup(CmsHarness.Registry, {:channel, root}) do
       [{pid, _}] -> GenServer.cast(pid, {:head_commit, sha})
+      [] -> :ok
+    end
+  end
+
+  @doc "Called from the scanning task with the checkout's overlay (`CopyOverlay`)."
+  @spec deliver_overlay(String.t(), map()) :: :ok
+  def deliver_overlay(root, payload) do
+    case Registry.lookup(CmsHarness.Registry, {:channel, root}) do
+      [{pid, _}] -> GenServer.cast(pid, {:overlay, payload})
       [] -> :ok
     end
   end

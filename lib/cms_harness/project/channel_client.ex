@@ -54,6 +54,7 @@ defmodule CmsHarness.Project.ChannelClient do
   alias CmsHarness.Config
   alias CmsHarness.Credentials
   alias CmsHarness.HarnessConfig
+  alias CmsHarness.Proxy
   alias CmsHarness.Project.AnalysisServer
   alias CmsHarness.Project.DraftBuffer
   alias CmsHarness.Project.Transport
@@ -62,6 +63,7 @@ defmodule CmsHarness.Project.ChannelClient do
   alias CmsHarness.WorkingCopies.Create
   alias CmsHarness.WorkingCopies.SyncToMain
   alias CodeMySpec.ExecutionContexts.ExecutionContext
+  alias CodeMySpec.Files
   alias CodeMySpec.Files.Scanner.ReadModel
   alias CodeMySpec.Promotion.Steps
   alias CodeMySpec.Utils.MapAccess
@@ -120,6 +122,7 @@ defmodule CmsHarness.Project.ChannelClient do
       |> assign(:read_model, nil)
       |> assign(:pending, %{})
       |> assign(:analysis_refs, %{})
+      |> assign(:analysis_pending, %{})
       |> assign(:attempts, 0)
       |> assign(:refusals, 0)
       |> assign(:silences, 0)
@@ -212,7 +215,11 @@ defmodule CmsHarness.Project.ChannelClient do
        "instance" => instance(),
        # Runs still in flight here. The server's join sweep closes only what
        # goes unclaimed: a dropped socket does not kill the analyzers.
-       "active_runs" => AnalysisServer.in_flight(project.root),
+       "active_runs" =>
+         Enum.uniq(
+           AnalysisServer.in_flight(project.root) ++
+             Map.keys(Map.get(socket.assigns, :analysis_pending, %{}))
+         ),
        # The app this copy is actually running, from the harness's own
        # `state.json`. A reply or push lost to a restart or reconnect leaves the
        # server holding a stale commit; the join is where it converges. `nil`
@@ -223,7 +230,10 @@ defmodule CmsHarness.Project.ChannelClient do
        # to a harness that declared it: an unknown push is logged here and
        # never answered, which would hold a promote for its whole timeout.
        "app_verbs" => ["reload_app"],
-       "attachment_operations" => true,
+       "copy_tools" => true,
+       # What each provider's local login serves, so the server offers and
+       # defaults to models that exist (a retired default crash-looped agents).
+       "served_models" => CmsHarness.Agents.Provider.served_models(),
        # Lets the server name a contract mismatch outright. Absent means a
        # harness that predates the field.
        "contract_version" => @contract_version
@@ -262,6 +272,10 @@ defmodule CmsHarness.Project.ChannelClient do
       |> assign(:refused, nil)
       |> assign(:silences, 0)
       |> assign(:read_model_refused, false)
+
+    for payload <- Map.values(Map.get(socket.assigns, :analysis_pending, %{})) do
+      GenServer.cast(self(), {:analysis_result, payload})
+    end
 
     schedule_read_model_refresh()
     schedule_preview_check()
@@ -364,6 +378,13 @@ defmodule CmsHarness.Project.ChannelClient do
 
   @doc "Public so a test can assert against the real interval rather than a copy."
   def read_model_refresh_ms, do: @read_model_refresh_ms
+
+  defp refresh_read_model(%{assigns: %{topic: topic}} = socket) do
+    case transport().push(socket, topic, "read_model", %{}, Channel.decision_timeout()) do
+      {:ok, ref} -> socket |> assign(:read_model_ref, ref) |> assign(:read_model_reason, :refresh)
+      {:error, _} -> socket
+    end
+  end
 
   defp schedule_read_model_refresh,
     do: Process.send_after(self(), :refresh_read_model, @read_model_refresh_ms)
@@ -485,11 +506,23 @@ defmodule CmsHarness.Project.ChannelClient do
   # The join's read model always earns a scan: it resolves owners and validates
   # specs, so the first manifest waits for it. A 60s refresh scans only when
   # the read model changed; the watcher covers the disk.
+  # Records only the overlay reads (criteria, story numbers) are recomputed
+  # from the last scan, not rescanned: the disk did not change.
   defp maybe_sync(socket, previous, read_model) do
-    if socket.assigns[:read_model_reason] != :refresh or previous != read_model do
-      Sync.start(socket.assigns.project, read_model)
+    cond do
+      socket.assigns[:read_model_reason] != :refresh or scanned(previous) != scanned(read_model) ->
+        Sync.start(socket.assigns.project, read_model)
+
+      previous != read_model and socket.assigns[:last_observations] ->
+        Sync.start_overlay(socket.assigns.project, socket.assigns.last_observations, read_model)
+
+      true ->
+        :ok
     end
   end
+
+  defp scanned(nil), do: nil
+  defp scanned(read_model), do: %{read_model | overlay_records: nil, fingerprint: nil}
 
   @impl Slipstream
   def handle_reply(ref, reply, %{assigns: %{read_model_ref: ref}} = socket) do
@@ -539,6 +572,8 @@ defmodule CmsHarness.Project.ChannelClient do
         # Off this process: attaching registers through this channel.
         root = socket.assigns.project.root
         Task.start(fn -> reattach_terminals(root, restore["terminals"] || []) end)
+        # The server settled every interrupted turn before answering.
+        :telemetry.execute([:cms_harness, :restore, :answered], %{}, %{root: root})
         {:ok, socket |> assign(:restored, true) |> start_restore(agents)}
 
       {:error, %{"reason" => "graph_rebuilding"}} ->
@@ -634,8 +669,24 @@ defmodule CmsHarness.Project.ChannelClient do
       {nil, _} ->
         handle_pending_reply(ref, reply, socket)
 
-      {source, refs} ->
-        {:ok, log_analysis_reply(source, reply, assign(socket, :analysis_refs, refs))}
+      {payload, refs} ->
+        socket = assign(socket, :analysis_refs, refs)
+
+        socket =
+          case reply do
+            {:ok, _} ->
+              AnalysisServer.acknowledge(socket.assigns.project.root, payload["run_id"])
+              update_in(socket.assigns.analysis_pending, &Map.delete(&1, payload["run_id"]))
+
+            :ok ->
+              AnalysisServer.acknowledge(socket.assigns.project.root, payload["run_id"])
+              update_in(socket.assigns.analysis_pending, &Map.delete(&1, payload["run_id"]))
+
+            _ ->
+              socket
+          end
+
+        {:ok, log_analysis_reply(payload["source"], reply, socket)}
     end
   end
 
@@ -817,6 +868,11 @@ defmodule CmsHarness.Project.ChannelClient do
     {:ok, socket}
   end
 
+  # A record this read model holds moved on the server: refetched now rather
+  # than at the next refresh, which rescans or re-reports the overlay as needed.
+  def handle_message(_topic, "read_model_changed", _payload, socket),
+    do: {:ok, refresh_read_model(socket)}
+
   # The server asking for a fresh manifest. Through `request_sync/1`, the same
   # entry point the watcher uses, so a server-triggered scan and a
   # write-triggered scan are the same scan.
@@ -853,15 +909,17 @@ defmodule CmsHarness.Project.ChannelClient do
   def handle_message(
         _topic,
         "fs_request",
-        %{"ref" => ref, "op" => "attachment_" <> _ = op} = msg,
+        %{"ref" => ref, "op" => "copy_tool"} = msg,
         socket
       ) do
     client = self()
     topic = socket.assigns.topic
     root = socket.assigns.project.root
 
+    # Main's read/write/edit/bash in this copy; a task, so a long bash never
+    # holds the channel.
     Task.start(fn ->
-      result = CmsHarness.Attachments.request(root, op, msg["payload"] || %{})
+      result = CmsHarness.CopyTools.execute(root, msg["payload"] || %{})
       GenServer.cast(client, {:promotion_result, topic, ref, result})
     end)
 
@@ -1178,6 +1236,13 @@ defmodule CmsHarness.Project.ChannelClient do
            )
          )
 
+  defp apply_promotion("promotion_retire_gate", %{"root" => root, "gate_root" => gate_root}),
+    do:
+      with_served_root(
+        root,
+        &Steps.retire_gate_worktree(ExecutionContext.new(:local, &1), &1, gate_root)
+      )
+
   defp apply_promotion("promotion_precheck", %{"root" => root} = payload),
     do:
       with_served_root(
@@ -1226,6 +1291,16 @@ defmodule CmsHarness.Project.ChannelClient do
   # The gate's asset build, healed for stale deps the same way.
   defp apply_promotion("promotion_build_assets", %{"root" => root}),
     do: with_served_root(root, &build_assets/1)
+
+  defp apply_promotion(
+         "promotion_select_tests",
+         %{"root" => root, "base" => base, "head" => head}
+       ),
+       do:
+         with_served_root(
+           root,
+           &Steps.select_tests(ExecutionContext.new(:local, &1), &1, base, head)
+         )
 
   defp apply_promotion("promotion_changed", %{"root" => root, "from" => from, "to" => to}),
     do: with_served_root(root, &Steps.changed(ExecutionContext.new(:local, &1), &1, from, to))
@@ -1358,6 +1433,9 @@ defmodule CmsHarness.Project.ChannelClient do
       case CmsHarness.Agents.attach_terminal(id, session) do
         {:ok, _pid} ->
           Logger.info("[CmsHarness] re-attached terminal agent #{id}")
+
+        {:error, :session_ended} ->
+          Logger.info("[CmsHarness] terminal agent #{id} stays away: its session ended")
 
         {:error, reason} ->
           Logger.warning(
@@ -1986,16 +2064,9 @@ defmodule CmsHarness.Project.ChannelClient do
   def handle_info(:refresh_read_model, %{assigns: %{read_model_refused: true}} = socket),
     do: {:noreply, socket}
 
-  def handle_info(:refresh_read_model, %{assigns: %{joined: true, topic: topic}} = socket) do
+  def handle_info(:refresh_read_model, %{assigns: %{joined: true}} = socket) do
     schedule_read_model_refresh()
-
-    case transport().push(socket, topic, "read_model", %{}, Channel.decision_timeout()) do
-      {:ok, ref} ->
-        {:noreply, socket |> assign(:read_model_ref, ref) |> assign(:read_model_reason, :refresh)}
-
-      {:error, _} ->
-        {:noreply, socket}
-    end
+    {:noreply, refresh_read_model(socket)}
   end
 
   def handle_info(:refresh_read_model, socket) do
@@ -2425,7 +2496,12 @@ defmodule CmsHarness.Project.ChannelClient do
         )
 
         # Kept so the reply is read: a rejected manifest must not look accepted.
-        {:noreply, assign(socket, :observations_ref, ref)}
+        # The scan too, so a records-only read model change re-reports the overlay.
+        {:noreply,
+         assign(socket,
+           observations_ref: ref,
+           last_observations: Sync.retained(observations)
+         )}
 
       {:error, reason} ->
         Logger.error("[CmsHarness] could not send observations: #{inspect(reason)}")
@@ -2434,6 +2510,13 @@ defmodule CmsHarness.Project.ChannelClient do
   end
 
   def handle_cast({:analysis_result, payload}, %{assigns: %{joined: true}} = socket) do
+    socket =
+      assign(
+        socket,
+        :analysis_pending,
+        Map.put(Map.get(socket.assigns, :analysis_pending, %{}), payload["run_id"], payload)
+      )
+
     case transport().push(
            socket,
            socket.assigns.topic,
@@ -2447,7 +2530,7 @@ defmodule CmsHarness.Project.ChannelClient do
             "#{socket.assigns.project.root} (#{payload["status"]})"
         )
 
-        {:noreply, put_in(socket.assigns.analysis_refs[ref], payload["source"])}
+        {:noreply, put_in(socket.assigns.analysis_refs[ref], payload)}
 
       {:error, reason} ->
         Logger.error(
@@ -2458,16 +2541,36 @@ defmodule CmsHarness.Project.ChannelClient do
     end
   end
 
-  # Not queued: the server closes a departed connection's unclaimed runs, and
-  # the rejoin re-runs whatever is still stale.
+  # A completed analyzer is no longer in AnalysisServer's in-flight list.
+  # Keep its result through reconnect and claim the run until the server replies.
   def handle_cast({:analysis_result, payload}, socket) do
-    Logger.error(
-      "[CmsHarness] dropped the #{payload["source"]} result for " <>
-        "#{socket.assigns.project.root} — not connected. It will be re-run on rejoin."
-    )
-
-    {:noreply, socket}
+    {:noreply,
+     assign(
+       socket,
+       :analysis_pending,
+       Map.put(Map.get(socket.assigns, :analysis_pending, %{}), payload["run_id"], payload)
+     )}
   end
+
+  def handle_cast({:overlay, payload}, %{assigns: %{joined: true}} = socket) do
+    case transport().push(
+           socket,
+           socket.assigns.topic,
+           "overlay",
+           payload,
+           Channel.decision_timeout()
+         ) do
+      {:ok, _ref} ->
+        {:noreply, socket}
+
+      {:error, reason} ->
+        Logger.error("[CmsHarness] could not send the overlay: #{inspect(reason)}")
+        {:noreply, socket}
+    end
+  end
+
+  # Dropped like a manifest: the rescan on rejoin reports it again.
+  def handle_cast({:overlay, _payload}, socket), do: {:noreply, socket}
 
   # Dropped: a manifest describes *now*. The rescan on rejoin is the recovery.
   def handle_cast({:observations, _observations}, socket) do
@@ -2672,8 +2775,10 @@ defmodule CmsHarness.Project.ChannelClient do
   defp connect_headers(socket), do: Config.connect_headers(socket.assigns.project.root)
 
   defp connect_options(socket, uri) do
+    configured = Application.get_env(:code_my_spec, :harness_socket_options, [])
+
     [uri: uri, headers: connect_headers(socket)] ++
-      Application.get_env(:code_my_spec, :harness_socket_options, [])
+      Keyword.merge(configured, Proxy.socket_options(uri))
   end
 
   defp transport, do: Transport.impl()
@@ -2797,20 +2902,34 @@ defmodule CmsHarness.Project.ChannelClient do
   # `story_ids` crosses as a list because a MapSet has no JSON form; the
   # harness rebuilds it. Mirrors `HarnessProjectChannel.serialize_read_model/1`.
   defp deserialize_read_model(payload) do
+    component_by_id = atomize_components(payload["component_by_id"] || %{})
+
     %ReadModel{
       component_by_module: payload["component_by_module"] || %{},
-      component_by_id: atomize_components(payload["component_by_id"] || %{}),
+      component_by_id: component_by_id,
+      component_by_path:
+        Files.component_by_path(Enum.map(component_by_id, fn {id, c} -> Map.put(c, :id, id) end)),
       story_ids: MapSet.new(payload["story_ids"] || []),
-      strict?: payload["strict"] != false
+      story_ids_by_number:
+        Map.new(payload["story_ids_by_number"] || %{}, fn {n, id} ->
+          {String.to_integer(n), id}
+        end),
+      story_by_spec_path: payload["story_by_spec_path"] || %{},
+      strict?: payload["strict"] != false,
+      overlay_records: payload["overlay_records"],
+      fingerprint: payload["fingerprint"]
     }
   end
 
-  # `component_by_id` is only ever read for `.module_name`, by the test-alignment
-  # check. Structs do not survive JSON, so what arrives is a plain map with
-  # string keys; this gives it the one field its reader asks for.
+  # Structs do not survive JSON. Restore the component fields the scanner
+  # needs for test alignment and architecture proposal references.
   defp atomize_components(components) do
     Map.new(components, fn {id, component} ->
-      {id, %{module_name: MapAccess.get(component, :module_name)}}
+      {id,
+       %{
+         module_name: MapAccess.get(component, :module_name),
+         type: MapAccess.get(component, :type)
+       }}
     end)
   end
 

@@ -29,6 +29,42 @@ defmodule CodeMySpec.Generators.DeployArtifactsTest do
     body
   end
 
+  describe "deploy build inputs" do
+    test "generates a Dockerfile but no CI build workflow" do
+      files = Map.new(DeployArtifacts.files(@opts))
+      assert files["Dockerfile"] =~ "mix release"
+      refute Map.has_key?(files, ".github/workflows/build.yml")
+    end
+
+    test "generation requires a provisioned registry image instead of defaulting to GitHub" do
+      assert {:error, :registry_image_required} =
+               DeployArtifacts.generate(nil, app: "my_app", host: "example.com")
+    end
+
+    test "generation rejects a build image that differs from the deploy image" do
+      assert {:error, :registry_image_mismatch} =
+               DeployArtifacts.generate(nil,
+                 app: "my_app",
+                 host: "example.com",
+                 registry: "10.0.0.2:5000",
+                 image: "ghcr.io/acme/my_app",
+                 kamal_image: "my_app"
+               )
+    end
+  end
+
+  test "generates the health controller referenced by its router" do
+    path = "lib/my_app_web/controllers/health_controller.ex"
+    body = file(path)
+
+    assert file("lib/my_app_web/router.ex") =~ "MyAppWeb.HealthController"
+    assert body =~ "defmodule MyAppWeb.HealthController"
+    assert body =~ "def show(conn, _params)"
+    assert body =~ "Plug.Conn.send_resp(conn, 200, \"ok\")"
+    refute body =~ "Repo"
+    refute body =~ "fetch_session"
+  end
+
   describe "the release overlays" do
     test "boot decrypts the environment before starting the app" do
       body = file("rel/overlays/bin/boot")
@@ -177,7 +213,7 @@ defmodule CodeMySpec.Generators.DeployArtifactsTest do
     end
 
     # `:kamal_image` is the fix: a bare repository path, independent of
-    # whatever `:image` carries for the CI workflow's own `docker build -t`.
+    # whatever `:image` carries for the builder.
     # Confirmed against real kamal: this is the only shape that resolves to
     # a single, correct repository.
     test "kamal_image writes image: bare, and kamal resolves a single correct repository" do
@@ -230,14 +266,32 @@ defmodule CodeMySpec.Generators.DeployArtifactsTest do
       end
     end
 
-    defp write_and_resolve(body, assertion) do
+    test "Kamal resolves each environment for the verified target architecture" do
+      for path <- ["config/deploy.yml", "config/deploy.uat.yml"], arch <- ["amd64", "arm64"] do
+        write_and_resolve(
+          config(path, @opts),
+          fn resolved ->
+            assert resolved =~ ":builder:\n  arch: #{arch}"
+          end,
+          arch
+        )
+      end
+    end
+
+    defp write_and_resolve(body, assertion), do: write_and_resolve(body, assertion, "amd64")
+
+    defp write_and_resolve(body, assertion, arch) do
       dir = CodeMySpec.TempFile.owned_dir("test")
       path = Path.join(dir, "deploy.yml")
-      File.write!(path, body <> "\nbuilder:\n  arch: amd64\n")
+      File.write!(path, body)
 
       {output, 0} =
         System.cmd("kamal", ["config", "--config-file", path],
-          env: [{"KAMAL_REGISTRY_USERNAME", "u"}, {"KAMAL_REGISTRY_PASSWORD", "p"}],
+          env: [
+            {"KAMAL_REGISTRY_USERNAME", "u"},
+            {"KAMAL_REGISTRY_PASSWORD", "p"},
+            {"CMS_TARGET_ARCH", arch}
+          ],
           stderr_to_stdout: true
         )
 
@@ -270,15 +324,12 @@ defmodule CodeMySpec.Generators.DeployArtifactsTest do
     test "kamal itself parses the ssh block into keys_only when the env var is set" do
       dir = CodeMySpec.TempFile.owned_dir("test")
       path = Path.join(dir, "deploy.yml")
-      # Kamal validates the whole config; a fresh project's own generated
-      # `files/1` output does not include `builder:`, so one is added here
-      # purely to let `kamal config` finish resolving without raising on an
-      # unrelated, already-required field this test has nothing to say about.
-      File.write!(path, config("config/deploy.yml", @opts) <> "\nbuilder:\n  arch: amd64\n")
+      # Kamal validates the whole generated config, including builder.arch.
+      File.write!(path, config("config/deploy.yml", @opts))
 
       {output, 0} =
         System.cmd("kamal", ["config", "--config-file", path],
-          env: [{"CMS_SSH_KEY_PATH", "/tmp/example_key"}],
+          env: [{"CMS_SSH_KEY_PATH", "/tmp/example_key"}, {"CMS_TARGET_ARCH", "amd64"}],
           stderr_to_stdout: true
         )
 
@@ -290,7 +341,7 @@ defmodule CodeMySpec.Generators.DeployArtifactsTest do
     test "kamal falls back to its own default ssh behavior when the env var is unset" do
       dir = CodeMySpec.TempFile.owned_dir("test")
       path = Path.join(dir, "deploy.yml")
-      File.write!(path, config("config/deploy.yml", @opts) <> "\nbuilder:\n  arch: amd64\n")
+      File.write!(path, config("config/deploy.yml", @opts))
 
       # `nil`, not `""` — Ruby's `if` treats an empty string as truthy, and
       # `Deploy.run/3`'s own `script_env/1` never sends one either
@@ -299,7 +350,7 @@ defmodule CodeMySpec.Generators.DeployArtifactsTest do
       # answer for.
       {output, 0} =
         System.cmd("kamal", ["config", "--config-file", path],
-          env: [{"CMS_SSH_KEY_PATH", nil}],
+          env: [{"CMS_SSH_KEY_PATH", nil}, {"CMS_TARGET_ARCH", "amd64"}],
           stderr_to_stdout: true
         )
 
@@ -545,6 +596,17 @@ defmodule CodeMySpec.Generators.DeployArtifactsTest do
 
       assert body =~ ~s(paths: ["/health"])
       assert body =~ ~s(hosts: ["localhost", "127.0.0.1"])
+    end
+  end
+
+  describe "config/deploy.yml" do
+    # The container gets SOPS_AGE_KEY and nothing else: `bin/boot` exits without
+    # it, and every other secret is inside the encrypted env it decrypts.
+    test "hands the container only the age key" do
+      body = file("config/deploy.yml")
+
+      assert body =~ ~r/secret:\n\s+- SOPS_AGE_KEY\n/
+      refute body =~ ~r/secret:[^\n]*\n(\s+- \w+\n)*\s+- (SECRET_KEY_BASE|DATABASE_URL)/
     end
   end
 end

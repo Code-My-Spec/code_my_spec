@@ -8,14 +8,7 @@ defmodule CodeMySpec.Requirements.DiscoveredComponentEdgeProjectionTest do
   alias CodeMySpec.Files.File, as: FileRecord
   alias CodeMySpec.Repo
 
-  alias CodeMySpec.Requirements.{
-    Edge,
-    GraphInputs,
-    GraphStore,
-    IncrementalGraph,
-    Preloader,
-    Projection
-  }
+  alias CodeMySpec.Requirements.{GraphInputs, IncrementalGraph, Preloader, Projection}
 
   alias CodeMySpec.Stories
   alias CodeMySpec.WorkingCopies
@@ -26,7 +19,10 @@ defmodule CodeMySpec.Requirements.DiscoveredComponentEdgeProjectionTest do
 
   @child_path "lib/example/accounts/user.ex"
 
-  test "discovered child edges follow file membership at each checkout", %{scope: first} do
+  # A discovered component's record says write its file. Every checkout shares
+  # its edges; one without the file has the requirement unsatisfied, not the
+  # component missing from the graph.
+  test "a discovered child is in every checkout's graph, file or not", %{scope: first} do
     {:ok, context} =
       Components.create_component(first, %{
         name: "Accounts",
@@ -55,17 +51,14 @@ defmodule CodeMySpec.Requirements.DiscoveredComponentEdgeProjectionTest do
     {:ok, copy} = WorkingCopies.issue(first, nil, label: "Other", device: device_fixture(first))
     second = %{first | active_working_copy_id: copy.id}
 
-    # The discovered component is in the shared architecture, while its source
-    # file initially exists in only the first checkout.
     file = insert_file(first, child.id)
     announce_file_membership(first, child.id)
     settle_both(first, second)
 
     assert child_edge?(first, child.id)
-    refute child_edge?(second, child.id)
+    assert child_edge?(second, child.id)
+    refute child_satisfied?(second, child.id), "the second checkout has no file for it"
 
-    # A project-wide story observation must retain each checkout's distinct
-    # file-backed topology.
     {:ok, _} =
       Stories.update_story(first, story, %{description: "The account user can be managed"})
 
@@ -73,13 +66,14 @@ defmodule CodeMySpec.Requirements.DiscoveredComponentEdgeProjectionTest do
     assert_clean_projection(first)
     assert_clean_projection(second)
 
-    # Removing and restoring the file changes only the first checkout's graph.
+    # Removing and restoring the file moves verdicts, never edges.
     Repo.delete!(file)
     announce_file_membership(first, child.id)
     settle_both(first, second)
 
-    refute child_edge?(first, child.id)
-    refute child_edge?(second, child.id)
+    assert child_edge?(first, child.id)
+    assert child_edge?(second, child.id)
+    refute child_satisfied?(first, child.id), "the first checkout's file is gone"
     assert_clean_projection(first)
     assert_clean_projection(second)
 
@@ -88,7 +82,7 @@ defmodule CodeMySpec.Requirements.DiscoveredComponentEdgeProjectionTest do
     settle_both(first, second)
 
     assert child_edge?(first, child.id)
-    refute child_edge?(second, child.id)
+    assert child_edge?(second, child.id)
     assert_clean_projection(first)
     assert_clean_projection(second)
   end
@@ -127,13 +121,21 @@ defmodule CodeMySpec.Requirements.DiscoveredComponentEdgeProjectionTest do
 
   defp child_edge?(scope, component_id) do
     ctx = Preloader.topology_context(scope)
-    source = {GraphStore.event_target(), {GraphStore.event_edges(), Edge}}
-    {_nodes, edges} = Projection.load(scope, ctx, source: source)
+    {_nodes, edges} = Projection.load(scope, ctx)
 
     Enum.any?(edges, fn edge ->
       match?({"story", _, _}, edge.from) and
         match?({"component", ^component_id, _}, edge.to)
     end)
+  end
+
+  # Every requirement of the component holds at this checkout.
+  defp child_satisfied?(scope, component_id) do
+    {nodes, _edges} = Projection.load(scope, Preloader.topology_context(scope))
+
+    nodes
+    |> Enum.filter(&(&1.entity_type == "component" and &1.entity_id == component_id))
+    |> Enum.all?(& &1.satisfied)
   end
 
   defp assert_clean_projection(scope) do

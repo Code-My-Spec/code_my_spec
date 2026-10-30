@@ -40,6 +40,18 @@ defmodule CodeMySpec.Promotion.Runner do
   # has not built yet; its analyzers reuse that build.
   @reset_timeout 600_000
 
+  @doc "Remove a legacy gate worktree through its source device's harness."
+  def retire_gate_worktree(environment, source_root, gate_root, source_copy_id) do
+    run(
+      environment,
+      source_copy_id,
+      "promotion_retire_gate",
+      %{"root" => source_root, "gate_root" => gate_root},
+      @git_timeout,
+      fn env -> Steps.retire_gate_worktree(env, source_root, gate_root) end
+    )
+  end
+
   @doc "Fetch the authoritative origin branch on the addressed machine."
   def remote_head(environment, root, branch, copy_id),
     do:
@@ -240,6 +252,19 @@ defmodule CodeMySpec.Promotion.Runner do
         fn env -> Steps.changed(env, root, from, to) end
       )
 
+  @doc "Read changed files and the gate device's green test baseline."
+  def select_tests(environment, root, base, head, copy_id),
+    do:
+      run(
+        environment,
+        copy_id,
+        "promotion_select_tests",
+        %{"root" => root, "base" => base, "head" => head},
+        # Compiles the test env at the gate head and requires every test file.
+        @restart_timeout,
+        fn env -> Steps.select_tests(env, root, base, head) end
+      )
+
   @doc "The checkout at `root`'s HEAD and current version, moving nothing."
   @spec current(ExecutionContext.t() | nil, String.t(), Ecto.UUID.t() | nil) :: Steps.result()
   def current(environment, root, copy_id),
@@ -419,25 +444,27 @@ defmodule CodeMySpec.Promotion.Runner do
 
   # The far side answers in JSON, so keys come back as strings. Atomized here,
   # nested too, so no caller has to know which side answered.
-  defp decode({:ok, %{} = result}), do: {:ok, atomize(result)}
-  defp decode({:error, %{} = reason}), do: {:error, atomize(reason)}
+  @doc false
+  def decode({:ok, %{} = result}), do: {:ok, atomize(result)}
+  def decode({:error, %{} = reason}), do: {:error, atomize(reason)}
 
   # Unreachable is marked, not only worded: a harness restarting after a
   # landing, or its channel down for a code reload, is a passing state a caller
   # can wait out, not a fault of the work.
-  defp decode({:error, {gone, _} = reason}) when gone in [:harness_not_registered, :harness_gone],
-    do:
-      {:error,
-       %{
-         reason: "could not reach the machine holding this checkout: #{inspect(reason)}",
-         unreachable: true
-       }}
+  def decode({:error, {gone, _} = reason})
+      when gone in [:harness_not_registered, :harness_gone, :harness_registry_down],
+      do:
+        {:error,
+         %{
+           reason: "could not reach the machine holding this checkout: #{inspect(reason)}",
+           unreachable: true
+         }}
 
-  defp decode({:error, reason}),
+  def decode({:error, reason}),
     do:
       {:error, %{reason: "could not reach the machine holding this checkout: #{inspect(reason)}"}}
 
-  defp decode(other),
+  def decode(other),
     do: {:error, %{reason: "unexpected reply from the harness: #{inspect(other)}"}}
 
   defp atomize(%{} = map) do

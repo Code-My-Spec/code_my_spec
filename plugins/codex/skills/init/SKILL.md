@@ -5,31 +5,46 @@ description: Project setup, authentication, and sync. Use when starting a new pr
 
 # CodeMySpec — init
 
-Fetch your instructions from the local CodeMySpec server, then follow them.
+Fetch onboarding instructions from the running CodeMySpec harness.
 
-1. Run this shell command from the workspace root:
+1. Run from the workspace root. An explicit port takes precedence; otherwise try
+   the port saved by onboarding, then the development and packaged defaults:
 
    ```bash
-   curl -s -X POST http://localhost:4004/api/skills/init \
-     -H "X-Working-Dir: $PWD" \
-     --data-urlencode "skill=init" \
-     --data-urlencode "external_id=codex:$PWD" \
-     --data-urlencode "arguments=<args>"
+   bash <<'BASH'
+   ports="${CMS_HARNESS_PORT:-4004 4003}"
+   if [ -z "${CMS_HARNESS_PORT:-}" ] && [ -r "$HOME/.codemyspec/harness.port" ]; then
+     saved_port=$(cat "$HOME/.codemyspec/harness.port")
+     case "$saved_port" in
+       ''|*[!0-9]*) ;;
+       *) ports="$saved_port $ports" ;;
+     esac
+   fi
+   for port in $ports; do
+     if response=$(curl --noproxy '*' --connect-timeout 3 --max-time 30 -fsS \
+       -X POST "http://127.0.0.1:$port/api/skills/init" \
+       -H "X-Working-Dir: $PWD" \
+       --data-urlencode "skill=init" \
+       --data-urlencode "external_id=${CODEX_THREAD_ID:-codex:$PWD}") && [ -n "$response" ]; then
+       printf '%s\n' "$response"
+       exit 0
+     fi
+   done
+   printf 'No CodeMySpec service answered on ports %s. Start the harness and retry.\n' "$ports" >&2
+   exit 1
+   BASH
    ```
 
-   Replace `<args>` with `auth` if the user asked to authenticate (leave empty if unspecified).
+2. If no service answers, use the existing installation's startup path:
+   - Codex Cloud: run the device's **Start or resume** prompt from CodeMySpec's
+     connection screen. It starts the cloud harness and registers this conversation.
+   - Source checkout: run `bash scripts/start-harness <server-url>` with the
+     project's configured CodeMySpec server URL. It installs missing Hex and Rebar,
+     handles device authorization, onboards the checkout, and starts the harness.
+   - Packaged installation: run `cms start`.
+   Show the verification URL and user code when authorization is requested. After
+   startup succeeds, retry step 1. Report startup errors rather than retrying indefinitely.
 
-2. If the response contains a `prompt` field, extract and follow it.
-
-3. If the response is `{"auth": true}`, follow the auth flow:
-
-   1. Run: `curl -s http://localhost:4004/api/bootstrap/auth/status`
-      - If `"authenticated": true`, tell the user and stop.
-   2. Run: `curl -s -X POST http://localhost:4004/api/bootstrap/auth/start`
-      - Returns JSON with `auth_url`. Tell the user the URL, then open it:
-        - macOS: `open "<auth_url>"`
-        - Linux: `xdg-open "<auth_url>"`
-        - Windows: `start "<auth_url>"`
-      - If you can't determine the OS, just share the URL for the user to open.
-   3. Wait for the user to confirm they completed sign-in.
-   4. Run the status check again. Confirm success or offer retry.
+3. Follow the response's `prompt` field. If it contains only an `error`, show it
+   to the user and stop. Cloud sessions are resumed manually; this workflow does
+   not configure automatic wake-up.

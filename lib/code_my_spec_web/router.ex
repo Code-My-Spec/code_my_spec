@@ -45,10 +45,11 @@ defmodule CodeMySpecWeb.Router do
     plug CodeMySpecWeb.Plugs.IntakeSession
   end
 
-  # Unauthenticated, no session: `just reload` asks it after a promote.
+  # Unauthenticated, no session: `just reload` asks it after a promote, and
+  # the deploy proxy probes it. Piped through nothing: a plug that can fail
+  # (`:accepts` on a probe with no JSON Accept header) fails the probe for
+  # reasons unrelated to the app.
   scope "/", CodeMySpecWeb do
-    pipe_through :api
-
     get "/health", HealthController, :index
   end
 
@@ -225,6 +226,19 @@ defmodule CodeMySpecWeb.Router do
 
     forward "/google-ads", Anubis.Server.Transport.StreamableHTTP.Plug,
       server: CodeMySpec.McpServers.GoogleAdsServer
+  end
+
+  # Git clients send binary pack bodies and Accept: */*, so use a dedicated
+  # pipeline while retaining the same OAuth authentication as the API.
+  pipeline :source_git do
+    plug :require_oauth_token
+  end
+
+  scope "/api/source", CodeMySpecWeb do
+    pipe_through :source_git
+
+    get "/:project_id/:kind/info/refs", SourceGitController, :refs
+    post "/:project_id/:kind/git-upload-pack", SourceGitController, :upload_pack
   end
 
   # API routes
@@ -404,6 +418,7 @@ defmodule CodeMySpecWeb.Router do
       # "login" token the magic-link email carries, redeemed at the same route.
       post "/sign-in", DevSignInController, :create
       post "/sign-up", DevSignInController, :register
+      post "/device-approvals", DevDeviceApprovalController, :create
 
       post "/provisioning-fixtures", DevProvisioningFixtureController, :create
 
@@ -579,6 +594,8 @@ defmodule CodeMySpecWeb.Router do
       live "/projects/:project_id/content", ContentLive
       live "/projects/:project_id/content/:id", ContentLive.Show
       live "/projects/:project_id/problems", ProblemsLive
+      live "/projects/:project_id/promotion-timing", PromotionTimingLive, :index
+      live "/projects/:project_id/promotion-timing/:entry_id", PromotionTimingLive, :show
       live "/projects/:project_id/runs/:run_id", RunLive
 
       live "/projects/:project_id/files", FilesLive

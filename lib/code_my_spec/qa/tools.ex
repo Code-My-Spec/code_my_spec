@@ -12,6 +12,7 @@ defmodule CodeMySpec.Qa.Tools do
       CodeMySpec.Issues,
       CodeMySpec.Projects,
       CodeMySpec.Qa,
+      CodeMySpec.Requirements,
       CodeMySpec.Stories,
       CodeMySpec.Tools,
       CodeMySpec.WorkingCopies
@@ -52,6 +53,9 @@ defmodule CodeMySpec.Qa.Tools do
       CodeMySpec.Qa.Tools.GetLocalAppToken,
       CodeMySpec.Qa.Tools.InvalidateQaAttempt,
       CodeMySpec.Qa.Tools.ListQaAttempts,
+      CodeMySpec.Qa.Tools.ReadDocument,
+      CodeMySpec.Qa.Tools.RemoveQaEvidence,
+      CodeMySpec.Qa.Tools.WriteDocument,
       CodeMySpec.Qa.Tools.SubmitIssueQaResult,
       CodeMySpec.Qa.Tools.SubmitQaResult
     ]

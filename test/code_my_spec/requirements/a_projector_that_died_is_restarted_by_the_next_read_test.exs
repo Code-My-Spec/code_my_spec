@@ -43,6 +43,12 @@ defmodule CodeMySpec.Requirements.AProjectorThatDiedIsRestartedByTheNextReadTest
         name: IncrementalGraph.via(project_id)
       )
 
+    # A later graph-input notification may start another drain after settle.
+    # Suspend at a process boundary so killing this unsupervised projector
+    # cannot interrupt a query on the test's shared sandbox connection.
+    :ok = IncrementalGraph.settle(project_id)
+    :ok = :sys.suspend(pid)
+
     ref = Process.monitor(pid)
     Process.exit(pid, :kill)
     assert_receive {:DOWN, ^ref, :process, ^pid, :killed}

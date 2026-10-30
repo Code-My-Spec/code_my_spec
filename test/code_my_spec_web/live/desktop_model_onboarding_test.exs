@@ -34,7 +34,7 @@ defmodule CodeMySpecWeb.DesktopModelOnboardingTest do
 
   test "fresh desktop opens model selection without development setup", %{conn: conn} do
     {:ok, view, _} = live(conn, "/app")
-    render_async(view)
+    render_settled(view)
     assert has_element?(view, "[data-test=model-onboarding]")
     assert has_element?(view, "[data-test=agent-installation-codex] a", "Install Codex")
     assert has_element?(view, "[data-test=agent-installation-claude] a", "Install Claude Code")
@@ -53,7 +53,7 @@ defmodule CodeMySpecWeb.DesktopModelOnboardingTest do
     test "#{command} preselects models, saves per user and completes onboarding", ctx do
       install(ctx.root, unquote(command))
       {:ok, view, _} = live(ctx.conn, "/app")
-      render_async(view)
+      render_settled(view)
 
       view
       |> element("[data-test=agent-installation-#{unquote(command)}] a[data-phx-link=patch]")
@@ -96,7 +96,7 @@ defmodule CodeMySpecWeb.DesktopModelOnboardingTest do
   test "hosted users also start with model selection", %{conn: conn, scope: scope} do
     Application.put_env(:code_my_spec, :env, :test)
     {:ok, view, _} = live(log_in_user(conn, scope.user), "/app")
-    render_async(view)
+    render_settled(view)
     assert has_element?(view, "[data-step=models][aria-current=step]")
     assert has_element?(view, "[data-test=model-onboarding]")
     refute has_element?(view, "#account_form")
@@ -140,7 +140,7 @@ defmodule CodeMySpecWeb.DesktopModelOnboardingTest do
   test "rechecking installations preserves custom model edits", ctx do
     install(ctx.root, "claude")
     {:ok, view, _} = live(ctx.conn, "/app?provider=claude-code")
-    render_async(view)
+    render_settled(view)
 
     view
     |> form("[data-test=agent-models-form]", %{
@@ -149,7 +149,7 @@ defmodule CodeMySpecWeb.DesktopModelOnboardingTest do
     |> render_change()
 
     view |> element("button", "Check again") |> render_click()
-    render_async(view)
+    render_settled(view)
     assert has_element?(view, "input[name='main[model]'][value='custom-model']")
   end
 
@@ -204,10 +204,10 @@ defmodule CodeMySpecWeb.DesktopModelOnboardingTest do
 
   test "recheck sees an agent installed while the page is open", ctx do
     {:ok, view, _} = live(ctx.conn, "/app")
-    render_async(view)
+    render_settled(view)
     install(ctx.root, "codex")
     view |> element("button", "Check again") |> render_click()
-    render_async(view)
+    render_settled(view)
     assert has_element?(view, "[data-test=agent-installation-codex] a", "Use Codex")
 
     assert has_element?(

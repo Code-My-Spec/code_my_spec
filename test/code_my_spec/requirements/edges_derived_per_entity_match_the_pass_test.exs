@@ -2,19 +2,16 @@ defmodule CodeMySpec.Requirements.EdgesDerivedPerEntityMatchThePassTest do
   @moduledoc """
   The edges derived one entity at a time are the edges the pass draws.
 
-  `Edges.over/4` reduces each entity's edges against reachability over the
-  component side. `RequirementGraph.compute_edges/3` reduces the whole set at
-  once. The first is what lets a component appearing cost its own edges
-  rather than a reduction over every edge at every vantage, and it is exact
-  only because of the three facts about the templates that `Edges` states.
+  `Edges.generate/3` generates each entity's edges on its own;
+  `RequirementGraph.compute_topology/3` generates the whole set at once. Neither
+  reduces, so the two must be the same set. The first is what lets a component
+  appearing cost its own edges rather than a pass over every edge.
 
-  So this holds the two together on a shape that leans on each of them: a
-  dependency chain three contexts long, so a story's kickoff is pruned to the
-  chain's head; a sibling dependency inside a context; a container surface and
-  a leaf surface, so both exit shapes are drawn; a story with no component; a
-  LiveView surface depending on a context; an infrastructure component with no
-  nodes to draw to; and stories at all, so the project's `qa_setup →
-  qa_journey_plan` is carried by them rather than drawn.
+  The shape leans on every generator: a dependency chain three contexts long,
+  a sibling dependency inside a context, a container surface and a leaf
+  surface, a story with no component, a LiveView surface depending on a
+  context, an infrastructure component with no nodes to draw to, and stories
+  joining the project at both ends.
   """
   use ExUnit.Case, async: true
 
@@ -40,12 +37,10 @@ defmodule CodeMySpec.Requirements.EdgesDerivedPerEntityMatchThePassTest do
 
   describe "a story on a surface no other component touches" do
     # A lone LiveView has one requirement and no dependency, parent or child,
-    # so no component-side edge names its node at all. The kickoff lands on
-    # that node and the exit leaves from it — a path of length two through
-    # a node the component graph has never heard of — and the pass drops the
-    # story's own kickoff-to-exit edge for it. Measured on dev before this
-    # case existed: 34 stories carrying an edge the pass had dropped.
-    test "still has its chain cut where the surface carries it", %{scope: scope} do
+    # so no component-side edge names its node. The kickoff lands on it and
+    # the exit leaves from it, a path of two through a node the component
+    # graph has never heard of.
+    test "keeps its own chain beside the path through its surface", %{scope: scope} do
       components = shape(scope)
       stories = stories(scope, components)
       {pass, ours} = both(scope)
@@ -54,10 +49,12 @@ defmodule CodeMySpec.Requirements.EdgesDerivedPerEntityMatchThePassTest do
 
       lone = stories.on_lone_surface
 
-      refute chain_intact?(pass, lone),
-             "the lone story's own chain should be cut where the surface carries it"
+      assert chain_intact?(pass, lone), "edges are stored as generated, the story's chain too"
 
-      assert chain_intact?(pass, stories.unlinked),
+      refute chain_intact?(Topology.transitive_reduction(pass), lone),
+             "a view should cut the lone story's chain where the surface carries it"
+
+      assert chain_intact?(Topology.transitive_reduction(pass), stories.unlinked),
              "a story with no component has nothing to carry it"
     end
   end
@@ -68,9 +65,7 @@ defmodule CodeMySpec.Requirements.EdgesDerivedPerEntityMatchThePassTest do
       {pass, ours} = both(scope)
 
       assert MapSet.new(ours) == MapSet.new(pass), difference(pass, ours)
-
-      assert project_edge(scope, "qa_setup", "qa_journey_plan") in pass,
-             "with no story to carry it, the project's own edge has to"
+      assert project_edge(scope, "qa_setup", "qa_journey_plan") in pass
     end
   end
 
@@ -97,19 +92,31 @@ defmodule CodeMySpec.Requirements.EdgesDerivedPerEntityMatchThePassTest do
                "the fixture draws no #{inspect(seam)} edge, so agreeing on it proves nothing"
       end
 
-      refute project_edge(scope, "qa_setup", "qa_journey_plan") in pass,
-             "a story carries the project from qa_setup to qa_journey_plan, so the edge is redundant"
+      assert project_edge(scope, "qa_setup", "qa_journey_plan") in pass,
+             "edges are stored as generated, the project's own chain too"
+
+      refute project_edge(scope, "qa_setup", "qa_journey_plan") in Topology.transitive_reduction(
+               pass
+             ),
+             "a story carries the project from qa_setup to qa_journey_plan, so a view drops it"
 
       # The chain: Notifications → Billing → Accounts. The story on
-      # Notifications kicks off inside the head of the chain — a context's
-      # kickoff lands on its children — and nowhere else.
+      # Notifications is kicked off into the whole chain; a view keeps only
+      # the kickoff into its head — a context's kickoff lands on its children.
+      head = family(components, :head)
       kicked = kicked_off(pass, stories.on_chain)
 
-      assert kicked != [] and Enum.all?(kicked, &(&1 in family(components, :head))),
-             "the kickoff should land only in the chain's head, got #{inspect(kicked)}"
+      assert Enum.any?(kicked, &(&1 in head)) and
+               Enum.any?(kicked, &(&1 in family(components, :tail))),
+             "the stored kickoff should reach the whole chain, got #{inspect(kicked)}"
+
+      drawn = kicked_off(Topology.transitive_reduction(pass), stories.on_chain)
+
+      assert drawn != [] and Enum.all?(drawn, &(&1 in head)),
+             "a view should keep only the kickoff into the chain's head, got #{inspect(drawn)}"
     end
 
-    test "a node with no row cannot carry a path", %{scope: scope} do
+    test "a node with no row is not an endpoint", %{scope: scope} do
       components = shape(scope)
       stories = stories(scope, components)
       {:ok, ctx} = Preloader.load(scope)
@@ -121,21 +128,17 @@ defmodule CodeMySpec.Requirements.EdgesDerivedPerEntityMatchThePassTest do
       assert length(left) < length(nodes)
       keys = MapSet.new(left, &Topology.node_key/1)
 
-      pass = RequirementGraph.edges_over(scope, left, ctx, config)
-      ours = Edges.over(scope, ctx, config, &MapSet.member?(keys, &1))
+      pass = Enum.filter(whole, &(MapSet.member?(keys, &1.from) and MapSet.member?(keys, &1.to)))
+
+      ours = scope |> Edges.generate(ctx, config) |> Edges.among(keys)
 
       assert MapSet.new(ours) == MapSet.new(pass), difference(pass, ours)
 
-      # Billing's exit is its own last requirement, so with its rows gone the
-      # chain is cut there and the tail's kickoff is no longer redundant.
-      kicked = kicked_off(pass, stories.on_chain)
+      kicked = kicked_off(ours, stories.on_chain)
 
-      assert Enum.any?(kicked, &(&1 in family(components, :head))) and
-               Enum.any?(kicked, &(&1 in family(components, :tail))),
-             "with Billing gone the kickoff has to reach both halves, got #{inspect(kicked)}"
-
-      assert MapSet.new(pass) != MapSet.new(whole),
-             "the filter changed nothing, so it was not what this case exercises"
+      refute components.billing.id in kicked
+      assert Enum.any?(kicked, &(&1 in family(components, :head)))
+      assert Enum.any?(kicked, &(&1 in family(components, :tail)))
     end
   end
 
@@ -148,21 +151,28 @@ defmodule CodeMySpec.Requirements.EdgesDerivedPerEntityMatchThePassTest do
 
   defp family(components, :tail), do: [components.notifications.id, components.mailer.id]
 
-  # Whether the story's own edges still run unbroken from its first
-  # requirement to its last — false once the components carry a stretch.
+  # Whether the story's own edges still run from `bdd_specs_exist` to
+  # `ready_for_qa` — false once the components carry that stretch. Issue
+  # triage gives component_linked a separate path into readiness, so it is
+  # this stretch the component work replaces.
   defp chain_intact?(edges, story_id) do
     own =
       for %{from: {"story", ^story_id, _} = f, to: {"story", ^story_id, _} = t} <- edges,
-          do: %{from: f, to: t}
+          reduce: %{},
+          do: (acc -> Map.update(acc, f, [t], &[t | &1]))
 
-    reach = Topology.reach(own)
-    # Issue triage now gives component_linked a separate path into readiness.
-    # The path replaced by component work is specifically BDD → ready_for_qa.
-    Topology.reaches?(
-      reach,
-      {"story", story_id, "bdd_specs_exist"},
-      Topology.mask(reach, [{"story", story_id, "ready_for_qa"}])
+    {"story", story_id, "ready_for_qa"} in reachable(
+      own,
+      [{"story", story_id, "bdd_specs_exist"}],
+      MapSet.new()
     )
+  end
+
+  defp reachable(_outgoing, [], seen), do: seen
+
+  defp reachable(outgoing, [key | rest], seen) do
+    next = outgoing |> Map.get(key, []) |> Enum.reject(&MapSet.member?(seen, &1))
+    reachable(outgoing, rest ++ next, Enum.into(next, seen))
   end
 
   defp both(scope) do
@@ -170,7 +180,7 @@ defmodule CodeMySpec.Requirements.EdgesDerivedPerEntityMatchThePassTest do
     config = Configurations.get_or_create(scope)
     {nodes, pass} = RequirementGraph.compute_topology(scope, ctx, config)
     keys = MapSet.new(nodes, &Topology.node_key/1)
-    {pass, Edges.over(scope, ctx, config, &MapSet.member?(keys, &1))}
+    {pass, scope |> Edges.generate(ctx, config) |> Edges.among(keys)}
   end
 
   defp difference(pass, ours) do

@@ -70,6 +70,35 @@ defmodule CodeMySpec.Analysis.RunnersTest do
   # Problems. `run/4` goes through the same function, so the two paths cannot
   # disagree about what a diagnostic means.
   describe "from_raw/2" do
+    test "spex records the suite total from its full output" do
+      assert {:ok, result} =
+               Runners.from_raw("spex", %{
+                 "exit_status" => 0,
+                 "execution_status" => "success",
+                 "diagnostics" => [],
+                 "output" => "3 tests, 0 failures\n"
+               })
+
+      assert result.stats["tests"] == 3
+      assert result.stats["failures"] == 0
+    end
+
+    test "credo records its finding total" do
+      finding = %{
+        "filename" => "lib/example.ex",
+        "line_no" => 1,
+        "message" => "Modules should have a @moduledoc tag.",
+        "check" => "Credo.Check.Readability.ModuleDoc",
+        "category" => "readability",
+        "priority" => 10
+      }
+
+      assert {:ok, result} =
+               Runners.from_raw("credo", %{"exit_status" => 0, "diagnostics" => [finding]})
+
+      assert result.stats["findings"] == 1
+    end
+
     # Three outcomes that must stay three, not two. A clean build, a build with
     # errors, and a build that failed while saying nothing — the last of which
     # used to be recorded as the first.
@@ -122,6 +151,34 @@ defmodule CodeMySpec.Analysis.RunnersTest do
       }
 
       assert {:ok, %{problems: [_]}} = Runners.from_raw("compiler", raw)
+    end
+
+    test "a failed compile makes warning-labelled Boundary findings blocking" do
+      diagnostic = %{
+        "file" => "test/spex/setup_spex.exs",
+        "line" => 12,
+        "severity" => "warning",
+        "message" => "forbidden reference to CmsHarness.Setup"
+      }
+
+      assert {:ok, failed} =
+               Runners.from_raw("compiler", %{
+                 "exit_status" => 1,
+                 "diagnostics" => [diagnostic]
+               })
+
+      assert [%{severity: :error, message: "forbidden reference to CmsHarness.Setup"}] =
+               failed.problems
+
+      assert failed.stats == %{"errors" => 1, "warnings" => 0}
+
+      assert {:ok, clean} =
+               Runners.from_raw("compiler", %{
+                 "exit_status" => 0,
+                 "diagnostics" => [diagnostic]
+               })
+
+      assert [%{severity: :warning}] = clean.problems
     end
 
     test "a compiler error becomes a blocking Problem" do
@@ -183,6 +240,23 @@ defmodule CodeMySpec.Analysis.RunnersTest do
 
       assert {:error, {:test_suite_did_not_run, 1, excerpt}} = Runners.from_raw("exunit", raw)
       assert excerpt =~ "did not match"
+    end
+
+    test "a key socket bind collision is a named suite startup failure" do
+      raw = %{
+        "exit_status" => 1,
+        "execution_status" => "error",
+        "output" =>
+          "** (Mix) Could not start application cms_harness: " <>
+            "CmsHarness.SopsKeySocket listener exited with :eaddrinuse",
+        "stats" => %{},
+        "diagnostics" => []
+      }
+
+      assert {:error, {:test_suite_did_not_run, :sops_key_socket_address_in_use, 1, excerpt}} =
+               Runners.from_raw("exunit", raw)
+
+      assert excerpt =~ "eaddrinuse"
     end
 
     # Run 54391: the first `** (` in a full suite's output is a logged
@@ -294,6 +368,22 @@ defmodule CodeMySpec.Analysis.RunnersTest do
 
       assert {:ok, %{problems: [problem]}} = Runners.from_raw("exunit", raw)
       assert problem.file_path == "test/code_my_spec/demo_test.exs"
+    end
+
+    test "committed rows after a passing spex are a blocking problem" do
+      output =
+        "1 test, 0 failures\n** (RuntimeError) spex left committed rows outside the sandbox: projects=2\n"
+
+      assert {:ok, %{problems: [problem]}} =
+               Runners.from_raw("spex", %{
+                 "exit_status" => 1,
+                 "diagnostics" => [],
+                 "output" => output
+               })
+
+      assert problem.file_path == "test/support/committed_rows_guard.ex"
+      assert problem.message =~ "projects=2"
+      assert problem.severity == :error
     end
 
     test "a spex run that exited nonzero with no failures fails the run" do

@@ -36,6 +36,7 @@ defmodule Mix.Tasks.Cms.Spex do
     # CodeMySpec.Analysis.ProjectServer's own 30-minute @job_timeout, the
     # ceiling that kills a run before it could still legitimately be here.
     CodeMySpec.TempFile.sweep_stale("spex", :timer.hours(1))
+    CodeMySpec.TempFile.sweep_orphans(:timer.minutes(10))
     Mix.Task.run("compile")
     {files, jsonl, formatters, rest} = split_args(args)
 
@@ -103,7 +104,8 @@ defmodule Mix.Tasks.Cms.Spex do
     {output, status} =
       System.cmd("mix", ["cms.spex" | files] ++ formatters ++ ["--jsonl=#{path}"],
         env:
-          [{"MIX_ENV", "test"}, {"MIX_TEST_PARTITION", "#{partition}_#{i}"}] ++ run_link_env(i),
+          [{"MIX_ENV", "test"}, {"MIX_TEST_PARTITION", "#{partition}_#{i}"}] ++
+            run_link_env(i) ++ run_event_env(i),
         stderr_to_stdout: true
       )
 
@@ -130,6 +132,20 @@ defmodule Mix.Tasks.Cms.Spex do
 
       _ ->
         []
+    end
+  end
+
+  defp run_event_env(i) do
+    case System.get_env("CMS_RUN_EVENT_STREAM") do
+      nil ->
+        []
+
+      path ->
+        [
+          {"CMS_RUN_EVENT_STREAM", "#{path}.shard-#{i}"},
+          {"CMS_RUN_SHARD", Integer.to_string(i)},
+          {"CMS_RUN_SHARDS", Integer.to_string(@shards)}
+        ]
     end
   end
 

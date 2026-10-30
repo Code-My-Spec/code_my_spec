@@ -30,6 +30,7 @@ defmodule CodeMySpec.PromotionQueue.Entry do
           subject_type: :story | :issue | nil,
           subject_id: String.t() | nil,
           requested_by_agent_id: Ecto.UUID.t() | nil,
+          task_id: String.t() | nil,
           restart: boolean(),
           fresh: boolean() | nil,
           status: atom(),
@@ -46,6 +47,7 @@ defmodule CodeMySpec.PromotionQueue.Entry do
     field :subject_type, Ecto.Enum, values: @subject_types
     field :subject_id, :string
     field :requested_by_agent_id, :binary_id
+    field :task_id, :string
     field :restart, :boolean
     # Certify on runs started after this was queued, not ones already at the commit.
     field :fresh, :boolean
@@ -66,6 +68,7 @@ defmodule CodeMySpec.PromotionQueue.Entry do
       :subject_type,
       :subject_id,
       :requested_by_agent_id,
+      :task_id,
       :restart,
       :fresh
     ])

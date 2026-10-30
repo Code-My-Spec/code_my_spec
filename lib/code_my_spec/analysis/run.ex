@@ -42,9 +42,10 @@ defmodule CodeMySpec.Analysis.Run do
           id: integer() | nil,
           source: String.t(),
           kind: :full | :partial,
-          status: :running | :completed | :failed,
+          status: :running | :completed | :failed | :abandoned,
           args: map() | nil,
           stats: map() | nil,
+          findings: map() | nil,
           requested_by: map() | nil,
           requester_agent_id: String.t() | nil,
           orphaned: boolean(),
@@ -56,6 +57,7 @@ defmodule CodeMySpec.Analysis.Run do
           finished_at: DateTime.t() | nil,
           start_commit: String.t() | nil,
           start_tree_dirty: boolean() | nil,
+          start_tree: String.t() | nil,
           completed_commit: String.t() | nil,
           project_id: Ecto.UUID.t(),
           project: Project.t() | Ecto.Association.NotLoaded.t(),
@@ -73,9 +75,12 @@ defmodule CodeMySpec.Analysis.Run do
     # its source report `failed` when nothing had failed, and — until
     # `latest_completed_run/2` — made a good result read stale. 14 of these in
     # half an hour on one harness.
-    field :status, Ecto.Enum, values: [:running, :completed, :failed, :superseded, :cancelled]
+    field :status, Ecto.Enum,
+      values: [:running, :completed, :failed, :superseded, :cancelled, :abandoned]
+
     field :args, :map
     field :stats, :map
+    field :findings, :map
 
     # Who asked, and why — a hook run carries `session_id`/`agent_id`/`hook`,
     # an MCP tool call carries `agent_id` alone, a manual trigger carries
@@ -112,6 +117,11 @@ defmodule CodeMySpec.Analysis.Run do
     field :start_commit, :string
     field :start_tree_dirty, :boolean
     field :completed_commit, :string
+
+    # The git tree of `start_commit`, kept only for a clean start. A pass
+    # answers for this tree from any copy or commit (story 1174); nil is never
+    # reused.
+    field :start_tree, :string
 
     belongs_to :project, Project, type: :binary_id
 
@@ -154,15 +164,24 @@ defmodule CodeMySpec.Analysis.Run do
   def sources, do: @sources
 
   @doc """
-  What a harness reported for this run: `began_at`, `start_commit` and
-  `start_tree_dirty` when it started, `completed_commit` when it finished.
+  What a harness reported for this run: `began_at`, `start_commit`,
+  `start_tree_dirty` and `start_tree` when it started, `completed_commit` when
+  it finished. A tree is kept only for a clean start.
   """
   @spec tree_changeset(t(), map()) :: Ecto.Changeset.t()
   def tree_changeset(run, attrs) do
     run
-    |> cast(attrs, [:began_at, :start_commit, :start_tree_dirty, :completed_commit])
+    |> cast(attrs, [:began_at, :start_commit, :start_tree_dirty, :start_tree, :completed_commit])
     |> validate_format(:start_commit, @sha)
+    |> validate_format(:start_tree, @sha)
     |> validate_format(:completed_commit, @sha)
+    |> clean_tree_only()
+  end
+
+  defp clean_tree_only(changeset) do
+    if get_field(changeset, :start_tree_dirty) == false,
+      do: changeset,
+      else: put_change(changeset, :start_tree, nil)
   end
 
   @spec changeset(%__MODULE__{} | Ecto.Changeset.t(), map()) :: Ecto.Changeset.t()
@@ -174,6 +193,7 @@ defmodule CodeMySpec.Analysis.Run do
       :status,
       :args,
       :stats,
+      :findings,
       :requested_by,
       :orphaned,
       :exit_status,

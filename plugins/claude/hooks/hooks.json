@@ -5,19 +5,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "curl",
-            "args": [
-              "-sS",
-              "--max-time",
-              "30",
-              "-X",
-              "POST",
-              "http://localhost:4004/api/hooks/session-start",
-              "-H",
-              "Content-Type: application/json",
-              "--data-binary",
-              "@-"
-            ]
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/post-hook.py\" session-start"
           }
         ]
       }
@@ -27,19 +15,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "curl",
-            "args": [
-              "-sS",
-              "--max-time",
-              "30",
-              "-X",
-              "POST",
-              "http://localhost:4004/api/hooks/pre-tool-use",
-              "-H",
-              "Content-Type: application/json",
-              "--data-binary",
-              "@-"
-            ]
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/post-hook.py\" pre-tool-use"
           }
         ]
       }
@@ -49,19 +25,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "curl",
-            "args": [
-              "-sS",
-              "--max-time",
-              "30",
-              "-X",
-              "POST",
-              "http://localhost:4004/api/hooks/post-tool-use",
-              "-H",
-              "Content-Type: application/json",
-              "--data-binary",
-              "@-"
-            ]
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/post-hook.py\" post-tool-use"
           }
         ]
       }
@@ -71,19 +35,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "curl",
-            "args": [
-              "-sS",
-              "--max-time",
-              "30",
-              "-X",
-              "POST",
-              "http://localhost:4004/api/hooks/stop",
-              "-H",
-              "Content-Type: application/json",
-              "--data-binary",
-              "@-"
-            ]
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/post-hook.py\" stop"
           }
         ]
       }
@@ -93,19 +45,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "curl",
-            "args": [
-              "-sS",
-              "--max-time",
-              "30",
-              "-X",
-              "POST",
-              "http://localhost:4004/api/hooks/user-prompt-submit",
-              "-H",
-              "Content-Type: application/json",
-              "--data-binary",
-              "@-"
-            ]
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/post-hook.py\" user-prompt-submit"
           }
         ]
       }
@@ -115,19 +55,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "curl",
-            "args": [
-              "-sS",
-              "--max-time",
-              "30",
-              "-X",
-              "POST",
-              "http://localhost:4004/api/hooks/session-end",
-              "-H",
-              "Content-Type: application/json",
-              "--data-binary",
-              "@-"
-            ]
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/post-hook.py\" session-end"
           }
         ]
       }
@@ -137,19 +65,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "curl",
-            "args": [
-              "-sS",
-              "--max-time",
-              "30",
-              "-X",
-              "POST",
-              "http://localhost:4004/api/hooks/notification",
-              "-H",
-              "Content-Type: application/json",
-              "--data-binary",
-              "@-"
-            ]
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/post-hook.py\" notification"
           }
         ]
       }

@@ -194,6 +194,7 @@ defmodule CodeMySpec.Requirements.Tools.SyncProjectRemoteTest do
       story = story_fixture(ctx.scope)
       _ = requirements_of(ctx.scope, story)
       Repo.delete_all(from(r in "requirements", where: r.story_id == ^story.id))
+      Repo.delete_all(from(r in "project_requirements", where: r.story_id == ^story.id))
       assert requirements_of(ctx.scope, story) =~ "0/0 satisfied"
 
       {_response, text} = run(%{ctx.scope | cwd: nil})
@@ -214,6 +215,25 @@ defmodule CodeMySpec.Requirements.Tools.SyncProjectRemoteTest do
       )
 
     elem(response, 1)
+  end
+
+  describe "when remote preparation raises" do
+    test "returns a stage-specific error and logs the exception instead of an internal error",
+         ctx do
+      # An invalid project id makes the component query raise before a rescan can be queued.
+      scope = %{ctx.scope | active_project_id: "not-a-uuid", cwd: nil}
+
+      log =
+        ExUnit.CaptureLog.capture_log(fn ->
+          assert {:error, text} = run(scope) |> elem(0)
+          assert text =~ "component reconciliation"
+          assert text =~ "No rescan was requested"
+          refute text =~ "Internal error"
+        end)
+
+      assert log =~ "sync_project component reconciliation failed"
+      assert log =~ "Ecto.Query.CastError"
+    end
   end
 
   describe "when no harness is registered" do

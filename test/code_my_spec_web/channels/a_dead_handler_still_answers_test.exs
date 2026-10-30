@@ -55,20 +55,18 @@ defmodule CodeMySpecWeb.ADeadHandlerStillAnswersTest do
 
   test "a handler whose task dies comes back as an error rather than silence",
        %{channel: channel} do
-    before = handlers()
     ref = push(channel, "analysis_run", %{"source" => "exunit"})
 
-    kill_the_new_handler(before)
+    kill_handler(channel)
 
     assert_reply ref, :error, %{"reason" => "handler_died"}, 5_000
   end
 
   test "the reply names where it died, so the harness log is not the only account",
        %{channel: channel} do
-    before = handlers()
     ref = push(channel, "analysis_run", %{"source" => "exunit"})
 
-    kill_the_new_handler(before)
+    kill_handler(channel)
 
     assert_reply ref, :error, %{"at" => at}, 5_000
     assert at =~ "analysis_run"
@@ -76,11 +74,10 @@ defmodule CodeMySpecWeb.ADeadHandlerStillAnswersTest do
 
   test "a dead waiter retains its run identity and the analyzer can still finish",
        %{channel: channel, scope: scope} do
-    before = handlers()
     ref = push(channel, "analysis_run", %{"source" => "exunit"})
     assert_push "run_analysis", %{"runs" => [%{"run_id" => run_id}]}, 5_000
 
-    kill_the_new_handler(before)
+    kill_handler(channel)
 
     assert_reply ref,
                  :error,
@@ -143,31 +140,37 @@ defmodule CodeMySpecWeb.ADeadHandlerStillAnswersTest do
     end
   end
 
-  defp handlers, do: MapSet.new(Task.Supervisor.children(CodeMySpec.TaskSupervisor))
-
-  # The one this push started, whichever else the supervisor happens to hold.
-  # Polled rather than assumed present: `push/3` returns before the channel has
-  # processed the message, so the task may not exist yet.
-  defp kill_the_new_handler(before) do
-    pid = await_new_handler(before, 100)
+  # This channel has one analysis_run request in flight per test. Select its
+  # monitored task here, never an unrelated child of the global supervisor.
+  defp kill_handler(channel) do
+    pid = await_handler(channel.channel_pid, 100)
     Process.exit(pid, :kill)
   end
 
-  defp await_new_handler(before, 0) do
-    flunk("no new task under the supervisor — #{inspect(MapSet.to_list(before))}")
+  defp await_handler(channel_pid, 0) do
+    flunk("channel #{inspect(channel_pid)} never started its analysis_run handler")
   end
 
-  defp await_new_handler(before, tries) do
-    handlers()
-    |> MapSet.difference(before)
-    |> MapSet.to_list()
-    |> new_handler_result(before, tries)
+  defp await_handler(channel_pid, tries) do
+    socket = :sys.get_state(channel_pid)
+
+    pid =
+      socket.assigns
+      |> Map.get(:pending_replies, %{})
+      |> Map.values()
+      |> Enum.find_value(fn
+        {_reply_ref, {"analysis_run", _source, _request_id}, pid} -> pid
+        {_reply_ref, {"analysis_run", _source, _request_id, _run_id}, pid} -> pid
+        _other -> nil
+      end)
+
+    await_handler_result(pid, channel_pid, tries)
   end
 
-  defp new_handler_result([pid | _], _before, _tries), do: pid
+  defp await_handler_result(pid, _channel_pid, _tries) when is_pid(pid), do: pid
 
-  defp new_handler_result([], before, tries) do
+  defp await_handler_result(nil, channel_pid, tries) do
     Process.sleep(10)
-    await_new_handler(before, tries - 1)
+    await_handler(channel_pid, tries - 1)
   end
 end

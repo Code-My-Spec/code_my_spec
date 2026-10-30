@@ -15,6 +15,7 @@ defmodule CodeMySpec.Analysis.Reconciler do
   require Logger
 
   alias CodeMySpec.Analysis.{
+    LiveRuns,
     Run,
     RunsRepository,
     Signatures
@@ -46,8 +47,15 @@ defmodule CodeMySpec.Analysis.Reconciler do
            RunsRepository.finish_run(run, :completed, %{
              output: result.output,
              exit_status: result.exit_status,
-             stats: result.stats
+             stats: persisted_stats(run, result)
            }) do
+      finished =
+        CodeMySpec.Analysis.History.record!(
+          finished,
+          Map.get(result, :failures, []),
+          result.problems
+        )
+
       report_tied(scope, run, result)
       {:ok, finished}
     end
@@ -73,10 +81,13 @@ defmodule CodeMySpec.Analysis.Reconciler do
           RunsRepository.finish_run(run, :completed, %{
             output: result.output,
             exit_status: result.exit_status,
-            stats: Signatures.put(result.stats, signatures)
+            stats: Signatures.put(persisted_stats(run, result), signatures)
           })
 
-        RunsRepository.prune(scope, run.source)
+        finished =
+          CodeMySpec.Analysis.History.record!(finished, Map.get(result, :failures, []), problems)
+
+        CodeMySpec.Analysis.History.prune(scope)
         # Events, because Analysis sits below `AgentTasks` and `Notifications`.
         :telemetry.execute(
           [:code_my_spec, :analysis, :run_reconciled],
@@ -91,7 +102,7 @@ defmodule CodeMySpec.Analysis.Reconciler do
 
         # The push to agents in this BEAM. A Claude Code session is not told
         # here; it picks the alert up on its next tool call.
-        announce_if_new(scope, run, problems, previous, signatures)
+        announce_if_new(scope, run, problems, previous, signatures, reported(run, result, true))
 
         Logger.info(
           "[Analysis] run #{run.id} (#{run.source}) reconciled: #{length(problems)} problem(s) " <>
@@ -132,10 +143,30 @@ defmodule CodeMySpec.Analysis.Reconciler do
            RunsRepository.finish_run(run, :completed, %{
              output: result.output,
              exit_status: result.exit_status,
-             stats: result.stats
+             stats: persisted_stats(run, result)
            }) do
       report_tied(scope, run, result)
       {:ok, finished}
+    end
+  end
+
+  # Capture completion events while they still exist, then render history only
+  # from this persisted snapshot. A missing event never becomes an invented zero.
+  defp persisted_stats(%Run{} = run, result) do
+    stats = result.stats || %{}
+
+    case {run.source, LiveRuns.get(run.id)} do
+      {"credo", %{finished?: true, totals: %{"files" => files}}}
+      when is_integer(files) ->
+        Map.put_new(stats, "files", files)
+
+      {"spex", %{finished?: true, tests: tests}} when is_list(tests) and tests != [] ->
+        stats
+        |> Map.put_new("tests", length(tests))
+        |> Map.put_new("failures", Enum.count(tests, &(&1.state == "failed")))
+
+      _ ->
+        stats
     end
   end
 
@@ -162,7 +193,8 @@ defmodule CodeMySpec.Analysis.Reconciler do
           source: run.source,
           problems: problems,
           requester: requester,
-          waiters: waiters
+          waiters: waiters,
+          run: reported(run, result, false)
         }
       )
     end
@@ -240,7 +272,7 @@ defmodule CodeMySpec.Analysis.Reconciler do
 
   # Reports only when this run found something the last one did not, or when
   # an agent requested or waits on it. See knowledge/analysis, "Reporting runs".
-  defp announce_if_new(scope, run, problems, previous, signatures) do
+  defp announce_if_new(scope, run, problems, previous, signatures, reported) do
     requester = requesting_agent_id(run)
     waiters = waiters(run)
 
@@ -255,12 +287,27 @@ defmodule CodeMySpec.Analysis.Reconciler do
           source: run.source,
           problems: problems,
           requester: requester,
-          waiters: waiters
+          waiters: waiters,
+          run: reported
         }
       )
     else
       :ok
     end
+  end
+
+  # The run a report is about, so the notice can name it, say whether
+  # `list_problems` holds its findings (a full run's are written there; a
+  # targeted or tied run's are not), and never call a run that exited non-zero
+  # clean.
+  defp reported(run, result, listed?) do
+    %{
+      id: run.id,
+      kind: run.kind,
+      commit: run.start_commit,
+      exit_status: Map.get(result, :exit_status),
+      listed?: listed?
+    }
   end
 
   # Threaded through so `AnalysisReport.deliver/4` answers the asker even on

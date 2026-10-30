@@ -56,6 +56,13 @@ defmodule CodeMySpec.Requirements.GraphInputs do
     qa_attempt_submitted
   )
 
+  # What a harness's read model holds (components, stories, criteria): a change
+  # to one is told to the project's harnesses, so an overlay does not wait for
+  # their next refresh.
+  @read_model_kinds ~w(story_created story_changed story_deleted story_readiness_changed
+    component_created component_changed component_deleted)
+  @read_model_sources ~w(AcceptanceCriteria ComponentSync)
+
   @doc "Every declared event kind."
   @spec kinds() :: [kind()]
   def kinds, do: @kinds
@@ -102,6 +109,25 @@ defmodule CodeMySpec.Requirements.GraphInputs do
   end
 
   def check(_kind, _vantage), do: :ok
+
+  @doc "Topic for changes to what one project's harnesses hold as their read model."
+  @spec read_model_topic(Ecto.UUID.t()) :: String.t()
+  def read_model_topic(project_id) when is_binary(project_id),
+    do: "project:#{project_id}:read_model"
+
+  defp read_model_changed(scope_or_project_id) do
+    case project_id(scope_or_project_id) do
+      nil ->
+        :ok
+
+      project_id ->
+        Phoenix.PubSub.broadcast(
+          @pubsub,
+          read_model_topic(project_id),
+          {:read_model_changed, project_id}
+        )
+    end
+  end
 
   @doc "Topic for one project's graph-input changes."
   @spec topic(Ecto.UUID.t()) :: String.t()
@@ -156,6 +182,7 @@ defmodule CodeMySpec.Requirements.GraphInputs do
       working_copy_id(scope_or_project_id, vantage)
     )
 
+    if source in @read_model_sources, do: read_model_changed(scope_or_project_id)
     changed(scope_or_project_id, obs)
   end
 
@@ -232,6 +259,7 @@ defmodule CodeMySpec.Requirements.GraphInputs do
       working_copy_id(scope_or_project_id, vantage)
     )
 
+    if kind in @read_model_kinds, do: read_model_changed(scope_or_project_id)
     changed(scope_or_project_id, obs)
   end
 
@@ -242,6 +270,11 @@ defmodule CodeMySpec.Requirements.GraphInputs do
   """
   @spec observation_id() :: String.t()
   def observation_id, do: Base.encode16(:crypto.strong_rand_bytes(4), case: :lower)
+
+  @doc "Listen for changes to what one project's harnesses hold as their read model."
+  @spec subscribe_read_model(Ecto.UUID.t()) :: :ok | {:error, term()}
+  def subscribe_read_model(project_id) when is_binary(project_id),
+    do: Phoenix.PubSub.subscribe(@pubsub, read_model_topic(project_id))
 
   @doc "Listen for one project's graph-input changes."
   @spec subscribe(Ecto.UUID.t()) :: :ok | {:error, term()}

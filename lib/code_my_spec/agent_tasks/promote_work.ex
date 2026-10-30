@@ -23,7 +23,7 @@ defmodule CodeMySpec.AgentTasks.PromoteWork do
     end
   end
 
-  @doc "The stamp alone, promoting nothing. See the moduledoc."
+  @doc "Read the tracked publication revision, promoting nothing."
   def evaluate(scope, task) do
     case story_for(scope, task) do
       nil -> no_story()
@@ -39,7 +39,7 @@ defmodule CodeMySpec.AgentTasks.PromoteWork do
   def evaluate(scope, task, owner) do
     case story_for(scope, task) do
       nil -> no_story()
-      story -> scope |> Promotion.running_copy_check(story) |> complete(scope, story, owner)
+      story -> scope |> Promotion.running_copy_check(story) |> complete(scope, story, owner, task)
     end
   end
 
@@ -59,12 +59,12 @@ defmodule CodeMySpec.AgentTasks.PromoteWork do
        reason <> " " <> complete_again()}
   end
 
-  defp complete({true, _details} = verdict, _scope, story, _owner),
+  defp complete({true, _details} = verdict, _scope, story, _owner, _task),
     do: stamp_verdict(verdict, story)
 
-  defp complete({false, _details}, scope, story, owner) do
+  defp complete({false, _details}, scope, story, owner, task) do
     scope
-    |> PromotionQueue.promote(story.number, notify: agent_id(owner))
+    |> PromotionQueue.promote(story.number, notify: agent_id(owner), task_id: task.id)
     |> promotion_verdict(story)
   end
 

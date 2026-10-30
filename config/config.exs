@@ -158,6 +158,7 @@ config :logger, :default_formatter,
     :cms_blocking,
     :cms_why,
     :cms_budget_ms,
+    :cms_started_ms,
     # Whose graph a `[Requirements]` line is about. This server handles several
     # projects at once — broken_oaths and the qa sandboxes among them — and
     # without it a count of recomputes is a count across all of them. I reported
@@ -229,6 +230,10 @@ config :code_my_spec, CodeMySpec.Vault,
 # answer with one that reads as a bug in the harness, and sent the reader to
 # `localhost:4004` for a problem that was never there.
 config :plug, :statuses, %{529 => "Overloaded"}
+
+# Off until config/runtime.exs finds OTEL_EXPORTER_OTLP_ENDPOINT (a box's
+# collector). The harness release never sets it, so it never exports.
+config :opentelemetry, traces_exporter: :none
 
 # Import environment specific config. This must remain at the bottom
 # of this file so it overrides the configuration defined above.

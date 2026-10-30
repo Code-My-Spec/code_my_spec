@@ -38,7 +38,9 @@ defmodule CodeMySpec.Qa do
       CodeMySpec.Qa.Verdict,
       CodeMySpec.Configurations,
       CodeMySpec.ExecutionContexts,
+      CodeMySpec.Documents,
       CodeMySpec.Issues,
+      CodeMySpec.Stories,
       CodeMySpec.Paths,
       CodeMySpec.Repo,
       CodeMySpec.Requirements.GraphInputs,
@@ -137,6 +139,11 @@ defmodule CodeMySpec.Qa do
   defdelegate invalidate_qa_attempt(scope, attempt_id, reason),
     to: Invalidations,
     as: :invalidate
+
+  @doc "Remove wrongly attached evidence, preserving the attempt verdict and an audit record."
+  defdelegate remove_qa_evidence(scope, attempt_id, names, reason),
+    to: QaAttempts,
+    as: :remove_evidence
 
   @doc """
   Is `qa_complete` satisfied for the story?

@@ -260,10 +260,12 @@ defmodule CodeMySpec.Requirements.BddRulesChecker do
 
       open ->
         [
-          "#{length(open)} open question(s) on this story, and Three Amigos is not " <>
-            "complete while a red card is unanswered — #{length(scenarios)} scenario(s) " <>
-            "does not settle them. Answer each with `resolve_question`, or close the " <>
-            "ones that turned out to be somebody else's problem."
+          "#{length(open)} open question(s) on this story: " <>
+            Enum.map_join(open, "; ", & &1.text) <>
+            ". Three Amigos is not complete while a red card is unanswered — " <>
+            "#{length(scenarios)} scenario(s) does not settle them. " <>
+            "Answer each with `resolve_question`, or close the ones that turned out " <>
+            "to be somebody else's problem."
           | gaps
         ]
     end

@@ -73,6 +73,12 @@ defmodule CodeMySpec.Provisioning.Tools.RunProvisioningStepConfirmApexRepointTes
             cf_ok([%{"id" => "rec1", "name" => @apex, "type" => "A", "content" => @old_ip}])
           )
 
+        %{method: "POST", request_path: "/client/v4/zones/" <> rest} = conn ->
+          {:ok, body, conn} = Plug.Conn.read_body(conn)
+          payload = Jason.decode!(body)
+          send(test_pid, {:created, rest, payload})
+          json(conn, 200, cf_ok(Map.put(payload, "id", "new-record")))
+
         %{method: "PUT", request_path: "/client/v4/zones/" <> rest} = conn ->
           {:ok, body, conn} = Plug.Conn.read_body(conn)
           payload = Jason.decode!(body)
@@ -111,6 +117,33 @@ defmodule CodeMySpec.Provisioning.Tools.RunProvisioningStepConfirmApexRepointTes
   defp response_text({_status, text}), do: text
 
   describe "execute/2 for the dns step" do
+    test "requires one environment before touching Cloudflare", %{scope: scope} do
+      frame = %Frame{assigns: %{current_scope: scope}}
+      context = Map.put(frame.assigns, :scope, scope)
+
+      response = ToolLibrary.run("run_provisioning_step", %{step: "dns"}, context)
+
+      assert response_text(response) =~ "needs :environment"
+      refute_received {:wrote, _, _}
+      refute_received {:created, _, _}
+    end
+
+    test "rejects an invalid TTL before touching Cloudflare", %{scope: scope} do
+      frame = %Frame{assigns: %{current_scope: scope}}
+      context = Map.put(frame.assigns, :scope, scope)
+
+      response =
+        ToolLibrary.run(
+          "run_provisioning_step",
+          %{step: "dns", environment: "prod", ttl: 59},
+          context
+        )
+
+      assert response_text(response) =~ "ttl must be at least 60 seconds"
+      refute_received {:wrote, _, _}
+      refute_received {:created, _, _}
+    end
+
     test "pauses on a live apex without confirm_apex_repoint, and writes nothing", %{
       scope: scope
     } do
@@ -119,7 +152,7 @@ defmodule CodeMySpec.Provisioning.Tools.RunProvisioningStepConfirmApexRepointTes
       response =
         ToolLibrary.run(
           "run_provisioning_step",
-          %{step: "dns"},
+          %{step: "dns", environment: "prod"},
           Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
         )
 
@@ -132,10 +165,29 @@ defmodule CodeMySpec.Provisioning.Tools.RunProvisioningStepConfirmApexRepointTes
       refute_received {:wrote, _rest, _content}
     end
 
+    test "a uat-only call writes DNS-only uat and reports its outcome without touching the apex",
+         %{scope: scope} do
+      {:ok, _} = Environments.put(scope, "uat", %{host: "uat.#{@apex}", ip: @new_ip})
+      frame = %Frame{assigns: %{current_scope: scope}}
+
+      response =
+        ToolLibrary.run(
+          "run_provisioning_step",
+          %{step: "dns", environment: "uat", proxied: false, ttl: 60},
+          Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+        )
+
+      assert response_text(response) =~ "environment=uat outcome=written"
+      assert_received {:created, "z1/dns_records", payload}
+      assert payload["name"] == "uat.#{@apex}"
+      assert payload["proxied"] == false
+      refute_received {:wrote, _, _}
+    end
+
     test "repoints the apex when confirm_apex_repoint is true", %{scope: scope} do
       frame = %Frame{assigns: %{current_scope: scope}}
 
-      params = %{step: "dns", confirm_apex_repoint: true}
+      params = %{step: "dns", environment: "prod", confirm_apex_repoint: true}
 
       response =
         ToolLibrary.run(

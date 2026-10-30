@@ -30,6 +30,23 @@ defmodule CodeMySpec.ProvisioningPlan do
   alias CodeMySpec.Users.Scope
   alias CodeMySpec.Utils
 
+  @doc "Whether a started project setup still needs its server step."
+  @spec server_setup_pending?() :: boolean()
+  def server_setup_pending? do
+    import Ecto.Query
+    alias CodeMySpec.ProvisioningPlan.Step
+    alias CodeMySpec.Repo
+
+    Step
+    |> select([step], {step.project_id, step.key, step.state})
+    |> Repo.all()
+    |> Enum.group_by(&elem(&1, 0))
+    |> Enum.any?(fn {_project_id, rows} ->
+      Enum.any?(rows, fn {_id, _key, state} -> state != :not_started end) and
+        not Enum.any?(rows, fn {_id, key, state} -> key == :server and state == :done end)
+    end)
+  end
+
   ## Options
 
   @doc """

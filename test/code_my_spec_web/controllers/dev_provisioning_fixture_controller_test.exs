@@ -3,7 +3,8 @@ defmodule CodeMySpecWeb.DevProvisioningFixtureControllerTest do
 
   import CodeMySpec.UsersFixtures
 
-  alias CodeMySpec.{AgentAttachments, Projects, UserPreferences, Users}
+  alias ClientUtils.Harness.Onboarding
+  alias CodeMySpec.{CopyTools, Projects, UserPreferences, Users}
 
   setup do
     scope = full_scope_fixture()
@@ -74,6 +75,11 @@ defmodule CodeMySpecWeb.DevProvisioningFixtureControllerTest do
 
     for copy <- [offline | online] do
       assert File.read!(Path.join(copy["root"], ".cms_harness.json")) =~ copy["working_copy_id"]
+      # What Codex Cloud's readiness check and the harness ask of a copy.
+      assert %{onboarded: true} = Onboarding.check(copy["root"])
+
+      assert copy["root"] |> Path.join(".claude/settings.local.json") |> File.read!() =~
+               copy["working_copy_id"]
 
       assert %{"device_id" => copy["device_id"]} ==
                copy["root"]
@@ -91,10 +97,12 @@ defmodule CodeMySpecWeb.DevProvisioningFixtureControllerTest do
     main = %{scope | active_project_id: project_id}
 
     assert {:error, :harness_unreachable} =
-             AgentAttachments.connect(main, main_id, offline["working_copy_id"])
+             CopyTools.run(main, main_id, offline["working_copy_id"], "read", %{
+               file_path: "mix.exs"
+             })
 
     assert {:error, :working_copy_not_found} =
-             AgentAttachments.connect(main, main_id, foreign_id)
+             CopyTools.run(main, main_id, foreign_id, "read", %{file_path: "mix.exs"})
   end
 
   test "creates a fresh disposable project and exposes provider controls", %{

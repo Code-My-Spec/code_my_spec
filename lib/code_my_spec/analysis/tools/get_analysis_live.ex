@@ -21,9 +21,12 @@ defmodule CodeMySpec.Analysis.Tools.GetAnalysisLive do
     this working copy. `live` is "no_events" (queued, or running and not yet
     reporting), "streaming", "finished" (it reported its end), or "not_retained"
     (no live record for this run; read get_analysis_output). `seconds_since_event`
-    tells a stalled run from a slow one. `status` is the ledger's: queued, running,
-    completed, failed, cancelled or superseded; `orphaned` means its harness went
-    away while it ran. Retained stdout is get_analysis_output's, not this.
+    tells a stalled run from a slow one. `status` is queued, running, completed,
+    failed, cancelled or superseded. An orphaned failed run is shown as abandoned
+    with a harness disconnect reason. Retained stdout is get_analysis_output's, not this.
+
+    A queued run also carries queued_seconds and harness_connected: false there
+    means nothing able to run it is reachable for this working copy right now.
     """
   end
 
@@ -66,25 +69,41 @@ defmodule CodeMySpec.Analysis.Tools.GetAnalysisLive do
   def describe(run, live, now) do
     run
     |> ledger()
-    |> Map.merge(live_part(live, now))
+    |> Map.merge(live_part(run, live, now))
+  end
+
+  defp display_status(%Run{orphaned: true, status: :failed}), do: "abandoned"
+
+  defp display_status(%Run{} = run) do
+    if Run.queued?(run), do: "queued", else: to_string(run.status)
   end
 
   defp ledger(run) do
-    %{
-      run_id: run.id,
-      source: run.source,
-      status: if(Run.queued?(run), do: "queued", else: to_string(run.status)),
-      orphaned: run.orphaned,
-      exit_status: run.exit_status,
-      start_commit: run.start_commit,
-      began_at: run.began_at,
-      finished_at: run.finished_at
-    }
+    Map.merge(
+      %{
+        run_id: run.id,
+        source: run.source,
+        status: display_status(run),
+        orphaned: run.orphaned,
+        reason: if(run.orphaned, do: "harness disconnected", else: nil),
+        exit_status: run.exit_status,
+        start_commit: run.start_commit,
+        began_at: run.began_at,
+        finished_at: run.finished_at
+      },
+      Analysis.queue_wait(run) || %{}
+    )
   end
 
-  defp live_part(nil, _now), do: %{live: "not_retained"}
+  defp live_part(%Run{} = run, nil, _now) do
+    if Run.queued?(run) do
+      %{live: "no_events"}
+    else
+      %{live: "not_retained", hint: "Read get_analysis_output for retained output."}
+    end
+  end
 
-  defp live_part(live, now) do
+  defp live_part(_run, live, now) do
     failures = Enum.filter(live.tests, &(&1.state == "failed"))
 
     %{

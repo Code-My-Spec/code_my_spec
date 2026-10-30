@@ -1,5 +1,19 @@
 #!/bin/sh
+# Run migrations, decrypting the environment first exactly as bin/server does:
+# both boot runtime.exs. Without it the deploy's migrate died before reaching
+# the database and reported only "Migration failed (exit 1)".
 set -eu
-
 cd -P -- "$(dirname -- "$0")"
+
+ENV_FILE="../envs/${APP_ENV:-prod}.enc.env"
+
+if [ -n "${SOPS_AGE_KEY:-}" ]; then
+  if [ ! -f "$ENV_FILE" ]; then
+    echo "migrate: SOPS_AGE_KEY is set but this image has no $ENV_FILE" >&2
+    exit 1
+  fi
+
+  exec sops exec-env "$ENV_FILE" "./code_my_spec eval CodeMySpec.Release.migrate"
+fi
+
 exec ./code_my_spec eval CodeMySpec.Release.migrate

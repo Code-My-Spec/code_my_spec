@@ -14,6 +14,12 @@ defmodule CodeMySpec.Promotion.APromotedStorySurvivesMainRestartingTest do
   alias CodeMySpec.Staffing
   alias CodeMySpec.WorkingCopies
 
+  def count_owner_query(_, _, _, {owner, counter}) when self() == owner do
+    :counters.add(counter, 1, 1)
+  end
+
+  def count_owner_query(_, _, _, _), do: :ok
+
   defp main_copy(scope, status) do
     {:ok, copy} = WorkingCopies.issue(scope, nil, label: "main", device: device_fixture(scope))
     {:ok, copy} = Staffing.designate_main(scope, copy.id)
@@ -30,6 +36,50 @@ defmodule CodeMySpec.Promotion.APromotedStorySurvivesMainRestartingTest do
 
     assert {true, %{status: "Promoted at version 0.1.1"}} = promoted[50],
            "main restarting un-promoted a story whose code it already holds"
+  end
+
+  test "checking many stamped stories has a fixed query cost" do
+    scope = full_scope_fixture()
+    main_copy(scope, "serving")
+    stories = for id <- 1..12, do: %{id: id, promoted_version: "0.1.1"}
+
+    owner = self()
+    counter = :counters.new(1, [])
+    handler = {__MODULE__, owner, make_ref()}
+
+    :ok =
+      :telemetry.attach(
+        handler,
+        [:code_my_spec, :repo, :query],
+        &__MODULE__.count_owner_query/4,
+        {owner, counter}
+      )
+
+    on_exit(fn -> :telemetry.detach(handler) end)
+
+    {_unpromoted, promoted} = RunningCopy.running_copy_verdicts(scope, stories)
+
+    assert map_size(promoted) == 12
+    assert Enum.all?(promoted, fn {_id, {satisfied?, _details}} -> satisfied? end)
+    assert :counters.get(counter, 1) <= 3
+  end
+
+  test "a new QA revision is unpromoted even with an older publication stamp" do
+    scope = full_scope_fixture()
+    main_copy(scope, "serving")
+
+    story = %{
+      id: 50,
+      promoted_version: "0.1.1",
+      promoted_candidate_commit: "old-candidate",
+      promoted_qa_commit: "old-qa",
+      qa_ready_commit: "new-qa"
+    }
+
+    {_unpromoted, promoted} = RunningCopy.running_copy_verdicts(scope, [story])
+    assert {false, %{reason: reason}} = promoted[50]
+    assert reason =~ "new-qa has no tracked publication"
+    assert RunningCopy.running_copy_check(scope, story) == promoted[50]
   end
 
   test "an unstamped story is still unpromoted" do

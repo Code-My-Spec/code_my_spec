@@ -376,6 +376,19 @@ defmodule CodeMySpec.Devices do
 
   def sign_in_with_token(_token), do: nil
 
+  @doc "Distinguish a revoked box token from one this server has never issued."
+  def box_token_refusal(token) when is_binary(token) do
+    hash = hash_token(token)
+
+    if Repo.exists?(
+         from(d in Device, where: d.token_hash == ^hash and not is_nil(d.token_revoked_at))
+       ) do
+      :revoked_token
+    else
+      :unknown_token
+    end
+  end
+
   @doc """
   Revoke a dev box's token (story 1131). Owners and admins only; the box's token
   stops signing in, and nothing else on the account is touched.

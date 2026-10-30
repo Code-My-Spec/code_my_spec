@@ -253,7 +253,7 @@ Vibium is a browser automation tool by Jason Huggins (creator of Selenium). It d
 
 Every browser automation follows this pattern:
 
-1. **Launch**: `browser_launch` (once per session, if not already running)
+1. **Launch**: `browser_start` (once per session, if not already running)
 2. **Navigate**: `browser_navigate(url: "http://localhost:4000")`
 3. **Map**: `browser_map` (get element refs like `@e1`, `@e2`)
 4. **Interact**: Use refs to click, fill, select — e.g. `browser_click(selector: "@e1")`
@@ -263,7 +263,7 @@ Every browser automation follows this pattern:
 
 **Step 1: Log in once at the start of the QA session**
 ```
-browser_launch(headless: true)
+browser_start(headless: true)
 browser_navigate(url: "http://localhost:4000/users/log-in")
 browser_scroll_into_view(selector: "#login_form_password")
 browser_fill(selector: "#login_form_password_email", text: "qa@example.com")
@@ -413,7 +413,7 @@ browser_screenshot(filename: "mobile.png")
 | Tabs | `browser_list_tabs`, `browser_new_tab`, `browser_switch_tab`, `browser_close_tab` |
 | Auth | `browser_storage_state`, `browser_restore_storage`, `browser_get_cookies`, `browser_set_cookie`, `browser_delete_cookies` |
 | Capture | `browser_screenshot` (`fullPage`, `annotate`), `browser_pdf` |
-| Session | `browser_launch`, `browser_quit` |
+| Session | `browser_start`, `browser_stop` |
 
 ### Troubleshooting
 
@@ -429,7 +429,7 @@ The agent calls MCP tools directly for login/logout/QA setup. See the "Reference
 
 For QA session setup:
 1. Run seeds via bash: `mix run priv/repo/qa_seeds.exs`
-2. Launch browser: `browser_launch(headless: true)`
+2. Launch browser: `browser_start(headless: true)`
 3. Log in using the login sequence above
 4. Browse and test
 

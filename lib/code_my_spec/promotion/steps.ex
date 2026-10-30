@@ -15,10 +15,57 @@ defmodule CodeMySpec.Promotion.Steps do
   require Logger
 
   alias CodeMySpec.ExecutionContexts
+  alias CodeMySpec.TestImpact
 
   @submodule ".code_my_spec"
 
   @type result :: {:ok, term()} | {:error, map()}
+
+  @doc "Remove a retired promotion gate only when Git identifies it as this source's worktree."
+  def retire_gate_worktree(env, source_root, gate_root) do
+    source = Path.expand(source_root)
+    gate = Path.expand(gate_root)
+
+    cond do
+      same_directory?(source, gate) ->
+        {:error, %{reason: "refusing to remove the source checkout as a gate"}}
+
+      true ->
+        case git(env, source, ["worktree", "list", "--porcelain"]) do
+          {list, 0} ->
+            retire_listed_gate(env, source, gate, list)
+
+          {error, _} ->
+            {:error, %{reason: "cannot inspect source worktrees: #{String.trim(error)}"}}
+        end
+    end
+  end
+
+  defp retire_listed_gate(env, source, gate, list) do
+    roots = for "worktree " <> root <- String.split(list, "\n"), do: Path.expand(root)
+
+    case Enum.find(roots, &same_directory?(&1, gate)) do
+      nil ->
+        {:error, %{reason: "retired gate is not a worktree of the source checkout"}}
+
+      listed_root ->
+        case git(env, source, ["worktree", "remove", "--force", listed_root]) do
+          {_, 0} -> {:ok, %{removed: listed_root}}
+          {error, _} -> {:error, %{reason: "cannot remove retired gate: #{String.trim(error)}"}}
+        end
+    end
+  end
+
+  defp same_directory?(left, right) do
+    with {:ok, left_stat} <- File.stat(left),
+         {:ok, right_stat} <- File.stat(right) do
+      left_stat.inode == right_stat.inode and
+        left_stat.major_device == right_stat.major_device and
+        left_stat.minor_device == right_stat.minor_device
+    else
+      _ -> false
+    end
+  end
 
   @doc """
   Whether this checkout has uncommitted work, and what branch it is on.
@@ -299,8 +346,10 @@ defmodule CodeMySpec.Promotion.Steps do
   defp branch(env, root) do
     case git(env, root, ["rev-parse", "--abbrev-ref", "HEAD"]) do
       {branch, 0} ->
+        {head, tree} = head_and_tree(env, root)
+
         {:ok,
-         %{branch: String.trim(branch), head: head(env, root), untracked: untracked(env, root)}}
+         %{branch: String.trim(branch), head: head, tree: tree, untracked: untracked(env, root)}}
 
       {out, _} ->
         {:error, %{reason: "could not read this checkout's branch: #{String.trim(out)}"}}
@@ -455,6 +504,95 @@ defmodule CodeMySpec.Promotion.Steps do
   `{:ok, %{paths: paths}}`; `paths` is `nil` when they cannot be read.
   """
   def changed(env, root, from, to), do: {:ok, %{paths: changed_between(env, root, from, to)}}
+
+  @doc "Select affected tests from the gate device's green Mix baseline."
+  def select_tests(env, root, base, head) do
+    case changed_between(env, root, base, head) do
+      nil ->
+        {:error, %{reason: "cannot read changed files between #{base} and #{head}"}}
+
+      changed ->
+        map_note = build_test_references(env, root)
+        {:ok, Map.put(select_from_baseline(root, changed), "reference_map", map_note)}
+    end
+  end
+
+  # The baseline 1167's selection reads, built without running a test: the
+  # gate head's test files are compiled and required in the project's own VM
+  # with the callbacks `Mix.Compilers.Test` uses for `compile.test_stale`, and
+  # the map is written beside `compile.elixir` as `compile.test_refs`. A green
+  # `--stale` run was the only other source, and selection exists to avoid
+  # full runs. Measured, not acted on: the gate still runs every test.
+  defp build_test_references(env, root) do
+    if loadable_mix_exs?(env, root) do
+      env
+      |> ExecutionContexts.cmd(
+        "mix",
+        ["run", "--no-start", "-e", TestImpact.reference_map_script()],
+        cd: root,
+        stderr_to_stdout: true,
+        env: [{"MIX_ENV", "test"}]
+      )
+      |> normalize()
+      |> case do
+        {_out, 0} ->
+          "built"
+
+        {out, status} ->
+          "not built (exit #{status}): #{out |> String.trim() |> String.slice(-300, 300)}"
+      end
+    else
+      "skipped: no loadable mix.exs"
+    end
+  end
+
+  defp select_from_baseline(root, changed) do
+    manifests =
+      Path.wildcard(Path.join(root, "_build/test/lib/*/.mix/compile.test_impact"),
+        match_dot: true
+      ) ++
+        Path.wildcard(Path.join(root, "_build/test/lib/*/.mix/compile.elixir"), match_dot: true)
+
+    tests_on_disk =
+      ["test/**/*_test.exs", "test/**/*_spex.exs"]
+      |> Enum.flat_map(&Path.wildcard(Path.join(root, &1)))
+      |> Enum.map(&Path.relative_to(&1, root))
+
+    baseline =
+      Enum.find_value(
+        manifests,
+        {:error, "no usable baseline manifests on the gate device"},
+        fn manifest ->
+          case TestImpact.read_baseline(Path.dirname(manifest)) do
+            {:ok, data} -> {:ok, data}
+            {:error, _} -> nil
+          end
+        end
+      )
+
+    {mode, selected, suite, reason} =
+      case baseline do
+        {:ok, data} ->
+          suite = Enum.uniq(tests_on_disk ++ Map.keys(data.test_sources)) |> Enum.sort()
+          result = TestImpact.select(Map.merge(data, %{tests: suite, changed: changed}))
+          {result.mode, result.tests, suite, result.why_all}
+
+        {:error, why} ->
+          suite = Enum.sort(tests_on_disk)
+          {:all, suite, suite, why}
+      end
+
+    %{
+      "mode" => if(mode == :all, do: "full", else: "partial"),
+      "selected_tests" => selected,
+      "suite_size" => length(suite),
+      "reason" => reason,
+      "changed_files" => changed,
+      "failed_tests" => [],
+      "misses" => [],
+      "flakes" => []
+    }
+  end
 
   # What the merge brought in, which `Promotion` reads to choose a reload or a
   # restart. `nil` when it cannot be read, which restarts.
@@ -923,20 +1061,33 @@ defmodule CodeMySpec.Promotion.Steps do
     do: {:ok, %{contained: Enum.filter(commits, &ancestor?(env, root, &1, base))}}
 
   @doc """
-  The checkout's HEAD and its version — the nearest `vX.Y.Z` tag, else the
-  literal in `mix.exs` — moving nothing.
+  The checkout's HEAD, its git tree, and its version — the nearest `vX.Y.Z`
+  tag, else the literal in `mix.exs` — moving nothing.
 
   What a promote from the running copy stamps a story with: the merge path's
-  rule for a no-op merge, without the merge.
+  rule for a no-op merge, without the merge. The gate reads the tree: a pass
+  recorded on it answers there (story 1174).
   """
   @spec current(ExecutionContexts.ExecutionContext.t(), String.t()) :: result()
-  def current(env, root),
-    do: {:ok, %{head: head(env, root), version: current_version(env, root)}}
+  def current(env, root) do
+    {head, tree} = head_and_tree(env, root)
+    {:ok, %{head: head, tree: tree, version: current_version(env, root)}}
+  end
 
   defp head(env, root) do
     case git(env, root, ["rev-parse", "HEAD"]) do
       {sha, 0} -> String.trim(sha)
       _ -> nil
+    end
+  end
+
+  # One call, so the commit and its tree cannot straddle a commit landing.
+  defp head_and_tree(env, root) do
+    with {out, 0} <- git(env, root, ["rev-parse", "HEAD", "HEAD^{tree}"]),
+         [head, tree] <- String.split(out, "\n", trim: true) do
+      {head, tree}
+    else
+      _ -> {head(env, root), nil}
     end
   end
 

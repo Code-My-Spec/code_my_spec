@@ -14,12 +14,14 @@ defmodule CodeMySpecTest.RecordingAgentTransport do
 
   @behaviour CodeMySpec.Agents.Transport
 
+  alias CodeMySpec.Agents.SenderStamp
+
   @doc "Route `project`'s deliveries to the calling process."
   def listen(project), do: CodeMySpecTest.AgentTransportRouter.route(project, __MODULE__)
 
   @impl true
   def dispatch_message(_working_copy_id, agent, ref, message, _timeout) do
-    send(owner(agent), {:agent_dispatch, agent.id, ref, message})
+    report(agent, ref, message, :agent_dispatch)
     {:ok, :started}
   end
 
@@ -31,8 +33,17 @@ defmodule CodeMySpecTest.RecordingAgentTransport do
 
   @impl true
   def request_work_turn(_copy, agent, ref, message, _timeout) do
-    send(owner(agent), {:work_turn_requested, agent.id, ref, message})
+    report(agent, ref, message, :work_turn_requested)
     {:ok, :started}
+  end
+
+  # The body as `tag`, and the sender stamp it arrived under as `{:stamped, …}`:
+  # a test about what an agent was asked reads the body, one about who asked
+  # reads the stamp.
+  defp report(agent, ref, message, tag) do
+    {stamp, body} = SenderStamp.split(message)
+    send(owner(agent), {tag, agent.id, ref, body})
+    send(owner(agent), {:stamped, agent.id, ref, stamp})
   end
 
   # `record_started/3` matches `%{agent_id: _id}` — "the machine confirms

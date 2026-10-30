@@ -58,6 +58,8 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   alias CodeMySpec.Projects.Project
   alias CodeMySpec.ProjectSecrets
   alias CodeMySpec.PromotionQueue
+  alias CodeMySpec.Requirements.CopyOverlay
+  alias CodeMySpec.Requirements.GraphInputs
   alias CodeMySpec.Users.Scope
   alias CodeMySpec.Utils
   alias CodeMySpec.WorkingCopies
@@ -102,6 +104,7 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
       # to a previous connection that will never finish it; an open run makes
       # every later stop report analysis pending.
       Analysis.fail_in_flight(scope, :harness_reconnected, claimed_runs(payload))
+      Analysis.reconcile_rejoined(scope, claimed_runs(payload))
 
       # Then settle what the departure killed: reopen what this harness still
       # holds, run the requested rest again. Registered above, so a re-dispatch
@@ -127,7 +130,11 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
        |> assign(:harness, harness)
        # One reconcile in flight, at most one waiting. See `accept_manifest/2`.
        |> assign(:reconciling, nil)
-       |> assign(:pending_manifest, nil)}
+       |> assign(:reconciling_manifest, nil)
+       |> assign(:reconcile_retries, 0)
+       |> assign(:pending_manifest, nil)
+       |> assign(:overlay_unchecked, false)
+       |> assign(:read_model_due, false)}
     else
       # A changeset is a map too, so it must be matched ahead of the generic
       # refusal clause below — otherwise it passes through as a raw struct
@@ -338,9 +345,31 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   """
   @impl true
   def handle_in("read_model", _payload, socket) do
-    read_model = Files.read_model(socket.assigns.scope)
+    scope = socket.assigns.scope
+    read_model = %{Files.read_model(scope) | overlay_records: CopyOverlay.records(scope)}
+    payload = serialize_read_model(read_model)
 
-    {:reply, {:ok, serialize_read_model(read_model)}, socket}
+    {:reply, {:ok, Map.put(payload, "fingerprint", fingerprint(payload))}, socket}
+  end
+
+  # A checkout's file verdicts and repository state (`CopyOverlay`). Shadow:
+  # stored, then compared with this server's rows once the copy's manifests
+  # have reconciled. Nothing reads it.
+  def handle_in("overlay", %{"verdicts" => verdicts} = payload, socket) when is_list(verdicts) do
+    case CopyOverlay.report(socket.assigns.scope, payload) do
+      {:ok, _report} ->
+        socket =
+          socket
+          |> assign(:overlay_unchecked, true)
+          |> check_overlay_when_quiet()
+          |> follow_read_model()
+
+        {:reply, :ok, socket}
+
+      {:error, reason} ->
+        Logger.warning("[HarnessProject] could not store an overlay: #{inspect(reason)}")
+        {:reply, {:error, %{"reason" => "invalid_overlay"}}, socket}
+    end
   end
 
   # A completed model turn from the sprite's proxy, recorded where the operator
@@ -1280,7 +1309,11 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   defp reply_async(socket, ref, label, fun) do
     task = Task.Supervisor.async_nolink(CodeMySpec.TaskSupervisor, fun)
 
-    assign(socket, :pending_replies, Map.put(pending_replies(socket), task.ref, {ref, label}))
+    assign(
+      socket,
+      :pending_replies,
+      Map.put(pending_replies(socket), task.ref, {ref, label, task.pid})
+    )
   end
 
   # The answer the task computed. Removing the entry here is what makes its
@@ -1290,7 +1323,7 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
       {nil, _} ->
         socket
 
-      {{ref, _label}, pending} ->
+      {{ref, _label, _pid}, pending} ->
         # `:flush` because the `:DOWN` is already on its way and there is
         # nothing left for it to say.
         Process.demonitor(task_ref, [:flush])
@@ -1307,12 +1340,12 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
       {nil, _} ->
         socket
 
-      {{ref, label}, pending} ->
+      {{ref, label, _pid}, pending} ->
         Logger.error("[HarnessProject] #{describe(label)} died: #{death_reason(reason)}")
 
         Phoenix.Channel.reply(
           ref,
-          {:error, handler_failure(socket.assigns.scope, label, reason)}
+          {:error, handler_failure(label, reason)}
         )
 
         assign(socket, :pending_replies, pending)
@@ -1321,19 +1354,20 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
 
   defp pending_replies(socket), do: socket.assigns[:pending_replies] || %{}
 
-  defp handler_failure(scope, {"analysis_run", _source, _request_id, run_id} = label, reason) do
-    run = Analysis.get_run(scope, run_id)
-
+  # Admission identifies a running analysis before its waiter can die. A DOWN
+  # reply must not query the database from the channel process: losing sandbox
+  # ownership there would kill the channel instead of answering the caller.
+  defp handler_failure({"analysis_run", _source, _request_id, run_id} = label, reason) do
     %{
       "reason" => "handler_died",
       "at" => describe(label),
       "handler_error" => death_reason(reason),
       "run_id" => run_id,
-      "status" => if(run, do: to_string(run.status), else: "unknown")
+      "status" => "running"
     }
   end
 
-  defp handler_failure(_scope, label, reason) do
+  defp handler_failure(label, reason) do
     %{
       "reason" => "handler_died",
       "at" => describe(label),
@@ -1378,6 +1412,10 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
     case Analysis.record_remote_result(scope, payload) do
       {:ok, run} ->
         {:ok, %{"run_id" => run.id, "status" => to_string(run.status)}}
+
+      {:error, {:refused, reason}} ->
+        Agents.notify_main(scope, :teammate_stalled, "#{source} analyzer refused: #{reason}")
+        {:ok, %{"run_id" => payload["run_id"], "status" => "refused"}}
 
       # Not applied: reconciling it would rewrite this source's Problems off a
       # run nobody is waiting for.
@@ -1481,8 +1519,8 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   def handle_info({:analysis_admitted, request_id, run_id}, socket) do
     pending =
       Map.new(pending_replies(socket), fn
-        {task_ref, {ref, {"analysis_run", source, ^request_id}}} ->
-          {task_ref, {ref, {"analysis_run", source, request_id, run_id}}}
+        {task_ref, {ref, {"analysis_run", source, ^request_id}, pid}} ->
+          {task_ref, {ref, {"analysis_run", source, request_id, run_id}, pid}}
 
         entry ->
           entry
@@ -1498,6 +1536,24 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
 
   # Ask for a fresh manifest. No payload: the channel already names the copy,
   # and a root on the wire would be a second answer.
+  # A record the read model holds moved. Coalesced: a burst of writes is one
+  # refresh.
+  def handle_info(
+        {:read_model_changed, _project_id},
+        %{assigns: %{read_model_due: true}} = socket
+      ),
+      do: {:noreply, socket}
+
+  def handle_info({:read_model_changed, _project_id}, socket) do
+    Process.send_after(self(), :read_model_changed, read_model_coalesce_ms())
+    {:noreply, assign(socket, :read_model_due, true)}
+  end
+
+  def handle_info(:read_model_changed, socket) do
+    push(socket, "read_model_changed", %{})
+    {:noreply, assign(socket, :read_model_due, false)}
+  end
+
   def handle_info(:rescan, socket) do
     push(socket, "rescan", %{})
     {:noreply, socket}
@@ -1560,14 +1616,34 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
     {:noreply, next_manifest(socket)}
   end
 
-  # A reconcile that died takes its manifest with it; the next scan sends the
-  # whole set again, so this moves on rather than retrying an aged snapshot.
+  # A failed batch rolls back only itself. Keep the already received manifest
+  # in this channel and retry once: committed upserts are no-ops, so the same
+  # observation set resumes without a filesystem scan or a socket reconnect.
   def handle_info(
         {:DOWN, ref, :process, _pid, reason},
         %{assigns: %{reconciling: %Task{ref: ref}}} = socket
       ) do
     Logger.error("[HarnessProject] reconcile failed: #{inspect(reason)}")
-    {:noreply, next_manifest(socket)}
+
+    socket =
+      cond do
+        socket.assigns.pending_manifest != nil ->
+          next_manifest(socket)
+
+        socket.assigns.reconcile_retries < 1 ->
+          entries = socket.assigns.reconciling_manifest
+          Logger.warning("[HarnessProject] retrying received manifest after reconcile failure")
+
+          socket
+          |> assign(:reconciling, start_reconcile(socket.assigns.scope, entries))
+          |> assign(:reconcile_retries, socket.assigns.reconcile_retries + 1)
+
+        true ->
+          Logger.error("[HarnessProject] manifest retry failed; waiting for a newer manifest")
+          next_manifest(socket)
+      end
+
+    {:noreply, socket}
   end
 
   # A deferred reply's answer, and then its task ending (see `reply_async/4`).
@@ -1668,7 +1744,10 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
 
     case ReconcileRegistry.in_flight(working_copy_id) do
       nil ->
-        assign(socket, :reconciling, start_reconcile(socket.assigns.scope, entries))
+        socket
+        |> assign(:reconciling, start_reconcile(socket.assigns.scope, entries))
+        |> assign(:reconciling_manifest, entries)
+        |> assign(:reconcile_retries, 0)
 
       %{count: count, started_at: started_at} ->
         Logger.warning(
@@ -1696,19 +1775,24 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
     end)
   end
 
-  # Both halves of a sync in one transaction: reconcile the files, then project
-  # components and write `component_id` back onto each File row, without which
-  # no `implementation_file` requirement can be satisfied. The transaction lives
-  # in `FileSync`: `CodeMySpecWeb` may not reference `CodeMySpec.Repo`.
+  # FileSync commits bounded batches; each upsert and its component projection
+  # land together so requirement checks can read a consistent batch.
+  # `CodeMySpecWeb` may not reference `CodeMySpec.Repo`.
   defp reconcile(scope, entries), do: FileSync.reconcile_and_project(scope, entries)
 
   defp next_manifest(%{assigns: %{pending_manifest: nil}} = socket) do
-    assign(socket, :reconciling, nil)
+    socket
+    |> assign(:reconciling, nil)
+    |> assign(:reconciling_manifest, nil)
+    |> assign(:reconcile_retries, 0)
+    |> check_overlay_when_quiet()
   end
 
   defp next_manifest(%{assigns: %{pending_manifest: entries}} = socket) do
     socket
     |> assign(:reconciling, start_reconcile(socket.assigns.scope, entries))
+    |> assign(:reconciling_manifest, entries)
+    |> assign(:reconcile_retries, 0)
     |> assign(:pending_manifest, nil)
   end
 
@@ -1828,16 +1912,19 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   defp copy_id(socket), do: socket.assigns.scope.active_working_copy_id
 
   @impl true
-  # Fails this copy's in-flight runs (the analyzers keep running on the harness;
-  # a rejoin that claims them reopens them) and logs why the channel died — the
-  # harness only ever sees an empty `phx_error`. Loud on purpose.
+  # A server drain leaves remote runs open for the returning harness. Other
+  # disconnects close them as orphans; a rejoin can reclaim live runs.
   def terminate(reason, socket) do
     shutdown_reconcile(socket)
 
     case socket.assigns[:scope] do
       %Scope{active_project_id: id} when not is_nil(id) ->
         log_disconnect(reason, socket)
-        Analysis.fail_in_flight(socket.assigns.scope, failure_reason(reason))
+
+        unless reason == {:shutdown, :draining} do
+          Analysis.fail_in_flight(socket.assigns.scope, failure_reason(reason))
+        end
+
         mark_device_down_if_last_copy(socket)
 
       _ ->
@@ -1902,20 +1989,16 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
 
   defp closing_copy(socket), do: socket.topic
 
-  # `{:shutdown, :draining}` means the *server* restarted, killing every copy's
-  # runs; recorded as such, with a timestamp, so agents do not hunt for a
-  # harness problem they do not have.
-  defp failure_reason({:shutdown, :draining}) do
-    "the shared dev server was restarted at " <>
-      DateTime.to_iso8601(DateTime.utc_now()) <>
-      " — this run was killed by that restart, not by anything in your working " <>
-      "copy or its analyzers"
-  end
-
   defp failure_reason(_reason), do: :harness_disconnected
 
-  # The harness leaving on purpose — a restart, a shutdown. Worth a line,
-  # because it still strands whatever was running, but not an alarm.
+  # A server drain leaves remote runs for recovery when the harness rejoins.
+  defp log_disconnect({:shutdown, :draining}, socket) do
+    Logger.info(
+      "[HarnessProject] server draining channel topic=#{socket.topic}; remote runs await harness recovery"
+    )
+  end
+
+  # The harness leaving on purpose is worth a line, but not an alarm.
   defp log_disconnect(reason, socket)
        when reason in [
               :normal,
@@ -2083,18 +2166,59 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   defp parse_mtime(_), do: nil
 
   # Nothing here may be a struct: `story_ids` crosses as a list, and a
-  # component as its `module_name` only, the one field the harness reads.
+  # component as the fields the harness scanner reads for ownership and
+  # proposal validation.
   defp serialize_read_model(%Scanner.ReadModel{} = read_model) do
     %{
       "component_by_module" => read_model.component_by_module,
       "component_by_id" => Map.new(read_model.component_by_id, &serialize_component/1),
       "story_ids" => MapSet.to_list(read_model.story_ids),
-      "strict" => read_model.strict?
+      "story_ids_by_number" => read_model.story_ids_by_number,
+      "story_by_spec_path" => read_model.story_by_spec_path,
+      "strict" => read_model.strict?,
+      "overlay_records" => read_model.overlay_records
     }
   end
 
+  defp fingerprint(payload),
+    do: payload |> :erlang.term_to_binary() |> :erlang.md5() |> Base.encode16(case: :lower)
+
+  # How long a burst of record writes is gathered into one read-model push.
+  # Config so a test can gather over milliseconds.
+  defp read_model_coalesce_ms,
+    do: Application.get_env(:code_my_spec, :read_model_coalesce_ms, 2_000)
+
+  # Told of read-model changes once the harness reports overlays: an older one
+  # does not, and would log a push it does not know.
+  defp follow_read_model(%{assigns: %{following_read_model: true}} = socket), do: socket
+
+  defp follow_read_model(socket) do
+    :ok = GraphInputs.subscribe_read_model(socket.assigns.scope.active_project_id)
+    assign(socket, :following_read_model, true)
+  end
+
+  # Compared only with no manifest reconciling or queued, so the rows have
+  # caught up with the scan the overlay came from.
+  defp check_overlay_when_quiet(
+         %{assigns: %{overlay_unchecked: true, reconciling: nil, pending_manifest: nil}} = socket
+       ) do
+    scope = socket.assigns.scope
+
+    if Application.get_env(:code_my_spec, :analysis_mode) == :inline do
+      CopyOverlay.check(scope)
+    else
+      {:ok, _pid} =
+        Task.Supervisor.start_child(CodeMySpec.TaskSupervisor, fn -> CopyOverlay.check(scope) end)
+    end
+
+    assign(socket, :overlay_unchecked, false)
+  end
+
+  defp check_overlay_when_quiet(socket), do: socket
+
   defp serialize_component({id, component}) do
-    {id, %{"module_name" => Map.get(component, :module_name)}}
+    {id,
+     %{"module_name" => Map.get(component, :module_name), "type" => Map.get(component, :type)}}
   end
 
   # A harness may only hold a project its credential reaches: a deploy key
@@ -2176,11 +2300,13 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   defp take_working_copy(harness, payload) do
     case HarnessRegistry.register_executor(harness.id, payload["instance"], payload["root"]) do
       :ok ->
-        if payload["attachment_operations"] == true do
-          HarnessRegistry.register_verb(harness.id, "attachment_operations")
+        # Main's read/write/edit/bash in this copy (`CodeMySpec.CopyTools`).
+        if payload["copy_tools"] == true do
+          HarnessRegistry.register_verb(harness.id, "copy_tools")
         end
 
         register_app_verbs(harness, payload)
+        register_served_models(harness, payload)
 
       {:error, {:already_registered, pid}} ->
         Logger.warning(
@@ -2213,6 +2339,15 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   end
 
   defp register_app_verbs(_harness, _payload), do: :ok
+
+  # The models each provider serves this harness's logins, where it could read
+  # them; "unknown" (or nothing) leaves a provider unverified.
+  defp register_served_models(harness, %{"served_models" => models}) when is_map(models) do
+    known = for {provider, [_ | _] = ids} <- models, into: %{}, do: {provider, ids}
+    HarnessRegistry.register_served_models(harness.id, known)
+  end
+
+  defp register_served_models(_harness, _payload), do: :ok
 
   defp id_collision(harness, joining_root, held_root) do
     %{

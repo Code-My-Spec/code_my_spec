@@ -21,6 +21,7 @@ defmodule CodeMySpecWeb.HarnessProjectChannelTest do
   @endpoint CodeMySpecWeb.Endpoint
 
   alias CodeMySpec.Analysis.RunsRepository
+  alias CodeMySpec.Requirements.GraphInputs
   alias CodeMySpec.WorkingCopies
   alias CodeMySpecWeb.HarnessProjectChannel
   alias CodeMySpecWeb.UserSocket
@@ -404,14 +405,11 @@ defmodule CodeMySpecWeb.HarnessProjectChannelTest do
       %{socket: socket, run: run}
     end
 
-    test "a server restart says so, with the time", ctx do
+    test "a server restart leaves the harness run claimable", ctx do
       terminate_channel(ctx.socket, {:shutdown, :draining})
 
-      assert %{stats: %{"error" => error}} =
+      assert %{status: :running, orphaned: false} =
                RunsRepository.get_run_in_project(ctx.scope, ctx.run.id)
-
-      assert error =~ "shared dev server was restarted"
-      assert error =~ "not by anything in your working copy"
     end
 
     # The other half. A harness that genuinely went away must not claim a
@@ -451,7 +449,7 @@ defmodule CodeMySpecWeb.HarnessProjectChannelTest do
     # passed here while raising on a real socket. Components have no
     # `@derive Jason.Encoder`, so the harness received no read model at all.
     test "the reply can actually be encoded for the wire", %{scope: scope, topic: topic} do
-      component_fixture(scope)
+      created_component = component_fixture(scope)
 
       {:ok, _reply, channel} = join_as(scope, topic)
 
@@ -461,16 +459,84 @@ defmodule CodeMySpecWeb.HarnessProjectChannelTest do
       assert {:ok, json} = Jason.encode(payload),
              "the read model has to survive JSON — asserting on the term in-process does not check that"
 
-      # And only the one field its reader asks for: `component_by_id` is read
-      # solely for `.module_name`, so shipping the row was a crash and several
-      # kilobytes per component of fields nobody reads.
+      # Only the fields the scanner reads cross the wire. Shipping the full
+      # component row would crash JSON encoding and waste bandwidth.
       decoded = Jason.decode!(json)
 
       for {_id, component} <- decoded["component_by_id"] do
-        assert Map.keys(component) == ["module_name"]
+        assert Map.keys(component) == ["module_name", "type"]
+        assert component["type"] == created_component.type
       end
     end
   end
+
+  describe "overlay" do
+    alias CodeMySpec.Requirements.CopyOverlay.Report
+
+    test "the read model carries the records the overlay reads, and names itself",
+         %{scope: scope, topic: topic} do
+      {:ok, _reply, channel} = join_as(scope, topic)
+
+      ref = push(channel, "read_model", %{})
+      assert_reply ref, :ok, payload, 2_000
+
+      decoded = payload |> Jason.encode!() |> Jason.decode!()
+
+      assert %{"criteria_by_story" => _, "authored" => _, "story_numbers" => _} =
+               decoded["overlay_records"]
+
+      assert is_binary(decoded["fingerprint"])
+    end
+
+    test "once it reports overlays, a harness is told when its read model moved",
+         %{scope: scope, topic: topic} do
+      {:ok, _reply, channel} = join_as(scope, topic)
+
+      # An older harness never reports one, and is not told.
+      component_changed(scope)
+      refute_push "read_model_changed", _, 200
+
+      ref = push(channel, "overlay", %{"read_model" => "abc", "verdicts" => []})
+      assert_reply ref, :ok, _, 2_000
+
+      # A burst is one push.
+      component_changed(scope)
+      component_changed(scope)
+      # The window is 50ms here (config/test.exs).
+      assert_push "read_model_changed", _, 1_000
+      refute_push "read_model_changed", _, 200
+    end
+
+    test "a report is stored and compared with this checkout's rows",
+         %{scope: scope, topic: topic} do
+      {:ok, _reply, channel} = join_as(scope, topic)
+
+      ref =
+        push(channel, "overlay", %{
+          "read_model" => "abc",
+          "head" => "0123abc",
+          "behind" => 2,
+          "dirty" => false,
+          "verdicts" => []
+        })
+
+      assert_reply ref, :ok, _, 2_000
+
+      assert %Report{head: "0123abc", behind: 2, dirty: false, compared_at: %DateTime{}} =
+               CodeMySpec.Repo.get(Report, scope.active_working_copy_id)
+    end
+  end
+
+  defp component_changed(scope),
+    do:
+      GraphInputs.event(
+        scope,
+        "Test",
+        "component_changed",
+        %{},
+        [],
+        :project_wide
+      )
 
   describe "observations" do
     setup %{scope: scope, topic: topic} do
@@ -728,6 +794,48 @@ defmodule CodeMySpecWeb.HarnessProjectChannelTest do
       assert length(CodeMySpec.Files.list_files(scope)) == 1,
              "the same harness must be able to correct itself on the same connection"
     end
+  end
+
+  test "a failed reconcile retries the received manifest without closing the channel", %{
+    scope: scope
+  } do
+    observation = %{
+      path: "lib/retry.ex",
+      role: :implementation,
+      mtime: ~U[2026-07-28 10:00:00.000000Z],
+      size: 10,
+      fingerprint: "retry",
+      valid: true,
+      validation_errors: %{}
+    }
+
+    old_ref = make_ref()
+
+    socket =
+      scope
+      |> harness_socket([])
+      |> Phoenix.Socket.assign(:reconciling, %Task{
+        ref: old_ref,
+        pid: self(),
+        owner: self(),
+        mfa: {__MODULE__, :retry, 0}
+      })
+      |> Phoenix.Socket.assign(:pending_manifest, nil)
+      |> Phoenix.Socket.assign(:reconciling_manifest, [observation])
+      |> Phoenix.Socket.assign(:reconcile_retries, 0)
+
+    assert {:noreply, retried} =
+             HarnessProjectChannel.handle_info(
+               {:DOWN, old_ref, :process, self(), :timeout},
+               socket
+             )
+
+    assert retried.assigns.reconcile_retries == 1
+    assert retried.assigns.reconciling_manifest == [observation]
+    assert %Task{ref: new_ref} = retried.assigns.reconciling
+    refute new_ref == old_ref
+    assert {:ok, %{upserted: 1}} = Task.yield(retried.assigns.reconciling, 2_000)
+    assert length(CodeMySpec.Files.list_files(scope)) == 1
   end
 
   describe "module_name" do
@@ -1042,6 +1150,42 @@ defmodule CodeMySpecWeb.HarnessProjectChannelTest do
       assert run.start_commit == sha
       assert run.start_tree_dirty == true
       assert run.completed_commit == nil
+      assert run.start_tree == nil, "a harness that sends no tree records none"
+    end
+
+    test "a clean start records the tree it ran on (story 1174)",
+         %{channel: channel, scope: scope} do
+      run_id = dispatch_compiler(channel)
+      tree = String.duplicate("c", 40)
+
+      ref =
+        push(channel, "analysis_started", %{
+          "run_id" => run_id,
+          "source" => "compiler",
+          "start_commit" => String.duplicate("a", 40),
+          "start_tree_dirty" => false,
+          "start_tree" => tree
+        })
+
+      assert_reply ref, :ok, _reply, 5_000
+      assert RunsRepository.get_run_in_project(scope, run_id).start_tree == tree
+    end
+
+    test "a dirty start keeps no tree, whatever the harness sent",
+         %{channel: channel, scope: scope} do
+      run_id = dispatch_compiler(channel)
+
+      ref =
+        push(channel, "analysis_started", %{
+          "run_id" => run_id,
+          "source" => "compiler",
+          "start_commit" => String.duplicate("a", 40),
+          "start_tree_dirty" => true,
+          "start_tree" => String.duplicate("c", 40)
+        })
+
+      assert_reply ref, :ok, _reply, 5_000
+      assert RunsRepository.get_run_in_project(scope, run_id).start_tree == nil
     end
 
     test "its result records the commit it finished on", %{channel: channel, scope: scope} do

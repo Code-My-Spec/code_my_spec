@@ -107,7 +107,13 @@ defmodule CodeMySpecSpex.TerminalAgentHelpers do
       %{"session_id" => session_id, "source" => "startup", "permission_mode" => "default"}
       |> put_present("transcript_path", Keyword.get(opts, :transcript))
 
-    HarnessHooks.post_hook(context, "session-start", payload)
+    case HarnessHooks.post_hook(context, "session-start", payload) do
+      %{"agent_id" => id} = answer when is_binary(id) and id != "" ->
+        answer
+
+      answer ->
+        raise "session-start did not register #{session_id}: #{inspect(answer)}"
+    end
   end
 
   @doc """

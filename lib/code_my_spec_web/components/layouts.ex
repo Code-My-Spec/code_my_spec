@@ -194,6 +194,9 @@ defmodule CodeMySpecWeb.Layouts do
                       <a href={~p"/app/projects/#{project.id}/working-copies"}>Working copies</a>
                     </li>
                     <li><a href={~p"/app/projects/#{project.id}/problems"}>Problems</a></li>
+                    <li>
+                      <a href={~p"/app/projects/#{project.id}/promotion-timing"}>Promotion timing</a>
+                    </li>
                     <li><a href={~p"/app/projects/#{project.id}/files"}>Files &amp; sync</a></li>
                     <%!-- "Agent chat" opens whichever session the cockpit defaults to.
                     This is the list of all of them — the way to reach the four a

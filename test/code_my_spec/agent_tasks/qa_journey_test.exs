@@ -55,21 +55,23 @@ defmodule CodeMySpec.AgentTasks.QaJourneyTest do
       refute prompt =~ ~r/wallaby/i
     end
 
-    test "includes journey plan and result output paths", %{scope: scope, task: task} do
+    test "includes journey plan document and result output paths", %{scope: scope, task: task} do
       assert {:ok, prompt} = QaJourney.command(scope, task)
-      assert prompt =~ ".code_my_spec/qa/journey_plan.md"
+      assert prompt =~ "qa_journey_plan"
+      assert prompt =~ "write_document"
       assert prompt =~ ".code_my_spec/qa/journey_result.md"
       assert prompt =~ "test/journeys/"
     end
 
     test "marks phase 1 as SKIP when journey plan exists", %{scope: scope, task: task} do
-      write_file!(fixture_execution_context(scope), ".code_my_spec/qa/journey_plan.md", """
-      # Journey Plan
-      ## Journeys
-      ### Registration Flow
-      ## Prerequisites
-      Run seeds.
-      """)
+      {:ok, _} =
+        CodeMySpec.Qa.Documents.put_legacy(scope, "qa_journey_plan", nil, """
+        # Journey Plan
+        ## Journeys
+        ### Registration Flow
+        ## Prerequisites
+        Run seeds.
+        """)
 
       assert {:ok, prompt} = QaJourney.command(scope, task)
       assert prompt =~ "Phase 1: Journey Planning — SKIP"
@@ -88,15 +90,17 @@ defmodule CodeMySpec.AgentTasks.QaJourneyTest do
       assert prompt =~ "Phase 2: Journey Execution — SKIP"
     end
 
-    test "references QA plan path when it exists", %{scope: scope, task: task} do
-      write_file!(fixture_execution_context(scope), ".code_my_spec/qa/plan.md", """
-      # QA Plan
-      ## App Overview
-      Phoenix app on port 4000.
-      """)
+    test "references QA plan document when it exists", %{scope: scope, task: task} do
+      {:ok, _} =
+        CodeMySpec.Qa.Documents.put_legacy(scope, "qa_plan", nil, """
+        # QA Plan
+        ## App Overview
+        Phoenix app on port 4000.
+        """)
 
       assert {:ok, prompt} = QaJourney.command(scope, task)
-      assert prompt =~ ".code_my_spec/qa/plan.md"
+      assert prompt =~ "qa_plan"
+      assert prompt =~ "read_document"
     end
 
     test "points at the router and config when there is no QA plan", %{scope: scope, task: task} do

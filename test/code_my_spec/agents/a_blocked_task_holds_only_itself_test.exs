@@ -403,12 +403,7 @@ defmodule CodeMySpec.Agents.ABlockedTaskHoldsOnlyItselfTest do
   defp product_work(ctx),
     do: ctx.scope |> MainAgent.list_agent_work() |> Enum.filter(&(&1.agent_id == ctx.product.id))
 
-  defp await_dispatches do
-    CodeMySpec.TaskSupervisor
-    |> Task.Supervisor.children()
-    |> Enum.map(&Process.monitor/1)
-    |> Enum.each(fn ref -> assert_receive {:DOWN, ^ref, _, _, _}, 5_000 end)
-  end
+  defp await_dispatches, do: CodeMySpecTest.OwnDispatches.await()
 
   defp now, do: DateTime.utc_now()
 

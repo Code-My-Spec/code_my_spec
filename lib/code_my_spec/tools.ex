@@ -39,8 +39,32 @@ defmodule CodeMySpec.Tools do
         do: tool.validate_input(args),
         else: :ok
 
-    with :ok <- preflight, do: Peri.validate(tool.params(), args)
+    schema = tool.params()
+    with :ok <- preflight, do: Peri.validate(schema, empty_objects(schema, args))
   end
+
+  # Lua has one table type, so a script's `{}` arrives as `[]`; where the
+  # schema wants an object it is an empty one (issue f281ba34).
+  defp empty_objects(schema, args) when is_map(schema) and is_map(args) do
+    Map.new(args, fn
+      {key, []} = pair -> if object?(param(schema, key)), do: {key, %{}}, else: pair
+      pair -> pair
+    end)
+  end
+
+  defp empty_objects(_schema, args), do: args
+
+  defp param(schema, key) when is_binary(key),
+    do: Enum.find_value(schema, fn {name, type} -> if to_string(name) == key, do: type end)
+
+  defp param(schema, key), do: Map.get(schema, key)
+
+  defp object?({:required, type}), do: object?(type)
+  defp object?({:meta, type, _opts}), do: object?(type)
+  defp object?(:map), do: true
+  defp object?({:map, _values}), do: true
+  defp object?(%{}), do: true
+  defp object?(_type), do: false
 
   @doc "Validates `args` and calls the tool."
   @spec run(module(), map(), context()) :: Tool.result()

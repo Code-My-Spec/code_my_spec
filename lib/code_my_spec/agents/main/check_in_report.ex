@@ -305,7 +305,7 @@ defmodule CodeMySpec.Agents.Main.CheckInReport do
     "tokens (1h): " <>
       Enum.map_join(Enum.take(burn, 3), "; ", fn entry ->
         "#{short(entry.agent_id)} #{role_of(digest, entry.agent_id)} " <>
-          "#{millions(entry.tokens)}/#{entry.turns}t"
+          "#{millions(entry.tokens)}/#{entry.turns}t#{fresh_note(entry)}"
       end)
   end
 
@@ -323,11 +323,20 @@ defmodule CodeMySpec.Agents.Main.CheckInReport do
     |> Enum.map(fn entry ->
       "#{role_of(digest, entry.agent_id)} agent #{entry.agent_id}: burning tokens — " <>
         "#{millions(entry.tokens)} in the last hour over #{entry.turns} turns, largest turn " <>
-        "#{millions(entry.largest_turn)}. Turn it off (run_script: turn_off_agent({agent_id = " <>
+        "#{millions(entry.largest_turn)}#{fresh_reason(entry)}. Turn it off (run_script: turn_off_agent({agent_id = " <>
         inspect(entry.agent_id) <>
         "})); if it must keep working, retire it and start a fresh one."
     end)
   end
+
+  # A new Codex thread mid-conversation sends the whole transcript uncached.
+  defp fresh_note(%{fresh_threads: n}) when is_integer(n) and n > 0, do: " #{n} new thread(s)"
+  defp fresh_note(_entry), do: ""
+
+  defp fresh_reason(%{fresh_threads: n}) when is_integer(n) and n > 0,
+    do: "; #{n} of its turns started a new Codex thread, sending the whole transcript uncached"
+
+  defp fresh_reason(_entry), do: ""
 
   defp role_of(digest, agent_id) do
     Enum.find_value(digest.work, "agent", &(&1.agent_id == agent_id && to_string(&1.role)))

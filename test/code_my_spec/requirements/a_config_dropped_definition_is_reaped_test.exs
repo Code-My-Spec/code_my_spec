@@ -25,12 +25,12 @@ defmodule CodeMySpec.Requirements.AConfigDroppedDefinitionIsReapedTest do
 
   test "a story recompute on the event path reaps deploy once devops is nil", ctx do
     event_write(ctx.scope, ctx.story)
-    assert "deploy" in names(GraphStore.event_target(), ctx.story.id)
+    assert "deploy" in names(ctx.scope, ctx.story.id)
 
     set_devops(ctx.scope, nil)
     {:ok, %{reaped: reaped}} = event_write(ctx.scope, ctx.story)
 
-    refute "deploy" in names(GraphStore.event_target(), ctx.story.id)
+    refute "deploy" in names(ctx.scope, ctx.story.id)
     assert reaped >= 1
   end
 
@@ -65,8 +65,9 @@ defmodule CodeMySpec.Requirements.AConfigDroppedDefinitionIsReapedTest do
     |> Repo.update_all(set: [devops: level])
   end
 
-  defp names(target, story_id) do
-    target
+  # Wherever the rows live: per checkout, or once per project.
+  defp names(scope, story_id) do
+    from(n in subquery(GraphStore.rows_at(scope.active_working_copy_id)))
     |> where([n], n.story_id == ^story_id)
     |> select([n], n.name)
     |> Repo.all()

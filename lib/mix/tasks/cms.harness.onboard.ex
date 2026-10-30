@@ -11,6 +11,8 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
   onboarding a checkout this build does not belong to: the id is minted against
   the *calling* build's server otherwise, and a sibling repo served by a
   packaged release ends up with an id its own daemon has never heard of.
+  With no credential, the command prints a device verification URL and code
+  and waits for approval before minting; no deploy key is required.
 
   Reads the id the server issued this working copy and writes it to
   `.cms_harness.json` and `.claude/settings.local.json`. No `--plugin-dir` is
@@ -61,6 +63,7 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
 
   @impl Mix.Task
   def run(args) do
+    CmsHarness.Proxy.install!()
     # `:req` and nothing else: minting is one HTTP call, and `app.start` would
     # boot Phoenix and Ecto in a checkout that has never been started.
     {:ok, _} = Application.ensure_all_started(:req)
@@ -165,6 +168,10 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
   # starts only `Vault` and `Repo` (via `start_local_repo/0`): `run/1` starts
   # just `:req`, and `WorkingCopies.fetch/1` is a `Repo.get`.
   defp provision_preview(env, root, id) do
+    if Mix.env() == :harness, do: :ok, else: provision_preview_from_local_repo(env, root, id)
+  end
+
+  defp provision_preview_from_local_repo(env, root, id) do
     with :ok <- reachable_repo(),
          {:ok, copy} <- WorkingCopies.fetch(id),
          {:ok, credentials} <- PreviewTunnel.ensure(copy) do
@@ -463,7 +470,7 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
   defp identity(env, root, project_id) do
     case ExecutionContexts.read_file(env, @harness_config_file) do
       {:ok, contents} -> existing_id(contents, env, root, project_id)
-      _ -> CmsHarness.Onboarding.mint(root, project_id)
+      _ -> CmsHarness.Onboarding.mint(root, project_id, authorize: true)
     end
   end
 
@@ -575,7 +582,7 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
   end
 
   defp mint_and_record(env, root, project_id) do
-    with {:ok, id} <- CmsHarness.Onboarding.mint(root, project_id) do
+    with {:ok, id} <- CmsHarness.Onboarding.mint(root, project_id, authorize: true) do
       # Both names, matching `HarnessConfig.write/2`. This writes through
       # `ExecutionContexts` rather than that function because the copy may be on
       # another machine — which is exactly how it drifted out of step with it.
@@ -631,8 +638,32 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
     opts = if base_url, do: Keyword.put(opts, :base_url, base_url), else: opts
 
     case Onboarding.onboard(root, opts) do
-      %{settings: {:ok, _path}} -> :ok
+      %{settings: {:ok, _path}} -> record_claude_port(env)
       %{settings: {:error, reason}} -> {:error, describe_settings_error(reason)}
+    end
+  end
+
+  defp record_claude_port(env) do
+    with {:ok, body} <- ExecutionContexts.read_file(env, @settings_file),
+         {:ok, settings} when is_map(settings) <- Jason.decode(body) do
+      port = System.get_env("CMS_HARNESS_PORT") || "4004"
+
+      settings =
+        Map.update(settings, "env", %{"CMS_HARNESS_PORT" => port}, fn vars ->
+          Map.put(vars, "CMS_HARNESS_PORT", port)
+        end)
+
+      case ExecutionContexts.write_file(
+             env,
+             @settings_file,
+             Jason.encode!(settings, pretty: true)
+           ) do
+        {:ok, _} -> :ok
+        :ok -> :ok
+        {:error, reason} -> {:error, describe_settings_error(reason)}
+      end
+    else
+      {:error, reason} -> {:error, describe_settings_error(reason)}
     end
   end
 

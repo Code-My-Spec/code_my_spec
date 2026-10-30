@@ -239,33 +239,36 @@ defmodule CodeMySpec.Requirements.Preloader do
   The shape inputs and nothing else: components with their dependencies and
   children, and this vantage's stories.
 
-  Enough for `Freshness.topology/2` and `Edges.plan/3`, and for rehydrating a
-  stored row (`components_by_id`, `stories`), so a narrow drain can redraw
-  edges over the rows it holds without a full `load/2`. Not
-  enough for any verdict. Which components have files here is included, to
-  exclude discovered components absent from this checkout.
+  Enough for `Freshness.topology/2` and `Edges.generate/3`, and for rehydrating
+  a stored row (`components_by_id`, `stories`), without a full `load/2`. Not
+  enough for any verdict.
   """
   @spec topology_context(Scope.t()) :: map()
   def topology_context(%Scope{active_project_id: project_id} = scope) do
     components = project_components(project_id)
 
-    file_component_ids =
-      File
-      |> where([f], f.project_id == ^project_id and not is_nil(f.component_id))
-      |> scope_to_harness(files_copy(scope))
-      |> select([f], f.component_id)
-      |> distinct(true)
-      |> Repo.all()
-      |> MapSet.new()
-
     %{
-      file_component_ids: file_component_ids,
       components: components,
       components_by_id: Map.new(components, &{&1.id, &1}),
       children_by_parent: Enum.group_by(components, & &1.parent_component_id),
       story_issues: project_story_issues(project_id),
       stories: project_stories(project_id, scope.active_working_copy_id)
     }
+  end
+
+  @doc """
+  What a read of stored rows needs, and nothing a checker needs.
+
+  `topology_context/1` plus each story's questions, for story execution. A read
+  never loads `load/2`'s context: every file row and checker input on the
+  checkout, a second a call on a large project. Keys it does not load stay
+  absent. See knowledge/requirements_graph, "The read path".
+  """
+  @spec read_context(Scope.t()) :: map()
+  def read_context(%Scope{active_project_id: project_id} = scope) do
+    scope
+    |> topology_context()
+    |> Map.put(:questions_by_story, questions_by_story(project_id))
   end
 
   defp project_story_issues(project_id) do

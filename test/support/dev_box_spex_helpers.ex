@@ -112,6 +112,9 @@ defmodule CodeMySpecSpex.DevBoxHelpers do
   def connect_socket(access_token),
     do: Phoenix.ChannelTest.connect(CodeMySpecWeb.UserSocket, %{"token" => access_token})
 
+  @doc "Expire an issued access token after its first connection has been verified."
+  def expire_access_token(token), do: CodeMySpecSpex.Fixtures.expire_access_token(token)
+
   @doc "Access tokens lasting `seconds`, for the rest of this spex."
   def short_lived_access_tokens(seconds) do
     key = CodeMySpec.Devices
@@ -181,7 +184,7 @@ defmodule CodeMySpecSpex.DevBoxHelpers do
     |> element("[data-test='start-box'][data-device-id='#{device_id}']")
     |> render_click()
 
-    render_async(live)
+    CodeMySpecTest.LiveAsync.render_settled(live)
   end
 
   @doc """

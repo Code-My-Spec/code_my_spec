@@ -23,6 +23,8 @@ defmodule CodeMySpecSpex.DeviceSyncHelpers do
   end
 
   def reconnect(context) do
+    before = CodeMySpec.TaskSupervisor |> Task.Supervisor.children() |> MapSet.new()
+
     {_, socket} =
       Promotion.join_local_working_copy_socket(
         context,
@@ -33,7 +35,7 @@ defmodule CodeMySpecSpex.DeviceSyncHelpers do
         app_verbs: ["reload_app"]
       )
 
-    Map.put(context, :destination_socket, socket)
+    Map.merge(context, %{destination_socket: socket, sync_tasks_before: before})
   end
 
   def serve_revision(context) do
@@ -85,14 +87,27 @@ defmodule CodeMySpecSpex.DeviceSyncHelpers do
     text
   end
 
-  def await_status(context, status, attempts \\ 100) do
-    text = copies(context)
+  # The status is written by the sync task the reconnect started; a polling
+  # budget ran out on a loaded gate before the task did. Wait for the task.
+  def await_status(context, status) do
+    CodeMySpec.TaskSupervisor
+    |> Task.Supervisor.children()
+    |> MapSet.new()
+    |> MapSet.difference(context.sync_tasks_before)
+    |> Enum.each(&await_down/1)
 
-    if String.contains?(text, "device sync #{status}") or attempts == 0 do
-      text
-    else
-      Process.sleep(25)
-      await_status(context, status, attempts - 1)
+    text = copies(context)
+    assert text =~ "device sync #{status}"
+    text
+  end
+
+  defp await_down(pid) do
+    ref = Process.monitor(pid)
+
+    receive do
+      {:DOWN, ^ref, :process, ^pid, _} -> :ok
+    after
+      30_000 -> flunk("device sync task #{inspect(pid)} still running after 30s")
     end
   end
 end

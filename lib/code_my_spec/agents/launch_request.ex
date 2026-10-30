@@ -22,6 +22,7 @@ defmodule CodeMySpec.Agents.LaunchRequest do
     OperatingRules,
     ProviderBrief,
     RoleBrief,
+    SenderStamp,
     ToolIndex
   }
 
@@ -72,16 +73,16 @@ defmodule CodeMySpec.Agents.LaunchRequest do
       "role_brief" => RoleBrief.for(agent.role),
       # Section one: the loop every agent runs and how the machinery behaves;
       # the same for every role and project. See `OperatingRules`.
-      "universal" => OperatingRules.text(),
+      "universal" => OperatingRules.text() <> "\n\n" <> SenderStamp.brief(agent),
       # Every tool it can reach, by name only. See `Agents.ToolIndex`.
       "tool_index" => ToolIndex.for(agent, tools, machine_tools(agent)),
       # The same grant as data, so the harness can say why a direct call missed.
       "tool_reach" => ToolIndex.reach(agent, tools),
       # The tools the engine carries directly, as the server registers them.
       # The harness builds its tools from these rather than keeping copies.
-      "direct_tools" => ToolIndex.carried_definitions(tools),
+      "direct_tools" => ToolIndex.carried_definitions(tools, ToolIndex.copy_tools?(agent)),
       # How a tool call physically happens on this provider. See `ProviderBrief`.
-      "provider_brief" => ProviderBrief.for(agent.provider),
+      "provider_brief" => provider_brief(agent),
       # Where the application is running: the main checkout's preview, whichever
       # copy the agent is in (only the main copy records one).
       "app_url" => app_url(agent),
@@ -91,6 +92,12 @@ defmodule CodeMySpec.Agents.LaunchRequest do
       "messages" => demo_turns() ++ (agent.history || [])
     }
     |> Map.merge(credential_fields(agent.credential))
+  end
+
+  # Terminal sessions call their native MCP tools. ProviderBrief describes the
+  # Alloy backend's tool-call envelope, which would misdirect a terminal Codex.
+  defp provider_brief(agent) do
+    if Agent.terminal?(agent), do: nil, else: ProviderBrief.for(agent.provider)
   end
 
   # Nil when nothing is serving the main checkout: "no address" is a fact an

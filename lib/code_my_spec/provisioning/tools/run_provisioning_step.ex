@@ -67,7 +67,13 @@ defmodule CodeMySpec.Provisioning.Tools.RunProvisioningStep do
         {:meta, :string,
          [
            description:
-             "Required for the \"deploy\" step: which environment to deploy (e.g. \"uat\"). Deploying is a decision about one specific environment, not a batch operation — without this, `Steps.run(:deploy, …)` would deploy every environment the project has in one call, in an unspecified order, stopping at the first failure. That silently includes prod even when a caller only meant to touch uat, so this tool requires naming the one environment intended."
+             "Required for the \"deploy\" and \"dns\" steps: which environment to change (e.g. \"uat\"). Deploying is a decision about one specific environment, not a batch operation — without this, `Steps.run(:deploy, …)` would deploy every environment the project has in one call, in an unspecified order, stopping at the first failure. That silently includes prod even when a caller only meant to touch uat, so this tool requires naming the one environment intended."
+         ]},
+      telemetry_mode:
+        {:meta, :string,
+         [
+           description:
+             "For the \"telemetry\" step only: \"full\" (the default: ClickHouse and the collector), \"capped\" (ClickHouse with a memory cap) or \"collector_only\" (only the OTLP collector; data queues locally until ClickHouse is installed). Pick capped or collector_only on a box shared with other apps."
          ]},
       inbound_probe_to:
         {:meta, :string,
@@ -75,6 +81,15 @@ defmodule CodeMySpec.Provisioning.Tools.RunProvisioningStep do
            description:
              "For the \"inbound\" step only: an address on the project's own domain to prove receiving works (e.g. \"sam@example.com\"). Resend accepts mail only to addresses configured for the domain, so this cannot be guessed."
          ]},
+      proxied:
+        {:meta, :boolean,
+         [
+           description:
+             "For DNS only: must be false so the record stays DNS-only. Defaults to false."
+         ]},
+      ttl:
+        {:meta, :integer,
+         [description: "For DNS only: record TTL in seconds, at least 60. Defaults to 60."]},
       confirm_apex_repoint:
         {:meta, :boolean,
          [
@@ -95,7 +110,8 @@ defmodule CodeMySpec.Provisioning.Tools.RunProvisioningStep do
     with {:ok, scope} <- CodeMySpec.Tools.project_scope(context),
          {:ok, project} <- CodeMySpec.Tools.connected_project(scope),
          {:ok, key} <- find_step(step),
-         :ok <- require_environment(key, params) do
+         :ok <- require_environment(key, params),
+         :ok <- validate_dns_options(key, params) do
       starter = Starter.new(scope, context, label(step, params))
 
       scope
@@ -107,13 +123,33 @@ defmodule CodeMySpec.Provisioning.Tools.RunProvisioningStep do
     end
   end
 
-  defp run_opts(params) do
+  @doc false
+  # Public for its test: each option a param carries to the step.
+  def run_opts(params) do
     []
+    |> with_telemetry_mode(params)
     |> with_inbound_probe(params)
     |> with_confirm_apex_repoint(params)
+    |> with_dns_options(params)
     |> with_confirm_inbound_mx_repoint(params)
     |> with_force(params)
     |> with_environment(params)
+  end
+
+  @telemetry_modes ~w(full capped collector_only)
+
+  # An unknown mode is passed through as given, for `ClickHouse` to refuse by name.
+  defp with_telemetry_mode(opts, params) do
+    case Map.get(params, :telemetry_mode) do
+      mode when mode in @telemetry_modes ->
+        Keyword.put(opts, :telemetry_mode, String.to_atom(mode))
+
+      mode when is_binary(mode) and mode != "" ->
+        Keyword.put(opts, :telemetry_mode, mode)
+
+      _ ->
+        opts
+    end
   end
 
   defp with_inbound_probe(opts, params) do
@@ -130,6 +166,12 @@ defmodule CodeMySpec.Provisioning.Tools.RunProvisioningStep do
     end
   end
 
+  defp with_dns_options(opts, %{step: "dns"} = params) do
+    Keyword.put(opts, :ttl, Map.get(params, :ttl, 60))
+  end
+
+  defp with_dns_options(opts, _params), do: opts
+
   defp with_confirm_inbound_mx_repoint(opts, params) do
     case Map.get(params, :confirm_inbound_mx_repoint) do
       true -> Keyword.put(opts, :confirm_inbound_mx_repoint, true)
@@ -143,6 +185,10 @@ defmodule CodeMySpec.Provisioning.Tools.RunProvisioningStep do
       _ -> opts
     end
   end
+
+  defp with_environment(opts, %{step: "dns", environment: name})
+       when is_binary(name) and name != "",
+       do: Keyword.put(opts, :environments, [name])
 
   defp with_environment(opts, params) do
     case Map.get(params, :environment) do
@@ -179,7 +225,33 @@ defmodule CodeMySpec.Provisioning.Tools.RunProvisioningStep do
     end
   end
 
+  defp require_environment(:dns, params) do
+    case Map.get(params, :environment) do
+      environment when is_binary(environment) and environment != "" ->
+        :ok
+
+      _ ->
+        {:error,
+         "the \"dns\" step needs :environment — name the one environment whose record to write"}
+    end
+  end
+
   defp require_environment(_key, _params), do: :ok
+
+  defp validate_dns_options(:dns, params) do
+    cond do
+      Map.get(params, :proxied, false) != false ->
+        {:error, "DNS proxied must be false for a DNS-only record"}
+
+      not (is_integer(Map.get(params, :ttl, 60)) and Map.get(params, :ttl, 60) >= 60) ->
+        {:error, "DNS ttl must be at least 60 seconds"}
+
+      true ->
+        :ok
+    end
+  end
+
+  defp validate_dns_options(_key, _params), do: :ok
 
   # The `:provisioning_run_async` flag `Provisioning.run_step_async/3` reads:
   # under test a spawned child holds neither the Ecto sandbox checkout nor the
@@ -232,8 +304,8 @@ defmodule CodeMySpec.Provisioning.Tools.RunProvisioningStep do
   end
 
   # The synchronous (test-mode) outcomes: `Provisioning.run_step/3`'s result.
-  defp reply({:ok, %{state: state}}, step, project, _context) do
-    ok("#{step} for #{project.name} is now #{state}.")
+  defp reply({:ok, %{state: state} = row}, step, project, _context) do
+    ok("#{step} for #{project.name} is now #{state}.#{dns_outcomes(row, step)}")
   end
 
   # Paused (waiting on a person) is an expected outcome, not a failure.
@@ -265,13 +337,23 @@ defmodule CodeMySpec.Provisioning.Tools.RunProvisioningStep do
   defp label(step, _params), do: step
 
   @doc false
-  def outcome_message({:ok, %{state: state}}, label, name),
-    do: "Your #{label} step for #{name} finished: #{state}. #{answer()}"
+  def outcome_message({:ok, %{state: state} = row}, label, name),
+    do:
+      "Your #{label} step for #{name} finished: #{state}.#{dns_outcomes(row, label)} #{answer()}"
 
   def outcome_message({:halt, %{state: :paused}, reason}, label, name),
     do:
       "Your #{label} step for #{name} paused: #{Truncate.head_and_tail(reason)}\n\n" <>
         "It will not continue on its own. #{answer()}"
+
+  def outcome_message(
+        {:halt, %{state: :errored}, "Deploy refused at " <> _ = reason},
+        "deploy (" <> _ = label,
+        name
+      ),
+      do:
+        "Your #{label} step for #{name} errored: #{reason}\n\n" <>
+          "It is no longer running. #{answer()}"
 
   def outcome_message({:halt, %{state: :errored}, reason}, label, name),
     do:
@@ -283,6 +365,18 @@ defmodule CodeMySpec.Provisioning.Tools.RunProvisioningStep do
     do:
       "Your #{label} step for #{name} stopped, still #{state}: " <>
         "#{Truncate.head_and_tail(reason)}\n\n#{answer()}"
+
+  defp dns_outcomes(%{resources: resources}, "dns") when is_list(resources) do
+    outcomes =
+      resources
+      |> Enum.filter(&(&1.kind in ["dns_change", "dns_outcome"]))
+      |> Enum.map_join(", ", & &1.identifier)
+
+    if outcomes == "", do: "", else: " DNS outcomes: #{outcomes}."
+  end
+
+  defp dns_outcomes(row, "dns (" <> _environment), do: dns_outcomes(row, "dns")
+  defp dns_outcomes(_row, _step), do: ""
 
   defp answer, do: "This is the outcome of the step you started — act on it now."
 

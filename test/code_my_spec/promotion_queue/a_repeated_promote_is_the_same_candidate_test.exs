@@ -1,6 +1,6 @@
 defmodule CodeMySpec.PromotionQueue.ARepeatedPromoteIsTheSameCandidateTest do
   @moduledoc """
-  Enqueueing is idempotent per copy and commit: a promote repeated after a
+  Enqueueing is idempotent per task, copy, and commit: a promote repeated after a
   harness restart asks for what is already queued or being gated, and gets
   that entry back rather than a second one (the queue's first live hours,
   2026-10-05: one coder's commit sat in the queue twice).
@@ -11,6 +11,7 @@ defmodule CodeMySpec.PromotionQueue.ARepeatedPromoteIsTheSameCandidateTest do
   import CodeMySpec.DevicesFixtures
   import CodeMySpec.UsersFixtures
 
+  alias CodeMySpec.PromotionQueue
   alias CodeMySpec.PromotionQueue.Repository
   alias CodeMySpec.WorkingCopies
 
@@ -20,11 +21,14 @@ defmodule CodeMySpec.PromotionQueue.ARepeatedPromoteIsTheSameCandidateTest do
     %{scope: scope, copy: copy}
   end
 
-  defp enqueue(ctx, commit) do
+  defp enqueue(ctx, commit), do: enqueue(ctx, commit, nil)
+
+  defp enqueue(ctx, commit, task_id) do
     Repository.enqueue(%{
       project_id: ctx.scope.active_project_id,
       working_copy_id: ctx.copy.id,
       commit: commit,
+      task_id: task_id,
       restart: false
     })
   end
@@ -52,6 +56,27 @@ defmodule CodeMySpec.PromotionQueue.ARepeatedPromoteIsTheSameCandidateTest do
     assert reopened.result["publication"] == publication
   end
 
+  test "a held publication cannot be reopened for a different task", ctx do
+    task_id = Ecto.UUID.generate()
+    {:ok, entry} = enqueue(ctx, "candidate-a", task_id)
+    publication = %{"id" => Ecto.UUID.generate(), "head" => "certified"}
+
+    assert {:ok, _} =
+             Repository.move(entry, :landed, %{
+               result: %{"assignment_held" => true, "publication" => publication}
+             })
+
+    assert :none ==
+             Repository.reopen_held(%{
+               project_id: ctx.scope.active_project_id,
+               working_copy_id: ctx.copy.id,
+               commit: "candidate-a",
+               task_id: Ecto.UUID.generate()
+             })
+
+    assert Repository.get(entry.id).status == :landed
+  end
+
   test "a certified publication survives restart and cannot be retargeted", ctx do
     {:ok, entry} = enqueue(ctx, "candidate-a")
     publication = %{"id" => Ecto.UUID.generate(), "base" => "base", "head" => "certified"}
@@ -68,6 +93,17 @@ defmodule CodeMySpec.PromotionQueue.ARepeatedPromoteIsTheSameCandidateTest do
     assert {:ok, %{id: id}} = enqueue(ctx, "c1")
     assert id == first.id
     assert [%{id: ^id}] = open(ctx)
+  end
+
+  test "a reserved candidate can record its gate batch without losing its reservation", ctx do
+    {:ok, waiting} = enqueue(ctx, "c1")
+    {:ok, reserved} = Repository.move(waiting, :gating, %{result: %{"stage" => "build"}})
+    batch_id = Ecto.UUID.generate()
+
+    assert {:ok, %{status: :gating, batch_id: ^batch_id}} =
+             Repository.move(reserved, :gating, %{batch_id: batch_id})
+
+    assert {:error, :candidate_no_longer_queued} = Repository.move(waiting, :gating)
   end
 
   test "the same commit again while it is being gated is the same entry", ctx do
@@ -91,6 +127,46 @@ defmodule CodeMySpec.PromotionQueue.ARepeatedPromoteIsTheSameCandidateTest do
 
     assert {:ok, %{id: id, status: :queued, commit: "c2"}} = enqueue(ctx, "c2")
     refute id == first.id
+  end
+
+  test "a new task withdraws the prior queued task and cannot reserve its stale row", ctx do
+    old_task = Ecto.UUID.generate()
+    new_task = Ecto.UUID.generate()
+    {:ok, old} = enqueue(ctx, "old-revision", old_task)
+    assert {:ok, %{id: old_id}} = enqueue(ctx, "old-revision", old_task)
+    assert old_id == old.id
+
+    assert {:ok, replacement} = enqueue(ctx, "new-revision", new_task)
+    refute replacement.id == old.id
+    assert replacement.task_id == new_task
+    assert replacement.commit == "new-revision"
+    assert Repository.get(old.id).status == :cancelled
+    assert Repository.get(old.id).task_id == old_task
+
+    assert {:error, :candidate_no_longer_queued} =
+             Repository.move(old, :gating, %{batch_id: Ecto.UUID.generate()})
+
+    assert [%{id: replacement_id}] = open(ctx)
+    assert replacement_id == replacement.id
+  end
+
+  test "another task cannot reuse a gating candidate at the same revision", ctx do
+    old_task = Ecto.UUID.generate()
+    new_task = Ecto.UUID.generate()
+    {:ok, old} = enqueue(ctx, "shared-revision", old_task)
+    assert {:ok, _} = Repository.move(old, :gating, %{batch_id: Ecto.UUID.generate()})
+
+    assert {:ok, replacement} = enqueue(ctx, "shared-revision", new_task)
+    refute replacement.id == old.id
+    assert replacement.task_id == new_task
+    assert Repository.get(old.id).status == :gating
+
+    receipt = PromotionQueue.queued_text({:ok, %{queued: replacement, position: 2}})
+    assert receipt =~ replacement.id
+    assert receipt =~ replacement.commit
+    assert receipt =~ new_task
+    assert receipt =~ "Warning: another revision is still queued or gating"
+    assert receipt =~ old.id
   end
 
   # Issue 97b27e62: the worker reads a copy's queued entry once

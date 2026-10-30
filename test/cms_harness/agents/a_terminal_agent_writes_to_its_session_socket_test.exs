@@ -76,6 +76,25 @@ defmodule CmsHarness.Agents.ATerminalAgentWritesToItsSessionSocketTest do
     {id, pid}
   end
 
+  test "reattaching a terminal that closes during the session call returns session ended" do
+    id = Ecto.UUID.generate()
+    parent = self()
+
+    pid =
+      spawn(fn ->
+        {:ok, _} = Registry.register(CmsHarness.Registry, {:agent, id}, nil)
+        send(parent, :registered)
+
+        receive do
+          {:"$gen_call", _from, {:session, _session}} -> exit(:normal)
+        end
+      end)
+
+    assert_receive :registered
+    assert {:error, :session_ended} = Terminal.attach(id, %{working_copy: "/workspace/terminal"})
+    refute Process.alive?(pid)
+  end
+
   test "a delivery is one user frame on the session's socket", %{socket: socket} do
     listen(socket)
 
@@ -378,5 +397,25 @@ defmodule CmsHarness.Agents.ATerminalAgentWritesToItsSessionSocketTest do
     File.touch!(live_path, {{2024, 1, 1}, {0, 0, 2}})
 
     assert %{"pid" => 4242, "status" => "idle"} = Terminal.session_record("cc-dup", dir)
+  end
+
+  # A reconnect re-attaches every terminal agent whose session record survives;
+  # one whose session already ended went up, then down at its first check.
+  test "a terminal agent whose session already ended never starts or reports up", %{
+    socket: socket
+  } do
+    test = self()
+
+    assert :ignore =
+             Terminal.start_link(
+               agent_id: Ecto.UUID.generate(),
+               socket: socket,
+               session_id: "ended-session",
+               working_copy: "/workspace/terminal",
+               sessions: fn -> {:ok, []} end,
+               report_up: fn _root, agent_id -> send(test, {:reported_up, agent_id}) end
+             )
+
+    refute_received {:reported_up, _}
   end
 end

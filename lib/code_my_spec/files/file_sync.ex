@@ -199,25 +199,15 @@ defmodule CodeMySpec.Files.FileSync do
   end
 
   @doc """
-  `reconcile/2` and the component projection, committed together or not at all.
+  Reconcile a complete manifest in bounded, independently committed batches.
 
-  Between the two halves the File rows are current and the components derived
-  from them are not, and a requirement check in that gap reads a committed,
-  wrong answer — nothing about it looks in-flight to `ReconcileRegistry`.
-  Postgres readers do not block on writers under MVCC, so the cost is a held
-  connection, not a stalled reader.
-
-  The timeout is explicit because Ecto's default 15s falls inside the
-  measured tail of this window and would abort exactly the slow reconciles
-  this keeps consistent.
-
-  Lives here rather than at the channel that calls it: `CodeMySpecWeb` may not
-  reference `CodeMySpec.Repo`.
+  Every upsert batch also projects its changed components in the same
+  transaction. Deletions wait until every observed path has landed, then run
+  in bounded batches with their problem cleanup and component projection. A
+  timed-out batch can be retried without undoing earlier batches.
   """
   @reconcile_timeout_ms 60_000
-
-  # Two thirds of the timeout, untuned: warns while there is still something
-  # to see.
+  @reconcile_batch_size 250
   @reconcile_slow_ms 40_000
 
   @spec reconcile_and_project(Scope.t(), [map()]) :: %{
@@ -230,32 +220,153 @@ defmodule CodeMySpec.Files.FileSync do
     started = System.monotonic_time(:millisecond)
 
     try do
-      {:ok, result} =
-        Repo.transaction(
-          fn ->
-            summary = reconcile(scope, observations)
+      CodeMySpec.Files.ComponentRenames.reconcile(scope, observations)
 
-            %{
-              upserted: summary.upserted,
-              removed: summary.removed,
-              changed: length(summary.changed_entries),
-              components: project_components(scope, summary),
-              moved: moved_roles(summary.changed_entries, summary.removed_records)
-            }
-          end,
-          timeout: @reconcile_timeout_ms
-        )
+      observations =
+        observations
+        |> Scanner.resolve_owners(Files.read_model(scope))
+        |> then(&SpecBinding.bind(scope, &1))
+
+      current_paths = Enum.map(observations, &Map.get(&1, :path))
+      current_set = MapSet.new(current_paths)
+
+      missing_paths =
+        scope
+        |> Files.list_files()
+        |> Enum.reject(&MapSet.member?(current_set, &1.path))
+        |> Enum.map(& &1.path)
+
+      problem_paths = Problems.missing_problem_file_paths(scope, current_paths)
+
+      initial = %{
+        upserted: 0,
+        removed: 0,
+        changed: 0,
+        components: :unchanged,
+        moved: %{lockfile: false, knowledge: false},
+        batches: 0,
+        longest_batch_ms: 0
+      }
+
+      result =
+        observations
+        |> Enum.chunk_every(@reconcile_batch_size)
+        |> Enum.reduce(initial, fn entries, acc ->
+          {batch, ms} =
+            transact_batch(scope, length(entries), fn ->
+              {upserted, changed} = Files.upsert_files(scope, entries)
+              summary = %{changed_entries: changed, removed: 0, removed_records: []}
+
+              %{
+                upserted: upserted,
+                removed: 0,
+                changed: length(changed),
+                changed_entries: changed,
+                removed_records: [],
+                components: project_components(scope, summary)
+              }
+            end)
+
+          announce_batch_change(scope, batch)
+          merge_batch(acc, batch, ms)
+        end)
+
+      result =
+        (missing_paths ++ problem_paths)
+        |> Enum.uniq()
+        |> Enum.chunk_every(@reconcile_batch_size)
+        |> Enum.reduce(result, fn paths, acc ->
+          {batch, ms} =
+            transact_batch(scope, length(paths), fn ->
+              {removed, removed_records} = Files.delete_removed_paths(scope, paths)
+              {:ok, orphaned} = Problems.clear_problems_for_paths(scope, paths)
+
+              if orphaned > 0 do
+                Logger.info(
+                  "[FileSync] Cleared #{orphaned} orphaned problem(s) from deleted files"
+                )
+              end
+
+              summary = %{changed_entries: [], removed: removed, removed_records: removed_records}
+
+              %{
+                upserted: 0,
+                removed: removed,
+                changed: 0,
+                changed_entries: [],
+                removed_records: removed_records,
+                components: project_components(scope, summary)
+              }
+            end)
+
+          announce_batch_change(scope, batch)
+          merge_batch(acc, batch, ms)
+        end)
 
       log_duration(scope, observations, System.monotonic_time(:millisecond) - started, result)
       after_manifest(scope, result.moved)
-
-      Map.delete(result, :moved)
+      Map.drop(result, [:moved, :batches, :longest_batch_ms])
     rescue
       error ->
         log_failure(scope, observations, System.monotonic_time(:millisecond) - started, error)
         reraise error, __STACKTRACE__
     end
   end
+
+  defp transact_batch(scope, count, operation, attempt \\ 1) do
+    started = System.monotonic_time(:millisecond)
+
+    try do
+      {:ok, result} = Repo.transaction(operation, timeout: @reconcile_timeout_ms)
+      ms = System.monotonic_time(:millisecond) - started
+
+      :telemetry.execute([:code_my_spec, :file_sync, :batch], %{transaction_ms: ms}, %{
+        count: count
+      })
+
+      Logger.info("[FileSync] committed batch of #{count} for #{working_copy(scope)} in #{ms}ms")
+      {result, ms}
+    rescue
+      error ->
+        if attempt == 1 and String.contains?(Exception.message(error), "timeout") do
+          Logger.warning(
+            "[FileSync] retrying timed-out batch of #{count} for #{working_copy(scope)}"
+          )
+
+          transact_batch(scope, count, operation, 2)
+        else
+          reraise error, __STACKTRACE__
+        end
+    end
+  end
+
+  defp announce_batch_change(scope, batch) do
+    if batch.changed_entries != [] or batch.upserted > 0 or batch.removed > 0 do
+      announce_graph_change(scope, batch.changed_entries, batch.upserted, batch.removed)
+    end
+  end
+
+  defp merge_batch(acc, batch, ms) do
+    moved = moved_roles(batch.changed_entries, batch.removed_records)
+
+    %{
+      acc
+      | upserted: acc.upserted + batch.upserted,
+        removed: acc.removed + batch.removed,
+        changed: acc.changed + batch.changed,
+        components: merge_component_count(acc.components, batch.components),
+        moved: %{
+          lockfile: acc.moved.lockfile or moved.lockfile,
+          knowledge: acc.moved.knowledge or moved.knowledge
+        },
+        batches: acc.batches + 1,
+        longest_batch_ms: max(acc.longest_batch_ms, ms)
+    }
+  end
+
+  defp merge_component_count(:unchanged, next), do: next
+  defp merge_component_count(count, :unchanged), do: count
+  defp merge_component_count(count, next), do: count + next
 
   # The components, projected — unless no file moved, in which case they cannot
   # have. Incremental: only the components the changed files name, plus an
@@ -349,10 +460,8 @@ defmodule CodeMySpec.Files.FileSync do
     if ms >= @reconcile_slow_ms do
       Logger.warning(
         "[FileSync] reconciled #{count} observations for #{copy} in #{ms}ms — within " <>
-          "#{@reconcile_timeout_ms - ms}ms of the #{@reconcile_timeout_ms}ms transaction " <>
-          "timeout. Past it the transaction dies, its task dies, and the channel closes " <>
-          "with it; the harness then rejoins and rescans everything, which is the same " <>
-          "load again. See 5be796f2."
+          "across #{result.batches} batches; longest batch #{result.longest_batch_ms}ms. " <>
+          "Each batch has a #{@reconcile_timeout_ms}ms transaction limit. See 5be796f2."
       )
     else
       Logger.info("[FileSync] reconciled #{count} observations for #{copy} in #{ms}ms#{moved}")
@@ -367,10 +476,9 @@ defmodule CodeMySpec.Files.FileSync do
     Logger.error(
       "[FileSync] reconcile of #{length(observations)} observations for " <>
         "#{working_copy(scope)} FAILED after #{ms}ms (timeout is " <>
-        "#{@reconcile_timeout_ms}ms): #{Exception.message(error)}. If this was the " <>
-        "timeout, the task dies with the transaction and takes its pooled connection " <>
-        "with it, which closes the harness channel; the rejoin rescans everything and " <>
-        "arrives back here. See 5be796f2."
+        "#{@reconcile_timeout_ms}ms per batch): #{Exception.message(error)}. " <>
+        "Earlier batches remain committed; the failed batch can be retried from " <>
+        "the same manifest. See 5be796f2."
     )
   end
 
@@ -757,7 +865,11 @@ defmodule CodeMySpec.Files.FileSync do
               # `validate_entry` to populate `validation_errors`, which the
               # Setup.* `check/1` functions read.
               [entry] = Scanner.fingerprint_entries(env, [entry])
-              Scanner.validate_entry(entry, env, %{}, false)
+
+              component_by_id =
+                if role == :architecture, do: Files.read_model(scope).component_by_id, else: %{}
+
+              Scanner.validate_entry(entry, env, component_by_id, false)
 
             true ->
               [entry] = Scanner.fingerprint_entries(env, [entry])
@@ -819,7 +931,8 @@ defmodule CodeMySpec.Files.FileSync do
               :test_support,
               :qa_plan,
               :persona_summary,
-              :persona_sources
+              :persona_sources,
+              :architecture
             ],
        do: true
 

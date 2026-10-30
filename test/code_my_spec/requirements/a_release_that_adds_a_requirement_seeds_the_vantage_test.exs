@@ -18,6 +18,7 @@ defmodule CodeMySpec.Requirements.AReleaseThatAddsARequirementSeedsTheVantageTes
   import Ecto.Query, only: [from: 2]
 
   alias CodeMySpec.Repo
+  alias CodeMySpec.Requirements.GraphStore
   alias CodeMySpec.Requirements.IncrementalGraph
   alias CodeMySpec.StoriesFixtures
   alias CodeMySpec.Users.Scope
@@ -72,7 +73,7 @@ defmodule CodeMySpec.Requirements.AReleaseThatAddsARequirementSeedsTheVantageTes
       # A row a retired definition left behind.
       [{template_row_id}] =
         scope
-        |> story_rows("component_linked")
+        |> story_rows("bdd_specs_exist")
         |> Ecto.Query.select([n], {n.id})
         |> Ecto.Query.limit(1)
         |> Repo.all()
@@ -119,46 +120,36 @@ defmodule CodeMySpec.Requirements.AReleaseThatAddsARequirementSeedsTheVantageTes
       {:ok, _pid} = IncrementalGraph.ensure_projecting(scope)
       :ok = IncrementalGraph.settle(scope.active_project_id)
 
-      drawn = story_edge_count(scope)
-      assert drawn > 0, "the premise did not hold: no story edges were drawn"
+      drawn = story_edges(scope)
+      assert drawn != [], "the premise did not hold: no story edges were drawn"
 
-      # One edge as an older template would have drawn it: absent.
-      [edge_id] =
-        scope
-        |> story_edges()
-        |> Ecto.Query.select([e], e.id)
-        |> Ecto.Query.limit(1)
-        |> Repo.all()
-
-      {1, _} = from(e in "requirement_edges", where: e.id == ^edge_id) |> Repo.delete_all()
-      assert story_edge_count(scope) == drawn - 1
+      # The edges as an older template would have drawn them: one absent, under
+      # a hash this release's templates do not produce.
+      project_id = scope.active_project_id
+      older = GraphStore.edges(project_id) -- [hd(drawn)]
+      :ok = GraphStore.write_topology(project_id, "an older template", older, older)
+      assert length(story_edges(scope)) == length(drawn) - 1
 
       restart_projector(scope)
 
-      assert story_edge_count(scope) == drawn,
+      assert story_edges(scope) == drawn,
              """
-             A projector arrived on a vantage whose edges did not match the
-             templates it loaded, took the shape as its baseline, and left the
-             edges as they were.
+             A projector arrived on edges that did not match the templates it
+             loaded, took the shape as its baseline, and left the edges as they
+             were.
 
              Rows are trusted on arrival because the next observation about an
              entity corrects them. No observation moves an edge a release moved;
-             only a redraw does, and it costs a plan and a diffed write.
+             only a redraw does.
              """
     end
   end
 
-  defp story_edge_count(%Scope{} = scope), do: scope |> story_edges() |> Repo.aggregate(:count)
-
-  defp story_edges(%Scope{active_project_id: project_id, active_working_copy_id: copy}) do
-    from(e in "requirement_edges",
-      join: n in "requirements",
-      on: n.id == e.from_requirement_id,
-      join: s in "stories",
-      on: s.id == n.story_id,
-      where: s.project_id == type(^project_id, :binary_id),
-      where: is_nil(n.working_copy_id) == is_nil(type(^copy, :binary_id))
-    )
+  defp story_edges(%Scope{active_project_id: project_id}) do
+    project_id
+    |> GraphStore.edges()
+    |> Enum.filter(&match?(%{from: {"story", _, _}}, &1))
+    |> Enum.sort()
   end
 
   defp restart_projector(%Scope{} = scope) do
@@ -182,13 +173,27 @@ defmodule CodeMySpec.Requirements.AReleaseThatAddsARequirementSeedsTheVantageTes
 
   defp rows_named(%Scope{} = scope, name), do: scope |> story_rows(name) |> Repo.aggregate(:count)
 
-  defp story_rows(%Scope{active_project_id: project_id, active_working_copy_id: copy}, name) do
-    stories =
-      from(s in "stories", where: s.project_id == type(^project_id, :binary_id), select: s.id)
+  # Where the name's rows live: once per project, or per checkout.
+  defp story_rows(scope, name),
+    do: story_rows(scope, name, name in GraphStore.project_wide_names())
 
+  defp story_rows(%Scope{active_project_id: project_id}, name, true) do
+    from(n in "project_requirements",
+      where: n.story_id in subquery(project_stories(project_id)) and n.name == ^name
+    )
+  end
+
+  defp story_rows(
+         %Scope{active_project_id: project_id, active_working_copy_id: copy},
+         name,
+         false
+       ) do
     from(n in "requirements",
-      where: n.story_id in subquery(stories) and n.name == ^name,
+      where: n.story_id in subquery(project_stories(project_id)) and n.name == ^name,
       where: is_nil(n.working_copy_id) == is_nil(type(^copy, :binary_id))
     )
   end
+
+  defp project_stories(project_id),
+    do: from(s in "stories", where: s.project_id == type(^project_id, :binary_id), select: s.id)
 end

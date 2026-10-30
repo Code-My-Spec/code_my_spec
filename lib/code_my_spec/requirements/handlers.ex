@@ -32,9 +32,11 @@ defmodule CodeMySpec.Requirements.Handlers do
   alias CodeMySpec.Requirements.BddRulesChecker
   alias CodeMySpec.Requirements.DevopsSetupChecker
   alias CodeMySpec.Requirements.DispatchChecker
+  alias CodeMySpec.Requirements.GraphStore
   alias CodeMySpec.Requirements.IssuesChecker
   alias CodeMySpec.Requirements.PersonasChecker
   alias CodeMySpec.Requirements.Profiles
+  alias CodeMySpec.Requirements.QaDocumentChecker
   alias CodeMySpec.Requirements.QaIntegrationPlanChecker
   alias CodeMySpec.Requirements.Requirement
   alias CodeMySpec.Requirements.RequirementCalculator
@@ -119,6 +121,13 @@ defmodule CodeMySpec.Requirements.Handlers do
   end
 
   def partial_event?(%{kind: kind}), do: kind in @partial
+
+  @doc """
+  Whether a partial event's fallback only re-establishes issue nodes, which are
+  stored once per project: recomputed at one vantage, it is done at all.
+  """
+  def fallback_project_wide?(%{kind: "issue_" <> _}), do: true
+  def fallback_project_wide?(_mark), do: false
 
   # Handled kinds that can move the shape the edges are drawn from (a
   # dependency, a story relinked, file presence deciding a story's discovered
@@ -215,8 +224,6 @@ defmodule CodeMySpec.Requirements.Handlers do
   @path_requirements %{
     "technical_strategy" => {:path, ".code_my_spec/architecture/decisions.md"},
     "code_generation" => {:path, ".code_my_spec/tasks/code_generation.sh"},
-    "qa_setup" => {:path, ".code_my_spec/qa/plan.md"},
-    "qa_journey_plan" => {:path, ".code_my_spec/qa/journey_plan.md"},
     "qa_journey_execute" => {:path, ".code_my_spec/qa/journey_result.md"}
   }
 
@@ -232,22 +239,73 @@ defmodule CodeMySpec.Requirements.Handlers do
   What this event does to the projection.
 
   `{:ok, changes, sweeps}` — individual rows to set, and requirements to settle
-  across a whole population.
+  across a whole population. `skip` names requirements already settled this
+  drain: a project-wide one is the same at every checkout.
   """
-  @spec apply_event(Scope.t(), String.t(), map()) ::
+  @spec apply_event(Scope.t(), String.t(), map(), [String.t()]) ::
           {:ok, [change()], [sweep()]} | :no_handler
-  def apply_event(%Scope{} = scope, kind, _payload) do
+  def apply_event(%Scope{} = scope, kind, _payload, skip \\ []) do
     case Map.get(@dirties, kind) do
       nil ->
         :no_handler
 
       dirty ->
-        names = requirements_reading(dirty)
+        names = requirements_reading(dirty) -- skip
         profiles = load_profiles(scope, names)
 
         {:ok, [], Enum.map(names, &settle(&1, profiles, scope))}
     end
   end
+
+  # What only a checkout's own files answer: its harness reports these.
+  @copy_names ~w(
+    implementation_file bdd_specs_exist technical_strategy code_generation
+    qa_journey_execute spex_boundary_ready architecture_designed qa_integration_plan
+  )
+
+  @doc """
+  A checkout's file verdicts, settled from profiles alone: `:files` (see
+  `Profiles.files_profile/4`), `:stories` with `amigos.criteria_by_story`, and
+  `:architecture`. Reads no database, so a harness runs it on its own scan.
+  """
+  @spec copy_verdicts(map()) :: [sweep()]
+  def copy_verdicts(profiles), do: Enum.map(@copy_names, &settle(&1, profiles, nil))
+
+  # Records, but a checkout's own: its issues leave out those on stories placed
+  # at another checkout.
+  @gate_names ~w(issues_triaged issues_resolved work_dispatched)
+
+  @doc """
+  The checkout's three placement-filtered gates, settled now from its issues
+  and the project's stories. Cheap enough to answer on read.
+  """
+  @spec gate_verdicts(Scope.t()) :: [sweep()]
+  def gate_verdicts(%Scope{} = scope) do
+    profiles = %{issues: Profiles.load(scope, :issues), stories: Profiles.load(scope, :dispatch)}
+    Enum.map(@gate_names, &settle(&1, profiles, scope))
+  end
+
+  @doc "The requirement names `gate_verdicts/1` settles."
+  @spec gate_names() :: [String.t()]
+  def gate_names, do: @gate_names
+
+  @doc "The requirement names `copy_verdicts/1` settles."
+  @spec copy_names() :: [String.t()]
+  def copy_names, do: @copy_names
+
+  @doc """
+  Whether everything this kind moves is stored once per project: settled at one
+  checkout, it is settled at all of them.
+  """
+  @spec project_wide?(String.t() | nil) :: boolean()
+  def project_wide?(kind) do
+    case Map.get(@dirties, kind) do
+      nil -> false
+      dirty -> kind not in @shape and requirements_reading(dirty) -- project_names() == []
+    end
+  end
+
+  defp project_names, do: GraphStore.project_wide_names()
 
   # Every requirement at least one of the dirtied profiles moves. A requirement
   # moved by two is settled once, not once per profile.
@@ -360,7 +418,17 @@ defmodule CodeMySpec.Requirements.Handlers do
     }
   end
 
-  # The five project `path_exists` requirements: one row each, `except` empty.
+  defp settle("qa_setup", _profile, scope) do
+    {satisfied?, detail} = QaDocumentChecker.plan?(scope, nil)
+    project_sweep("qa_setup", satisfied?, detail, detail)
+  end
+
+  defp settle("qa_journey_plan", _profile, scope) do
+    {satisfied?, detail} = QaDocumentChecker.journey_plan?(scope, nil)
+    project_sweep("qa_journey_plan", satisfied?, detail, detail)
+  end
+
+  # The remaining project `path_exists` requirements: one row each, `except` empty.
   defp settle(name, %{files: profile}, _scope) when is_map_key(@path_requirements, name) do
     {satisfied?, detail} = path_verdict(Map.fetch!(@path_requirements, name), profile)
     project_sweep(name, satisfied?, detail, detail)
@@ -603,19 +671,18 @@ defmodule CodeMySpec.Requirements.Handlers do
         DispatchChecker.verdict(dispatch_state(profiles))
 
       {SpexBoundaryChecker, :complete?} ->
-        # `verdict_from_paths/2` is the same function `complete?/2` calls once it
-        # has queried. The profile already holds every file this checkout has, so
-        # the query was the only part worth skipping.
-        SpexBoundaryChecker.verdict_from_paths(scope, boundary_paths(profiles.files))
+        # The profile already holds every file this checkout has.
+        SpexBoundaryChecker.complete?(scope, nil, %{files_by_project: profiles.files.all})
 
       {StoriesChecker, :exist?} ->
         StoriesChecker.verdict(profiles.stories.stories != [])
 
       {ArchitectureChecker, :complete?} ->
-        ArchitectureChecker.complete?(scope, scope.active_project, %{
-          files: profiles.files,
-          authored?: profiles.architecture.authored?
-        })
+        ArchitectureChecker.complete?(
+          scope,
+          nil,
+          Map.put(profiles.architecture, :files_by_project, profiles.files.all)
+        )
 
       {module, function} ->
         apply(module, function, [scope, scope.active_project])
@@ -635,18 +702,6 @@ defmodule CodeMySpec.Requirements.Handlers do
           &(not is_nil(&1.story_id) and Issue.fix_offered?(&1, issues.threshold))
         )
       )
-
-  # The four locations `SpexBoundaryChecker` asks about, out of the files the
-  # profile already read. Over-matching is harmless — every gap re-tests with
-  # `starts_with?` or `MapSet.member?`.
-  defp boundary_paths(files) do
-    prefixes = SpexBoundaryChecker.search_prefixes()
-
-    for file <- files.all,
-        Enum.any?(prefixes, &String.starts_with?(file.path, &1)),
-        into: MapSet.new(),
-        do: file.path
-  end
 
   # The unsealed stories, each with its gap. Worded by
   # `BddRulesChecker.unsealed_reason/3` from the profile's context, not the four
@@ -708,7 +763,11 @@ defmodule CodeMySpec.Requirements.Handlers do
   # gets its own row too â every other false story shares `default_details`,
   # but a reason naming which issue holds this one is not every story's reason.
   defp qa_passes(profile, %{stories: stories}, scope) do
-    ctx = %{qa_latest_by_story: profile.latest_by_story}
+    ctx = %{
+      qa_latest_by_story: profile.latest_by_story,
+      qa_issues_by_id: profile.issues_by_id,
+      qa_issue_threshold: profile.issue_threshold
+    }
 
     ctx =
       case Map.fetch(profile, :submission_snapshots) do

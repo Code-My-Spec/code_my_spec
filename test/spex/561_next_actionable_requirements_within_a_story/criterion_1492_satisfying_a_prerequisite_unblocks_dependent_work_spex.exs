@@ -13,11 +13,7 @@ defmodule CodeMySpecSpex.Story561.Criterion3594Spex do
       given_ "the prerequisite that was blocking the story, now satisfied", context do
         context = context |> Slice.base() |> Slice.child()
 
-        :ok =
-          CodeMySpec.ExecutionContexts.delete_file(
-            context.execution_context,
-            ".code_my_spec/qa/plan.md"
-          )
+        :ok = CodeMySpecSpex.ProjectStateFixtures.delete_qa_document(context.scope, "qa_plan")
 
         {:ok, CodeMySpecSpex.GraphGivens.sync(context)}
       end

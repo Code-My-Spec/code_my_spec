@@ -17,6 +17,7 @@ defmodule CmsHarness.WorkingCopies.Create do
 
   alias ClientUtils.Harness.Onboarding
   alias CmsHarness.Config
+  alias CmsHarness.CopyDatabases
 
   # The project's own recipe for making a copy of itself: what a fresh copy
   # needs is the project's business.
@@ -38,18 +39,37 @@ defmodule CmsHarness.WorkingCopies.Create do
     # with its name so siblings from other repositories do not collide.
     target = request["root"] || Path.join(Path.dirname(root), "#{Path.basename(root)}-#{name}")
 
-    with :ok <- claim_target(root, target),
+    with :ok <- hold(target, request),
+         :ok <- claim_target(root, target),
+         :ok <- clear_leftover_branch(root, name),
          {:ok, setup} <- add_worktree(root, target, name),
          base_head = git_head(target),
          {:ok, id} <- write_identity(target, request) do
       onboard(root, target, id, request)
-      prepare_later(target, request["prepare"] == true)
+      prepare_later(target, request["prepare"] == true, lock(target, request))
       Logger.info("[CmsHarness] made a working copy at #{target}")
       {:ok, %{root: target, working_copy_id: id, setup: setup, base_head: base_head}}
     end
   end
 
   def run(_root, _request), do: {:error, :no_repository}
+
+  # The server gave up on a gate copy at 60s, and its retry found the copy
+  # mid-prepare and reclaimed it from under it.
+  @doc """
+  Hold `target` for one create at a time: held by the create and the prepare it
+  starts (same requester), released when both have exited. A retry arriving
+  while either still runs is refused with `{:create_in_progress, target}`.
+  """
+  @spec hold(String.t(), map()) :: :ok | {:error, {:create_in_progress, String.t()}}
+  def hold(target, request) do
+    if :global.set_lock(lock(target, request), [node()], 0),
+      do: :ok,
+      else: {:error, {:create_in_progress, target}}
+  end
+
+  defp lock(target, request),
+    do: {{__MODULE__, Path.expand(target)}, request["working_copy_id"] || make_ref()}
 
   @prepare_recipe "gate-setup"
   @preparing ".cms_harness_preparing"
@@ -64,11 +84,17 @@ defmodule CmsHarness.WorkingCopies.Create do
   # A copy that must build and test before use (the promotion gate) runs the
   # project's `gate-setup` recipe in the background and is not served until it
   # succeeds; its join tells the queue it is ready.
-  defp prepare_later(_target, false), do: :ok
+  defp prepare_later(_target, false, _lock), do: :ok
 
-  defp prepare_later(target, true) do
+  defp prepare_later(target, true, lock) do
     File.write!(Path.join(target, @preparing), "preparing\n")
-    {:ok, _pid} = Task.start(fn -> prepare(target) end)
+
+    {:ok, _pid} =
+      Task.start(fn ->
+        true = :global.set_lock(lock, [node()])
+        prepare(target)
+      end)
+
     :ok
   end
 
@@ -196,7 +222,22 @@ defmodule CmsHarness.WorkingCopies.Create do
     end
   end
 
-  defp contained?(root, head),
+  # Nothing of its own: its HEAD is on a remote branch, or in the source's
+  # HEAD. A gate copy is made at the landed main, which the copy it was made
+  # from may not have merged yet; told "the source lacks this", a clean,
+  # untouched gate copy was refused every retry.
+  defp contained?(root, head), do: on_a_remote?(root, head) or in_head?(root, head)
+
+  defp on_a_remote?(root, head) do
+    case System.cmd("git", ["-C", root, "branch", "-r", "--contains", head],
+           stderr_to_stdout: true
+         ) do
+      {out, 0} -> String.trim(out) != ""
+      _ -> false
+    end
+  end
+
+  defp in_head?(root, head),
     do:
       match?(
         {_, 0},
@@ -214,6 +255,44 @@ defmodule CmsHarness.WorkingCopies.Create do
 
       Logger.info("[CmsHarness] reclaimed #{target}, left by a create that did not finish")
       :ok
+    end
+  end
+
+  # Left by copies removed without their branches, it made every
+  # `worktree add -b` fail ("a branch named … already exists"). Git refuses to
+  # delete one a worktree has checked out; prune first drops the records of
+  # worktrees already gone.
+  @doc """
+  Clear a leftover branch named `name` before a copy of that name is made:
+  deleted when it has nothing of its own, otherwise kept and refused with
+  `{:leftover_branch_has_commits, name}`.
+  """
+  @spec clear_leftover_branch(String.t(), String.t()) :: :ok | {:error, term()}
+  def clear_leftover_branch(root, name) do
+    case System.cmd(
+           "git",
+           ["-C", root, "rev-parse", "--verify", "--quiet", "refs/heads/" <> name],
+           stderr_to_stdout: true
+         ) do
+      {head, 0} ->
+        delete_leftover_branch(root, name, String.trim(head))
+
+      _none ->
+        :ok
+    end
+  end
+
+  defp delete_leftover_branch(root, name, head) do
+    System.cmd("git", ["-C", root, "worktree", "prune"], stderr_to_stdout: true)
+
+    with true <- contained?(root, head),
+         {_out, 0} <-
+           System.cmd("git", ["-C", root, "branch", "-D", name], stderr_to_stdout: true) do
+      Logger.info("[CmsHarness] deleted the leftover branch #{name} at #{head}")
+      :ok
+    else
+      false -> {:error, {:leftover_branch_has_commits, name}}
+      {out, _status} -> {:error, {:leftover_branch, name, String.trim(out)}}
     end
   end
 
@@ -300,6 +379,7 @@ defmodule CmsHarness.WorkingCopies.Create do
          ) do
       {_out, 0} ->
         Logger.info("[CmsHarness] removed the unacknowledged working copy at #{target}")
+        CopyDatabases.drop_for_root(target)
         :ok
 
       {out, status} ->

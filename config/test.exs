@@ -460,6 +460,10 @@ config :code_my_spec, provisioning_async: false
 # against the live dev server.
 config :code_my_spec, analysis_mode: :inline
 
+# `HarnessProjectChannel` gathers read-model pushes over this window; 2s in
+# production.
+config :code_my_spec, read_model_coalesce_ms: 50
+
 # Static harness socket secret in tests — deterministic and avoids writing a
 # generated secret into the developer's ~/.codemyspec on `mix test`.
 config :code_my_spec, harness_secret: "test-harness-secret"
@@ -518,6 +522,14 @@ config :code_my_spec, CodeMySpecWeb.PreviewLive.Show, recheck_ms: 50
 # the behaviour wanted: a test that forgot to stub should say so.
 config :code_my_spec, CodeMySpec.GitHub, plug: {Req.Test, CodeMySpec.GitHub}
 
+config :code_my_spec, CodeMySpec.Provisioning.Tools.ConnectProvider,
+  plug: {Req.Test, CodeMySpec.Provisioning.Tools.ConnectProvider}
+
+# Every provider's /models answers 404 (an unknown list, allowed) unless a test
+# installs a cassette: `Agents.ProviderModels`.
+config :code_my_spec, CodeMySpec.Agents.ProviderModels,
+  plug: CodeMySpecTest.UnlistedProviderModels
+
 # `:dev_routes` is true here, so this LiveView's route exists in the test
 # router — and its one request goes to the harness on :4004, which on a
 # developer's box is the real one. Pinned so a test that mounts it reaches
@@ -539,6 +551,10 @@ config :code_my_spec, CodeMySpec.Workspaces.Runner.Local,
 # shell-outs rule), so nothing stubs this plug today; it exists so this
 # module is accounted for by `HttpClientsAreStubbableTest` and safe by
 # construction if something ever does call it under test.
+# Removing a checkout drops its databases on the machine's Postgres; under the
+# suite nothing is found or dropped (`CmsHarness.CopyDatabases`).
+config :code_my_spec, CmsHarness.CopyDatabases, runner: CmsHarnessTest.NoCopyDatabases
+
 config :code_my_spec, CmsHarness.AppInstance.Runner.Local,
   plug: {Req.Test, CmsHarness.AppInstance.Runner.Local}
 
@@ -823,6 +839,9 @@ config :code_my_spec, CodeMySpec.Integrations.Providers.GitHub.DeviceAuth,
 
 config :code_my_spec, CodeMySpec.Auth.HarnessOAuth, plug: {Req.Test, CodeMySpec.Auth.HarnessOAuth}
 
+config :code_my_spec, CodeMySpecWeb.SourceGitController,
+  plug: {Req.Test, CodeMySpecWeb.SourceGitController}
+
 # The run guard watches this machine's ports and sweeps what dead BEAMs left. A
 # test BEAM is neither: it polls only when a test asks, and records in its own
 # directory, so it never reaps another harness's runs.
@@ -851,3 +870,6 @@ if System.get_env("CMS_TEST_SQLITE") do
     busy_timeout: 10_000,
     default_transaction_mode: :immediate
 end
+
+# No minute-by-minute memory log line under test.
+config :code_my_spec, :memory_report_period, false

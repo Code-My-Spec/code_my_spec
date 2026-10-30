@@ -105,7 +105,48 @@ defmodule CodeMySpecWeb.DeviceLive.HarnessComponent do
         class="card card-compact mt-4 border border-success bg-base-100"
       >
         <div class="card-body gap-3">
-          <h2 class="card-title">{@new_box.name} harness access</h2>
+          <h2 class="card-title">{@new_box.name} was added</h2>
+          <p class="text-sm">The dev box is saved. Complete its connection setup below.</p>
+          <ol
+            :if={@new_box.device.provider == :claude_code_cloud}
+            data-test="claude-cloud-steps"
+            class="list-decimal pl-5 text-sm"
+          >
+            <li>
+              In claude.ai/code, paste the setup script into the environment's setup script box.
+            </li>
+            <li>Add the listed hosts to that environment's allowed hosts.</li>
+            <li>
+              Add a network secret for {@server_host} with the copied token as its value, without a Bearer prefix.
+            </li>
+          </ol>
+          <ol
+            :if={@new_box.device.provider == :codex_cloud}
+            data-test="codex-cloud-steps"
+            class="list-decimal pl-5 text-sm"
+          >
+            <li>Open a Codex cloud environment for this project's repository.</li>
+            <li>
+              Apply the environment settings and allowed hosts below, then run the installation
+              script in that environment's setup step.
+            </li>
+            <li>
+              Paste “Start or resume” into the cloud chat. When it displays an authorization link
+              and code, approve them in your browser and let the agent finish connecting.
+            </li>
+            <li>
+              Wait for the agent to confirm it is connected before giving it work. To continue
+              later, reopen the same cloud chat and paste “Start or resume” again.
+            </li>
+          </ol>
+          <p
+            :if={@new_box.device.provider == :codex_cloud}
+            data-test="codex-cloud-manual-resume"
+            class="text-sm"
+          >
+            Cloud work does not require your computer to stay open. CodeMySpec cannot wake this
+            chat automatically; return to the cloud chat when you want the agent to continue.
+          </p>
           <p :if={Map.get(@new_box, :show_token?, true)} class="text-sm">
             This is its token. It is shown once: copy it now, because it cannot be shown again.
           </p>
@@ -131,6 +172,12 @@ defmodule CodeMySpecWeb.DeviceLive.HarnessComponent do
             </div>
             <pre class="whitespace-pre-wrap rounded bg-base-200 p-2 text-xs">{section.body}</pre>
           </div>
+          <.button
+            type="button"
+            phx-click="done_dev_box"
+            phx-target={@myself}
+            data-test="done-dev-box"
+          >Done</.button>
         </div>
       </div>
 
@@ -553,6 +600,9 @@ defmodule CodeMySpecWeb.DeviceLive.HarnessComponent do
 
   def handle_event("cancel_dev_box", _params, socket),
     do: {:noreply, assign(socket, adding?: false)}
+
+  def handle_event("done_dev_box", _params, socket),
+    do: {:noreply, socket |> assign(new_box: nil) |> changed()}
 
   def handle_event("enroll_machine", %{"id" => id}, socket) do
     case Devices.enroll_existing_device(socket.assigns.current_scope, id) do

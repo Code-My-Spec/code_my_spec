@@ -14,11 +14,12 @@ defmodule CodeMySpec.Provisioning.HostBaselineTest do
     on_exit(fn -> File.rm_rf!(directory) end)
 
     scripts = %{
-      "docker" => "#!/bin/sh\nprintf 'local\\n'\n",
+      "docker" =>
+        "#!/bin/sh\nif [ \"$1\" = ps ]; then printf '%s' \"$RUNNING\"; else printf '%s\\n' \"${ACTIVE_DRIVER:-local}\"; fi\n",
       "dockerd" =>
         "#!/bin/sh\n[ \"$FAIL_VALIDATE\" != 1 ] || exit 9\nexec python3 -m json.tool \"$3\" >/dev/null\n",
       "systemctl" =>
-        "#!/bin/sh\nprintf 'restart\\n' >> \"$RESTART_LOG\"\n[ \"$FAIL_RESTART\" != 1 ]\n"
+        "#!/bin/sh\nprintf '%s\\n' \"$1\" >> \"$RESTART_LOG\"\n[ \"$FAIL_RESTART\" != 1 ]\n"
     }
 
     for {name, content} <- scripts do
@@ -31,7 +32,8 @@ defmodule CodeMySpec.Provisioning.HostBaselineTest do
       {"PATH", bin <> ":" <> System.get_env("PATH")},
       {"RESTART_LOG", Path.join(directory, "restarts")},
       {"FAIL_VALIDATE", "0"},
-      {"FAIL_RESTART", "0"}
+      {"FAIL_RESTART", "0"},
+      {"RUNNING", ""}
     ]
 
     {:ok, config: config, path: Path.join(config, "daemon.json"), env: env}
@@ -85,6 +87,54 @@ defmodule CodeMySpec.Provisioning.HostBaselineTest do
     assert status != 0
     assert File.read!(ctx.path) == "{}"
     assert File.read!(restart_log(ctx)) == "restart\nrestart\n"
+  end
+
+  # The server step restarted Docker on a box already serving customer apps,
+  # and every container went down with it.
+  describe "a box already running containers" do
+    setup ctx do
+      %{ctx | env: List.keystore(ctx.env, "RUNNING", 0, {"RUNNING", "abc123\n"})}
+    end
+
+    test "is reloaded, never restarted, when its configuration changes", ctx do
+      File.write!(ctx.path, "{}")
+
+      assert {_, 0} = execute(ctx, "10.2.0.2:5000")
+      configured = Jason.decode!(File.read!(ctx.path))
+      assert configured["live-restore"] == true
+      assert configured["insecure-registries"] == ["10.2.0.2:5000"]
+      assert File.read!(restart_log(ctx)) == "reload\n"
+    end
+
+    test "is left alone when only the active log driver differs", ctx do
+      File.write!(ctx.path, Jason.encode!(desired()))
+
+      ctx = %{
+        ctx
+        | env: List.keystore(ctx.env, "ACTIVE_DRIVER", 0, {"ACTIVE_DRIVER", "json-file"})
+      }
+
+      assert {_, 0} = execute(ctx, nil)
+      refute File.exists?(restart_log(ctx))
+    end
+
+    test "a failed reload restores the previous configuration", ctx do
+      File.write!(ctx.path, "{}")
+      ctx = %{ctx | env: List.keystore(ctx.env, "FAIL_RESTART", 0, {"FAIL_RESTART", "1"})}
+
+      assert {_, status} = execute(ctx, nil)
+      assert status != 0
+      assert File.read!(ctx.path) == "{}"
+      assert File.read!(restart_log(ctx)) == "reload\n"
+    end
+  end
+
+  defp desired do
+    %{
+      "log-driver" => "local",
+      "live-restore" => true,
+      "log-opts" => %{"max-size" => "20m", "max-file" => "5", "compress" => "true"}
+    }
   end
 
   test "baseline stops on failure and suppresses remote output" do

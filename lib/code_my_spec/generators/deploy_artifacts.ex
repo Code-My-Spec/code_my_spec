@@ -10,7 +10,7 @@ defmodule CodeMySpec.Generators.DeployArtifacts do
   ## Where the content comes from
 
   `priv/knowledge/devops/hetzner-docker-deploy.md` — the stack this project
-  actually deploys on. The image is built in CI and pushed to GHCR, Kamal pulls
+  actually deploys on. The burst-box builder builds the image at deploy time, and Kamal pulls
   it onto the host by commit SHA, and kamal-proxy terminates TLS and routes by
   hostname. Writing a plausible-looking Dockerfile from memory would produce a
   project that generates cleanly and fails on its first real deploy.
@@ -52,16 +52,30 @@ defmodule CodeMySpec.Generators.DeployArtifacts do
   def generate(env, opts \\ []) do
     app = Keyword.get(opts, :app, "app")
     host = Keyword.get(opts, :host, "example.com")
-    registry = Keyword.get(opts, :registry, "ghcr.io")
+    image = Keyword.get(opts, :image)
+    registry = Keyword.get(opts, :registry)
     owner = Keyword.get(opts, :owner, "your-org")
 
+    cond do
+      is_nil(image) or is_nil(registry) or is_nil(opts[:kamal_image]) ->
+        {:error, :registry_image_required}
+
+      image != "#{Keyword.get(opts, :prod_registry) || registry}/#{opts[:kamal_image]}" ->
+        {:error, :registry_image_mismatch}
+
+      true ->
+        generate_with_registry(env, opts, app, host, registry, owner, image)
+    end
+  end
+
+  defp generate_with_registry(env, opts, app, host, registry, owner, image) do
     artifacts =
       files(
         app: app,
         host: host,
         registry: registry,
         owner: owner,
-        image: Keyword.get(opts, :image),
+        image: image,
         kamal_image: Keyword.get(opts, :kamal_image),
         prod_registry: Keyword.get(opts, :prod_registry),
         uat_registry: Keyword.get(opts, :uat_registry),
@@ -106,13 +120,12 @@ defmodule CodeMySpec.Generators.DeployArtifacts do
 
   Options:
 
-    * `:image` — the exact image reference. Defaults to
-      `<registry>/<owner>/<app>` (ghcr.io naming); a caller deploying to the
-      self-hosted `CodeMySpec.Provisioning.Registry`, which has no owner
-      segment, passes `Registry.image/2`.
+    * `:image` — the exact image reference. Comes from
+      `CodeMySpec.Provisioning.Registry.image/2` and is required by
+      `generate/2`.
     * `:kamal_image` — kamal's `image:`, a bare repository path (kamal reads
-      the host from `registry.server`), where CI's `docker build -t` needs the
-      full reference. Defaults to `:image`.
+      the host from `registry.server`). The burst-box builder uses the full
+      reference when it builds and pushes. Required by `generate/2`.
     * `:prod_registry` / `:uat_registry` — per-environment registry hosts,
       since two environments may sit on two boxes. Each defaults to
       `:registry`.
@@ -131,7 +144,6 @@ defmodule CodeMySpec.Generators.DeployArtifacts do
 
     [
       {"Dockerfile", dockerfile(app)},
-      {".github/workflows/build.yml", ci_workflow(image)},
       {"config/deploy.yml",
        kamal_config(app, kamal_image, host, "prod", prod_registry, telemetry_host)},
       {"config/deploy.uat.yml",
@@ -144,6 +156,7 @@ defmodule CodeMySpec.Generators.DeployArtifacts do
       {"envs/prod.enc.env", env_scaffold("prod")},
       {"envs/uat.enc.env", env_scaffold("uat")},
       {"lib/#{app}_web/router.ex", router(app)},
+      {"lib/#{app}_web/controllers/health_controller.ex", health_controller(app)},
       {"lib/#{app}/release.ex", release_module(app)},
       {"config/runtime.exs", runtime_config(app)}
     ]
@@ -249,50 +262,6 @@ defmodule CodeMySpec.Generators.DeployArtifacts do
     """
   end
 
-  # Multi-arch: the box may be ARM (Hetzner's cax range) or amd64, and the
-  # wrong one fails at `docker run` with an error that names nothing useful.
-  defp ci_workflow(image) do
-    """
-    name: build
-
-    on:
-      push:
-        branches: [main]
-
-    jobs:
-      image:
-        runs-on: ubuntu-latest
-        permissions:
-          contents: read
-          packages: write
-
-        steps:
-          - uses: actions/checkout@v4
-
-          - uses: docker/setup-qemu-action@v3
-          - uses: docker/setup-buildx-action@v3
-
-          - uses: docker/login-action@v3
-            with:
-              registry: ghcr.io
-              username: ${{ github.actor }}
-              password: ${{ secrets.GITHUB_TOKEN }}
-
-          # Tagged by commit SHA, so what is running is traceable to a commit
-          # rather than to whenever `latest` was last pushed.
-          - uses: docker/build-push-action@v6
-            with:
-              context: .
-              platforms: linux/amd64,linux/arm64
-              push: true
-              tags: |
-                #{image}:${{ github.sha }}
-                #{image}:latest
-              cache-from: type=gha
-              cache-to: type=gha,mode=max
-    """
-  end
-
   # One file per environment, so a UAT deploy cannot touch production's host.
   # `servers.web` is the environment's hostname: the DNS step points it at the
   # box before the deploy step runs.
@@ -320,6 +289,10 @@ defmodule CodeMySpec.Generators.DeployArtifacts do
     # Kamal deploys #{environment} for #{app}.
     service: #{service_name}
     image: #{image}
+    # The server can fall back to another architecture when its region is full.
+    # Provisioning sets this from the architecture reported by Hetzner.
+    builder:
+      arch: <%= ENV.fetch("CMS_TARGET_ARCH") %>
     #{kamal_ssh_block()}
     servers:
       web:
@@ -355,9 +328,10 @@ defmodule CodeMySpec.Generators.DeployArtifacts do
         OTEL_SERVICE_NAME: #{service_name}-web
         OTEL_EXPORTER_OTLP_ENDPOINT: http://cms-otel-collector:4318
         OTEL_EXPORTER_OTLP_PROTOCOL: http/protobuf
+      # The one secret the container gets: `bin/boot` and `bin/migrate`
+      # decrypt envs/<env>.enc.env with it, which holds everything else.
       secret:
-        - SECRET_KEY_BASE
-        - DATABASE_URL
+        - SOPS_AGE_KEY
 
     # Migrations run against the new image before traffic moves to it, so a
     # migration that fails leaves the old version serving.
@@ -961,6 +935,18 @@ defmodule CodeMySpec.Generators.DeployArtifacts do
 
         get "/", PageController, :home
       end
+    end
+    """
+  end
+
+  defp health_controller(app) do
+    web = Macro.camelize(app) <> "Web"
+
+    """
+    defmodule #{web}.HealthController do
+      use #{web}, :controller
+
+      def show(conn, _params), do: Plug.Conn.send_resp(conn, 200, "ok")
     end
     """
   end

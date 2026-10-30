@@ -5,7 +5,10 @@ defmodule CodeMySpec.Promotion.RemoteSteps do
   reconcile a lost response only when that receipt exists. No operation edits
   the source checkout; synchronization is explicitly a destination operation.
   """
+  require Logger
   alias CodeMySpec.ExecutionContexts
+
+  @push_attempts 3
 
   def remote_head(env, root, branch) do
     with :ok <- valid_branch(env, root, branch),
@@ -74,7 +77,10 @@ defmodule CodeMySpec.Promotion.RemoteSteps do
     end
   end
 
-  defp push(env, root, branch, base, head, receipt) do
+  defp push(env, root, branch, base, head, receipt),
+    do: push(env, root, branch, base, head, receipt, 1)
+
+  defp push(env, root, branch, base, head, receipt, attempt) do
     # An exact lease is compare-and-swap, not permission to rewrite history:
     # publish/6 proves base is an ancestor before this command can run.
     result =
@@ -90,8 +96,29 @@ defmodule CodeMySpec.Promotion.RemoteSteps do
       ])
 
     case result do
-      {:ok, _} -> success(branch, base, head, false)
-      {:error, push_error} -> reconcile_push(env, root, branch, base, head, receipt, push_error)
+      {:ok, _} ->
+        success(branch, base, head, false)
+
+      {:error, push_error} ->
+        case reconcile_push(env, root, branch, base, head, receipt, push_error) do
+          {:error, %{retryable: true}} when attempt < @push_attempts ->
+            Logger.warning(
+              "[Promotion] remote push of #{head} failed on attempt #{attempt}; retrying: #{push_error.reason}"
+            )
+
+            Process.sleep(100 * attempt)
+            push(env, root, branch, base, head, receipt, attempt + 1)
+
+          {:error, %{retryable: true}} = retry ->
+            Logger.warning(
+              "[Promotion] remote push of #{head} remains retryable after #{attempt} attempts: #{push_error.reason}"
+            )
+
+            retry
+
+          other ->
+            other
+        end
     end
   end
 
@@ -109,7 +136,7 @@ defmodule CodeMySpec.Promotion.RemoteSteps do
           failure(:moved, "origin/#{branch} moved without this promotion's receipt")
 
         {nil, ^base} ->
-          failure(:rejected, push_error.reason)
+          unreconciled_push(push_error.reason)
       end
     else
       _ ->
@@ -118,6 +145,19 @@ defmodule CodeMySpec.Promotion.RemoteSteps do
           "push result could not be reconciled; retry the same promotion: #{push_error.reason}"
         )
     end
+  end
+
+  defp unreconciled_push(reason) do
+    if transient_push_error?(reason),
+      do: failure(:uncertain, "remote push failed; retry the same promotion: #{reason}"),
+      else: failure(:rejected, reason)
+  end
+
+  defp transient_push_error?(reason) do
+    String.match?(
+      reason,
+      ~r/fatal error in commit_refs|could not resolve host|connection (?:timed out|reset|refused)|remote end hung up|the requested URL returned error: 5\d\d/i
+    )
   end
 
   defp reconcile(env, root, branch, base, head, remote) do

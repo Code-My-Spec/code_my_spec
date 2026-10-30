@@ -47,6 +47,7 @@ defmodule CodeMySpec.Provisioning.Steps do
   alias CodeMySpec.Utils.MapAccess
 
   alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts.ExecutionContext
 
   alias CodeMySpec.Provisioning.{
     Backups,
@@ -169,13 +170,23 @@ defmodule CodeMySpec.Provisioning.Steps do
 
   # Asked of the Cloudflare zone, not a resolver: does each record still point
   # where this project put it. One zone lookup and one record list.
-  def verify(:dns, %Scope{} = scope, _opts) do
-    case {domain(scope), pointable_environments(scope)} do
-      {nil, _} -> {:ok, :absent}
-      # No environment has an address yet, so there is nothing dns could have
-      # written. Absent rather than satisfied: the server step has not run.
-      {_domain, []} -> {:ok, :absent}
-      {domain, environments} -> verify_dns_records(scope, domain, environments)
+  def verify(:dns, %Scope{} = scope, opts) do
+    with domain when is_binary(domain) <- domain(scope),
+         {:ok, selected} <- selected_dns_environments(permitted_hosts(scope, domain), opts),
+         [_ | _] <- selected do
+      pointable =
+        Enum.filter(
+          selected,
+          &(is_binary(&1.ip) and &1.ip != "" and is_binary(&1.host) and &1.host != "")
+        )
+
+      if length(pointable) == length(selected),
+        do: verify_dns_records(scope, domain, pointable, opts),
+        else: {:ok, :absent}
+    else
+      nil -> {:ok, :absent}
+      [] -> {:ok, :absent}
+      {:error, reason} -> {:error, reason}
     end
   end
 
@@ -412,7 +423,8 @@ defmodule CodeMySpec.Provisioning.Steps do
          {:ok, zone} <- find_dns_zone(scope, name, opts),
          # `[_ | _]`: an empty list would report done having published
          # nothing. Empty means the devops level filtered out every row.
-         [_ | _] = environments <- permitted_hosts(scope, name),
+         {:ok, environments} <- selected_dns_environments(permitted_hosts(scope, name), opts),
+         [_ | _] <- environments,
          {:ok, resources} <- dns_records_for(scope, zone, environments, opts) do
       record_client_api_url(scope, environments, opts)
       {:ok, resources}
@@ -425,8 +437,14 @@ defmodule CodeMySpec.Provisioning.Steps do
 
       # Passed through: "your apex is live" is a question for the operator,
       # not a failure.
+      {:paused, message, partial} ->
+        {:paused, message, partial}
+
       {:paused, message} ->
         {:paused, message}
+
+      {:error, reason, partial} ->
+        {:error, format(reason), partial}
 
       {:error, reason} ->
         {:error, format(reason)}
@@ -1086,11 +1104,23 @@ defmodule CodeMySpec.Provisioning.Steps do
   # Sending domains at Resend for prod rows the devops level no longer
   # permits — left behind when the level narrowed after a run.
   defp mail_orphans(scope, base) do
-    for environment <- Environments.deployment_names(scope),
-        environment in ["prod", "production"],
-        sending = Resend.sending_domain(base, environment),
-        match?({:ok, _}, Resend.find_domain(scope, sending)) do
-      sending
+    # A project that has only ever selected UAT has no sending domain to
+    # reconcile. Its owned domain alone is not a reason to query Resend.
+    case StepRepository.get(scope, :email) do
+      %{resources: resources} when is_list(resources) ->
+        if Enum.any?(resources, &(&1.kind == "sending_domain")) do
+          for environment <- Environments.deployment_names(scope),
+              environment in ["prod", "production"],
+              sending = Resend.sending_domain(base, environment),
+              match?({:ok, _}, Resend.find_domain(scope, sending)) do
+            sending
+          end
+        else
+          []
+        end
+
+      _ ->
+        []
     end
   end
 
@@ -1754,21 +1784,40 @@ defmodule CodeMySpec.Provisioning.Steps do
   # What `Builder.Remote.ssh_runner/2` `fetch!`es: `:env` and a key on disk.
   # The account key is written 0600 to a temp dir (ssh refuses a readable
   # key) and removed by `cleanup_builder_key/2`.
-  defp with_builder_ssh(scope, opts) do
+  #
+  # `:env` stays the checkout (source delivery reads it); `:ssh_env` is where
+  # ssh itself runs: this node, where the key file is. Routing ssh through
+  # `env/1` sent it to a harness copy's harness, which runs no commands, and
+  # `await_ssh` timed out on boxes that were up.
+  @doc false
+  def with_builder_ssh(scope, opts) do
     case Keyword.get(opts, :ssh_key_path) do
       path when is_binary(path) ->
-        {:ok, Keyword.put_new(opts, :env, env(scope))}
+        {:ok, with_ssh_env(opts, scope, Path.dirname(path))}
 
       _ ->
         write_builder_key(scope, opts)
     end
   end
 
+  # The checkout's own context runs ssh when it can run commands (and keeps any
+  # injected one); a harness copy, or none, gets a local context on this node.
+  defp with_ssh_env(opts, scope, key_dir) do
+    opts = Keyword.put_new_lazy(opts, :env, fn -> env(scope) end)
+
+    case Keyword.fetch!(opts, :env) do
+      %{type: :harness} -> Keyword.put_new(opts, :ssh_env, ExecutionContext.new(:local, key_dir))
+      nil -> Keyword.put_new(opts, :ssh_env, ExecutionContext.new(:local, key_dir))
+      _runs_commands -> opts
+    end
+  end
+
   defp write_builder_key(scope, opts) do
     case AccountSecrets.fetch_value(scope, @access_key_private) do
       {:ok, private} when is_binary(private) and private != "" ->
-        dir = Path.join(System.tmp_dir!(), "cms-build-#{System.unique_integer([:positive])}")
-        File.mkdir_p!(dir)
+        # Owned: removed when the caller exits even where no explicit cleanup
+        # runs, and named per OS process so two processes never share a key.
+        dir = TempFile.owned_dir("cms-build")
         path = Path.join(dir, "id_ed25519")
         File.write!(path, private)
         File.chmod!(path, 0o600)
@@ -1777,7 +1826,7 @@ defmodule CodeMySpec.Provisioning.Steps do
          opts
          |> Keyword.put(:ssh_key_path, path)
          |> Keyword.put(:builder_key_dir, dir)
-         |> Keyword.put_new(:env, env(scope))}
+         |> with_ssh_env(scope, dir)}
 
       _ ->
         {:error,
@@ -1953,7 +2002,14 @@ defmodule CodeMySpec.Provisioning.Steps do
 
     scope
     |> Conversations.list_widget_messages()
-    |> Enum.map(&%{origin: origin_of(&1.origin, host), id: &1.id, at: &1.inserted_at})
+    |> Enum.map(
+      &%{
+        origin: origin_of(&1.origin, host),
+        id: &1.id,
+        at: &1.inserted_at,
+        body: Conversations.Message.text(&1)
+      }
+    )
   end
 
   defp origin_of(origin, host) when is_binary(origin) and is_binary(host) do
@@ -1993,7 +2049,7 @@ defmodule CodeMySpec.Provisioning.Steps do
          # builder refuses without `opts[:reference]`.
          {:ok, reference} <- Registry.reference(scope, tag, opts),
          opts = Keyword.put(opts, :reference, reference),
-         opts = with_deploy_execution(opts, scope, environment, reference),
+         opts = with_deploy_execution(opts, scope, environment, reference, architecture),
          {:ok, build} <- build_on_builder(scope, tag, architecture, opts) do
       {:ok,
        %{
@@ -2017,11 +2073,12 @@ defmodule CodeMySpec.Provisioning.Steps do
   # `with_builder_ssh` already set `opts[:env]`, and `Deploy`'s `trust_host/1`
   # handles host keys remotely.
   # See knowledge/provisioning/steps, "Deploy and build".
-  defp with_deploy_execution(opts, scope, environment, reference) do
+  defp with_deploy_execution(opts, scope, environment, reference, architecture) do
     host = Keyword.get(opts, :host) || environment_host(scope, environment) || domain(scope)
 
     deploy_opts =
       opts
+      |> Keyword.put(:architecture, architecture)
       |> deploy_opts(host, %{reference: reference})
       |> with_host_ip(scope, environment)
       |> with_age_key(scope, environment)
@@ -2195,7 +2252,13 @@ defmodule CodeMySpec.Provisioning.Steps do
         |> Keyword.put(:registry_username, credential.username)
         |> Keyword.put(:registry_password, credential.password)
 
-      _ ->
+      {:error, reason} ->
+        # The deploy still runs and kamal names the missing secret, but the
+        # cause is here, not in kamal's output.
+        Logger.warning(
+          "[Steps] no registry credential for the deploy, kamal cannot log in: #{inspect(reason)}"
+        )
+
         opts
     end
   end
@@ -2300,35 +2363,34 @@ defmodule CodeMySpec.Provisioning.Steps do
 
   ## Helpers
 
-  # Only environments the server step has given an address and host; one
-  # without has no record to check.
-  defp pointable_environments(scope) do
-    scope
-    |> permitted_environment_rows()
-    |> Enum.filter(&(is_binary(&1.ip) and &1.ip != "" and is_binary(&1.host) and &1.host != ""))
-  end
-
-  defp verify_dns_records(scope, domain, environments) do
+  defp verify_dns_records(scope, domain, environments, opts) do
     with {:ok, %{"id" => zone_id}} <- Cloudflare.find_zone(scope, domain),
          {:ok, records} <- Cloudflare.list_dns_records(scope, zone_id) do
-      dns_records_satisfied(records, environments)
+      dns_records_satisfied(records, environments, opts)
     else
       # Unreadable zone: absent, and the idempotent run converges.
       _ -> {:ok, :absent}
     end
   end
 
-  defp dns_records_satisfied(records, environments) do
-    if Enum.all?(environments, &record_points_at?(records, &1)),
-      do: {:ok, :satisfied, Enum.flat_map(environments, &dns_resources_for/1)},
+  defp dns_records_satisfied(records, environments, opts) do
+    if Enum.all?(environments, &record_points_at?(records, &1, opts)),
+      do:
+        {:ok, :satisfied,
+         Enum.flat_map(environments, &(dns_resources_for(&1) ++ [dns_outcome(&1, "unchanged")]))},
       else: {:ok, :absent}
   end
 
   # Present and pointing at this environment's server — a leftover record may
   # point at an address the project no longer holds.
-  defp record_points_at?(records, environment) do
+  defp record_points_at?(records, environment, opts) do
+    ttl = Keyword.get(opts, :ttl)
+
     Enum.any?(records, fn record ->
-      record["name"] == environment.host and record["content"] == environment.ip
+      record["name"] == environment.host and record["type"] == "A" and
+        record["content"] == environment.ip and
+        record["proxied"] != true and
+        (is_nil(ttl) or record["ttl"] == ttl)
     end)
   end
 
@@ -2778,8 +2840,9 @@ defmodule CodeMySpec.Provisioning.Steps do
           identifier: to_string(result.failed_phase)
         }
 
-        # With what the script said, not just that it failed.
-        {:error, with_output(reason, result.output), [failure | phases]}
+        # The phase and the same bounded error excerpt logged by Deploy.run
+        # survive in both the persisted status row and the starter's message.
+        {:error, Deploy.failure_detail(result), [failure | phases]}
 
       %{swapped_at: _} ->
         {:ok, [%{kind: "deployment", location: "#{environment}/#{host}"} | phases]}
@@ -2904,6 +2967,7 @@ defmodule CodeMySpec.Provisioning.Steps do
          :ok <- import_complete(scope, environment, opts),
          :ok <- config_targets_this_project(scope, environment),
          :ok <- require_script(scope, "bin/deploy"),
+         :ok <- deploy_dns_ready(scope, environment, host, opts),
          # Before the build: the builder archives HEAD, and the image is
          # versioned by HEAD.
          :ok <- commit_generated_configuration(scope),
@@ -2938,6 +3002,37 @@ defmodule CodeMySpec.Provisioning.Steps do
         {:error, reason, resources} ->
           {:error, reason, [delivery | resources]}
       end
+    end
+  end
+
+  # Kamal connects to the named host and ACME validates that same name. Refuse
+  # before committing configuration or building an image if any public name
+  # still points elsewhere. The resolver can be supplied by a test.
+  defp deploy_dns_ready(scope, environment, host, opts) do
+    target = Environments.get_deployment(scope, environment)
+    ip = target && target.ip
+
+    if is_binary(ip) and ip != "" do
+      lookup = Keyword.get(opts, :dns_lookup, &Dns.lookup/3)
+      hosts = Enum.uniq(expected_hosts(scope, environment) ++ [host])
+
+      Enum.reduce_while(hosts, :ok, fn name, :ok ->
+        answers = if is_binary(name) and name != "", do: lookup.(name, :a, []), else: []
+
+        if ip in answers do
+          {:cont, :ok}
+        else
+          resolved = if answers == [], do: "no address", else: Enum.join(answers, ", ")
+          name = name || "the deploy hostname"
+
+          {:halt,
+           {:error,
+            "#{name} resolves to #{resolved}, not this server (#{ip}). Point DNS at this server before deploying."}}
+        end
+      end)
+    else
+      {:error,
+       "#{environment} has no recorded server address; deploy cannot check its public DNS yet."}
     end
   end
 
@@ -3026,6 +3121,30 @@ defmodule CodeMySpec.Provisioning.Steps do
     scope
     |> Environments.assign_deployment_hosts(domain)
     |> Enum.filter(&MapSet.member?(permitted, &1.name))
+  end
+
+  defp selected_dns_environments(environments, opts) do
+    case Keyword.fetch(opts, :environments) do
+      :error ->
+        {:ok, environments}
+
+      {:ok, names} when is_list(names) and names != [] ->
+        if Enum.all?(names, &(is_binary(&1) and &1 != "")) do
+          selected = Enum.filter(environments, &(&1.name in names))
+          missing = Enum.uniq(names) -- Enum.map(selected, & &1.name)
+
+          if missing == [],
+            do: {:ok, selected},
+            else:
+              {:error,
+               "DNS environments are not permitted or do not exist: #{Enum.join(missing, ", ")}"}
+        else
+          {:error, "DNS environments must be a nonempty list of names"}
+        end
+
+      {:ok, _} ->
+        {:error, "DNS environments must be a nonempty list of names"}
+    end
   end
 
   defp devops_level(scope), do: ProvisioningPlan.devops_level(scope)
@@ -3535,12 +3654,71 @@ defmodule CodeMySpec.Provisioning.Steps do
 
     environments
     |> Enum.filter(& &1.host)
-    |> Enum.reduce_while({:ok, []}, fn environment, {:ok, acc} ->
+    |> Enum.reduce_while({[], []}, fn environment, {resources, pauses} ->
       case apex_repoint(scope, environment, existing, opts) do
-        :ok -> dns_record_for(scope, zone, environment, existing, acc, opts)
-        {:paused, message} -> {:halt, {:paused, message}}
+        {:paused, message} ->
+          outcome = dns_outcome(environment, "paused-awaiting-confirmation")
+          {:cont, {resources ++ [outcome], pauses ++ [message]}}
+
+        :ok ->
+          ip = environment_ip(scope, environment, opts)
+
+          if is_nil(ip) do
+            {:cont, {resources, pauses}}
+          else
+            old = Enum.find(existing, &(&1["name"] == environment.host and &1["type"] == "A"))
+            unchanged? = record_points_at?(existing, %{environment | ip: ip}, opts)
+            change = dns_change(environment, old, ip, opts)
+            report = Keyword.get(opts, :report_dns_change, fn message -> Logger.info(message) end)
+            report.("DNS change: #{change.identifier}")
+            reported = resources ++ [change]
+
+            case write_dns_record_for(scope, zone, environment, ip, existing, reported, opts) do
+              {:cont, {:ok, written}} ->
+                outcome = if unchanged?, do: "unchanged", else: "written"
+                {:cont, {written ++ [dns_outcome(environment, outcome)], pauses}}
+
+              {:halt, {:error, reason}} ->
+                {:halt, {:error, reason, reported}}
+            end
+          end
       end
     end)
+    |> case do
+      {:error, _, _} = error ->
+        error
+
+      {resources, []} ->
+        {:ok, resources}
+
+      {resources, pauses} ->
+        outcomes =
+          resources
+          |> Enum.filter(&(&1.kind in ["dns_outcome", "dns_change"]))
+          |> Enum.map_join(", ", & &1.identifier)
+
+        {:paused, "DNS outcomes: #{outcomes}. #{Enum.join(pauses, " ")}", resources}
+    end
+  end
+
+  defp dns_change(environment, old, ip, opts) do
+    old_value = if old, do: old["content"], else: "absent"
+    ttl = Keyword.get(opts, :ttl, 60)
+
+    %{
+      kind: "dns_change",
+      location: environment.host,
+      identifier:
+        "environment=#{environment.name} #{environment.host} #{old_value} -> #{ip} proxied=false ttl=#{ttl}"
+    }
+  end
+
+  defp dns_outcome(environment, outcome) do
+    %{
+      kind: "dns_outcome",
+      location: environment.host,
+      identifier: "environment=#{environment.name} outcome=#{outcome}"
+    }
   end
 
   # Refuse to move a live apex without `confirm_apex_repoint: true`: only the
@@ -3561,24 +3739,21 @@ defmodule CodeMySpec.Provisioning.Steps do
        "#{apex} already resolves to #{current}, and this would repoint it at #{ip} — a " <>
          "server this run just created. If #{apex} is serving anything today, that takes it " <>
          "down. Nothing else about the run is blocked: production is an environment like any " <>
-         "other, so remove the `prod` environment to leave the apex alone, or confirm to " <>
-         "repoint it."}
+         "other, so remove the `prod` environment to leave the apex alone, or run DNS " <>
+         "for only uat with `run_provisioning_step` and `environment: \"uat\"`, or " <>
+         "confirm to repoint it when ready."}
     else
       _ -> :ok
-    end
-  end
-
-  defp dns_record_for(scope, zone, environment, existing, acc, opts) do
-    case environment_ip(scope, environment, opts) do
-      nil -> {:cont, {:ok, acc}}
-      ip -> write_dns_record_for(scope, zone, environment, ip, existing, acc, opts)
     end
   end
 
   defp write_dns_record_for(scope, zone, environment, ip, existing, acc, opts) do
     write = Keyword.get(opts, :write_dns_record, &Cloudflare.ensure_dns_record/5)
 
-    case write.(scope, zone["id"], environment.host, ip, records: existing) do
+    record_opts = [records: existing, proxied: false]
+    record_opts = Keyword.put(record_opts, :ttl, Keyword.get(opts, :ttl, 60))
+
+    case write.(scope, zone["id"], environment.host, ip, record_opts) do
       {:ok, response} ->
         record = dns_resource(environment.host, ip, response, environment.name)
         confirm_dns_record(environment, ip, record, acc, opts)
@@ -3754,28 +3929,42 @@ defmodule CodeMySpec.Provisioning.Steps do
   end
 
   defp require_script_in(scope, environment, path) do
-    if ExecutionContexts.exec_file_exists?(environment, path) do
+    if script_executable?(environment, path) do
       :ok
     else
       findings = CodeMySpec.Generators.audit(scope, router_path(scope), environment)
 
-      case {findings, ExecutionContexts.file_exists?(environment, path)} do
-        # Audit is clean and this environment cannot see the file at all (a
-        # harness-scoped environment): cannot prove it wrong. The audit
-        # already consulted the `Files` sync table.
-        {[], false} ->
+      case {findings, ExecutionContexts.file_exists?(environment, path), environment.type} do
+        # A harness cannot inspect executable bits. Its clean audit already
+        # checked the `Files` sync table, so presence is sufficient here.
+        {[], true, :harness} ->
           :ok
 
-        # Present but not executable: a real permission problem.
-        {[], true} ->
+        {[], false, _} ->
+          :ok
+
+        # Local and sprite contexts can inspect mode: this is a real permission problem.
+        {[], true, _} ->
           deploy_not_ready_error("#{path} is not present or not executable")
 
-        {findings, _} ->
+        {findings, _, _} ->
           detail = Enum.map_join(findings, "; ", &CodeMySpec.Generators.explain/1)
           deploy_not_ready_error(detail)
       end
     end
   end
+
+  # Local's generic exec_file_exists?/2 checks presence for tools such as mix.exs.
+  # Deploy scripts need the executable bit as well.
+  defp script_executable?(%{type: :local, cwd: cwd}, path) when is_binary(cwd) do
+    case File.stat(Path.join(cwd, path)) do
+      {:ok, %File.Stat{type: :regular, mode: mode}} -> Bitwise.band(mode, 0o111) != 0
+      _ -> false
+    end
+  end
+
+  defp script_executable?(environment, path),
+    do: ExecutionContexts.exec_file_exists?(environment, path)
 
   defp deploy_not_ready_error(detail) do
     {:error,
@@ -3795,6 +3984,11 @@ defmodule CodeMySpec.Provisioning.Steps do
   @spec commit_generated_configuration(Scope.t()) :: :ok | {:error, String.t()}
   def commit_generated_configuration(scope) do
     case env(scope) do
+      # The checkout is on another machine and its harness runs no git; the
+      # agent working there commits.
+      %{type: :harness} ->
+        :ok
+
       %{cwd: cwd} = environment when is_binary(cwd) ->
         commit_generated_configuration_in(environment)
 
@@ -4530,6 +4724,9 @@ defmodule CodeMySpec.Provisioning.Steps do
   as an argument and is never written to the working tree. Mints the
   environment's age key if it has none.
   """
+  def put_secret_in_repository(%Scope{} = scope, environment, key, value),
+    do: CodeMySpec.Provisioning.RepositorySecrets.put(scope, environment, key, value)
+
   @spec put_secret(Scope.t(), String.t(), String.t(), String.t()) ::
           {:ok, map()} | {:error, String.t()}
   def put_secret(%Scope{} = scope, environment, key, value) do
@@ -4572,6 +4769,23 @@ defmodule CodeMySpec.Provisioning.Steps do
       {:ok, keys} -> {:ok, Enum.reverse(keys)}
       error -> error
     end)
+  end
+
+  @doc """
+  `import_dotenv/3` for a project whose secrets live in its repository: every
+  key in one commit through the GitHub API, no working copy involved.
+  """
+  @spec import_dotenv_in_repository(Scope.t(), String.t(), String.t()) ::
+          {:ok, [String.t()]} | {:error, String.t()}
+  def import_dotenv_in_repository(%Scope{} = scope, environment, dotenv) when is_binary(dotenv) do
+    with {:ok, %{keys: keys}} <-
+           CodeMySpec.Provisioning.RepositorySecrets.put_many(
+             scope,
+             environment,
+             dotenv |> Sops.parse_dotenv() |> Enum.sort()
+           ) do
+      {:ok, keys}
+    end
   end
 
   defp put_secret_in(scope, resolved_environment, environment, key, value) do

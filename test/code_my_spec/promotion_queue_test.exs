@@ -25,6 +25,7 @@ defmodule CodeMySpec.PromotionQueueTest do
   alias CodeMySpec.AnalysisFixtures
   alias CodeMySpec.Conversations.Message
   alias CodeMySpec.ExecutionContexts.ExecutionContext
+  alias CodeMySpec.Promotion.Steps
   alias CodeMySpec.PromotionQueue
   alias CodeMySpec.PromotionQueue.Repository
   alias CodeMySpec.PromotionQueue.Worker
@@ -199,7 +200,7 @@ defmodule CodeMySpec.PromotionQueueTest do
 
     {:ok, _} =
       ctx.gate
-      |> Ecto.Changeset.change(label: Worker.gate_label(a.copy.id), device_id: a.copy.device_id)
+      |> Ecto.Changeset.change(label: "promotion-gate:#{a.copy.id}", device_id: a.copy.device_id)
       |> Repo.update()
 
     clean_runs_at(ctx, a.commit)
@@ -210,6 +211,85 @@ defmodule CodeMySpec.PromotionQueueTest do
     assert {:ok, %{status: :landed}} = settle(entry)
     assert git!(remote, ["rev-parse", "refs/heads/main"]) == a.commit
     assert git!(a.copy.root, ["rev-parse", "HEAD"]) == a.commit
+    assert {:ok, gate} = WorkingCopies.fetch(ctx.gate.id)
+    assert gate.label == Worker.gate_label(a.copy.device_id)
+  end
+
+  test "gate retirement refuses an alias of the source checkout", ctx do
+    alias_root = CodeMySpec.TempFile.dir("queue-source-alias")
+    File.rm_rf!(alias_root)
+    File.ln_s!(ctx.main_root, alias_root)
+    on_exit(fn -> File.rm(alias_root) end)
+
+    env = ExecutionContext.new(:local, ctx.main_root)
+
+    assert {:error, %{reason: "refusing to remove the source checkout as a gate"}} =
+             Steps.retire_gate_worktree(env, ctx.main_root, alias_root)
+
+    assert File.exists?(Path.join(ctx.main_root, "app.ex"))
+  end
+
+  test "a device shares its gate and retires surplus legacy worktrees", ctx do
+    Application.put_env(:code_my_spec, :local_promotion_projects, [])
+    remote = CodeMySpec.TempFile.dir("queue-origin")
+    File.mkdir_p!(remote)
+    git!(remote, ["init", "--bare", "-q"])
+    on_exit(fn -> File.rm_rf(remote) end)
+    git!(ctx.main_root, ["remote", "add", "origin", remote])
+    git!(ctx.main_root, ["push", "-q", "origin", "main"])
+    a = candidate(ctx, "remote-share-a", "main", "share_a.ex", "a\n")
+
+    {:ok, _} =
+      ctx.gate
+      |> Ecto.Changeset.change(
+        label: Worker.gate_label(a.copy.device_id),
+        device_id: a.copy.device_id
+      )
+      |> Repo.update()
+
+    obsolete_root = CodeMySpec.TempFile.dir("queue-obsolete-gate")
+    File.rm_rf!(obsolete_root)
+    git!(a.copy.root, ["worktree", "add", "--detach", obsolete_root, "HEAD"])
+    on_exit(fn -> File.rm_rf(obsolete_root) end)
+
+    {:ok, obsolete} =
+      WorkingCopies.issue(ctx.scope, nil,
+        label: "promotion-gate:#{a.copy.id}",
+        device: device_fixture(ctx.scope)
+      )
+
+    {:ok, obsolete} =
+      obsolete
+      |> Ecto.Changeset.change(device_id: a.copy.device_id)
+      |> Repo.update()
+
+    {:ok, obsolete} = WorkingCopies.report_root(obsolete, obsolete_root)
+    clean_runs_at(ctx, a.commit)
+    entry = queue(ctx, a)
+    :ok = PromotionQueue.ensure_worker(ctx.scope)
+    assert {:ok, %{status: :landed}} = settle(entry)
+    assert {:error, _} = WorkingCopies.fetch(obsolete.id)
+    refute File.exists?(obsolete_root)
+    assert {:ok, gate} = WorkingCopies.fetch(ctx.gate.id)
+    assert gate.label == Worker.gate_label(a.copy.device_id)
+
+    b = candidate(ctx, "remote-share-b", "remote-share-a", "share_b.ex", "b\n")
+
+    {:ok, b_copy} =
+      b.copy
+      |> Ecto.Changeset.change(device_id: a.copy.device_id)
+      |> Repo.update()
+
+    b = %{b | copy: b_copy}
+    clean_runs_at(ctx, b.commit)
+    second = queue(ctx, b)
+    :ok = PromotionQueue.ensure_worker(%{ctx.scope | active_working_copy_id: b_copy.id})
+    assert {:ok, %{status: :landed}} = settle(second)
+
+    assert Enum.count(
+             WorkingCopies.list_harnesses(ctx.scope),
+             &(&1.label == Worker.gate_label(a.copy.device_id))
+           ) == 1
   end
 
   test "an already published remote head must acquire a certification receipt", ctx do
@@ -224,7 +304,7 @@ defmodule CodeMySpec.PromotionQueueTest do
 
     {:ok, _} =
       ctx.gate
-      |> Ecto.Changeset.change(label: Worker.gate_label(a.copy.id), device_id: a.copy.device_id)
+      |> Ecto.Changeset.change(label: "promotion-gate:#{a.copy.id}", device_id: a.copy.device_id)
       |> Repo.update()
 
     git!(a.copy.root, ["push", "-q", "origin", "HEAD:main"])
@@ -252,7 +332,15 @@ defmodule CodeMySpec.PromotionQueueTest do
     entry = queue(ctx, a)
     :ok = PromotionQueue.ensure_worker(ctx.scope)
 
-    assert {:ok, %{status: :landed}} = settle(entry)
+    assert {:ok, %{status: :landed, result: result}} = settle(entry)
+    timing = result["timing"]
+    assert timing["gate_copy_id"] == ctx.gate.id
+    assert length(timing["run_ids"]) == length(Run.sources())
+    assert Enum.all?(timing["run_ids"], &is_integer/1)
+    assert is_integer(timing["stages"]["queue-wait"])
+    assert is_integer(timing["stages"]["gate-build"])
+    assert is_integer(timing["stages"]["asset-build"])
+    assert is_integer(timing["stages"]["landing"])
     assert git!(ctx.main_root, ["rev-parse", "HEAD"]) == a.commit
     assert git!(ctx.main_root, ["describe", "--tags", "--exact-match", "HEAD"]) == "v0.1.1"
   end
@@ -454,19 +542,43 @@ defmodule CodeMySpec.PromotionQueueTest do
     assert merge_head == ""
   end
 
+  test "a new queue entry retries an earlier red source and reuses green runs", ctx do
+    a = candidate(ctx, "a", "main", "a.ex", "a\n")
+    gate = gate_scope(ctx)
+    clean_runs_at(ctx, a.commit)
+    previous = RunsRepository.latest_completed_run(gate, "credo")
+    problem_fixture(gate, %{source: "credo", severity: :warning, file_path: "a.ex"})
+
+    entry = queue(ctx, a)
+    a_harness_for(ctx.gate.id, ctx.gate_root)
+    :ok = PromotionQueue.ensure_worker(ctx.scope)
+
+    gate_id = ctx.gate.id
+    assert_receive {:run_analysis_on, ^gate_id, runs}, 5_000
+    assert Enum.map(runs, & &1["source"]) == ["credo"]
+    assert Repository.get(entry.id).status == :gating
+    assert RunsRepository.latest_completed_run(gate, "credo").id == previous.id
+  end
+
   test "a red candidate is ejected with its findings, and nothing lands", ctx do
     a = candidate(ctx, "a", "main", "a.ex", "broken\n")
+    entry = queue(ctx, a)
     gate = gate_scope(ctx)
     clean_runs_at(ctx, a.commit)
     problem_fixture(gate, %{source: "compiler", severity: :error, file_path: "a.ex"})
     problem_fixture(gate, %{source: "compiler", severity: :error, file_path: "a.ex", line: 2})
 
-    entry = queue(ctx, a)
     before = git!(ctx.main_root, ["rev-parse", "HEAD"])
     :ok = PromotionQueue.ensure_worker(ctx.scope)
 
     assert {:ok, %{status: :ejected, result: result}} = settle(entry)
     assert result["reason"] =~ "a.ex"
+    # Every step's timing survives to the ejection, not only the last write.
+    timing = result["timing"]
+    assert timing["gate_copy_id"] == gate.active_working_copy_id
+    assert is_integer(timing["stages"]["queue-wait"])
+    assert is_integer(timing["stages"]["gate-build"])
+    assert [_ | _] = timing["run_ids"]
     assert git!(ctx.main_root, ["rev-parse", "HEAD"]) == before
   end
 
@@ -492,6 +604,9 @@ defmodule CodeMySpec.PromotionQueueTest do
 
     assert {:ok, %{status: :ejected, result: result}} = settle(entry)
     assert result["reason"] =~ "assets"
+    timing = result["timing"]
+    assert is_integer(timing["stages"]["asset-build"])
+    refute Map.has_key?(timing["stages"], "landing")
     assert git!(ctx.main_root, ["rev-parse", "HEAD"]) == before
   end
 
@@ -540,12 +655,12 @@ defmodule CodeMySpec.PromotionQueueTest do
   # running in the gate copy, and the next batch reset the tree under them.
   test "an ejected batch's runs in the gate copy are stopped", ctx do
     a = candidate(ctx, "a", "main", "a.ex", "broken\n")
+    entry = queue(ctx, a)
     gate = gate_scope(ctx)
     clean_runs_at(ctx, a.commit)
     problem_fixture(gate, %{source: "compiler", severity: :error, file_path: "a.ex"})
     a_harness_for(ctx.gate.id, ctx.gate_root)
 
-    entry = queue(ctx, a)
     :ok = PromotionQueue.ensure_worker(ctx.scope)
 
     assert {:ok, %{status: :ejected}} = settle(entry)
@@ -587,6 +702,7 @@ defmodule CodeMySpec.PromotionQueueTest do
   # triage reads the ones the gate judged.
   test "a red batch is triaged on what the gate judged at its head, not older runs", ctx do
     a = candidate(ctx, "a", "main", "a.ex", "broken\n")
+    entry = queue(ctx, a)
     own = gate_scope(ctx)
 
     AnalysisFixtures.fresh_analysis_runs_fixture(own, ~w(compiler exunit spex), commit: a.commit)
@@ -598,7 +714,6 @@ defmodule CodeMySpec.PromotionQueueTest do
     problem_fixture(own, %{source: "exunit", severity: :error, file_path: "test/a_test.exs"})
     problem_fixture(own, %{source: "credo", severity: :error, file_path: "lib/stale.ex"})
 
-    entry = queue(ctx, a)
     :ok = PromotionQueue.ensure_worker(ctx.scope)
 
     assert {:ok, %{status: :ejected, result: result}} = settle(entry)
@@ -624,6 +739,32 @@ defmodule CodeMySpec.PromotionQueueTest do
     :ok = PromotionQueue.copy_joined(ctx.scope, ctx.gate)
 
     assert {:ok, %{status: :landed}} = settle(entry)
+  end
+
+  # A disk cleanup removed the gate's folder and left its record: the queue took
+  # the record for the gate and refused every batch on its unreadable HEAD.
+  test "a gate copy whose checkout is gone is retired and asked for again", ctx do
+    test = self()
+    handler = {__MODULE__, make_ref()}
+
+    :telemetry.attach(
+      handler,
+      [:code_my_spec, :promotion_queue, :gate_copy_needed],
+      fn _event, _measurements, metadata, _config -> send(test, {:gate_needed, metadata}) end,
+      nil
+    )
+
+    on_exit(fn -> :telemetry.detach(handler) end)
+
+    :ok = WorkingCopies.observe_paths(ctx.gate.device_id, %{ctx.gate.id => false})
+    a = candidate(ctx, "a", "main", "a.ex", "a\n")
+    queue(ctx, a)
+
+    :ok = PromotionQueue.ensure_worker(ctx.scope)
+
+    assert_receive {:gate_needed, %{label: label}}, 5_000
+    assert label == Worker.gate_label()
+    refute Enum.any?(WorkingCopies.list_harnesses(ctx.scope), &(&1.id == ctx.gate.id))
   end
 
   # A candidate that stopped short of a verdict used to be requeued, where it
@@ -707,6 +848,112 @@ defmodule CodeMySpec.PromotionQueueTest do
     assert git!(ctx.main_root, ["rev-parse", "HEAD"]) == moved
 
     refute Repository.get(first.id).status in [:ejected, :landed]
+  end
+
+  test "a key socket startup failure retries ExUnit without ejecting the candidate", ctx do
+    a = candidate(ctx, "socket-retry", "main", "socket_retry.ex", "ok\n")
+    gate = gate_scope(ctx)
+    AnalysisFixtures.fresh_analysis_runs_fixture(gate, ~w(compiler credo spex), commit: a.commit)
+    a_harness_for(ctx.gate.id, ctx.gate_root)
+
+    entry = queue(ctx, a)
+    :ok = PromotionQueue.ensure_worker(ctx.scope)
+
+    gate_id = ctx.gate.id
+    assert_receive {:run_analysis_on, ^gate_id, [%{"source" => "exunit"}]}, 15_000
+    [first] = RunsRepository.running_full_runs(gate, "exunit")
+
+    reason =
+      {:test_suite_did_not_run, :sops_key_socket_address_in_use, 1,
+       "CmsHarness.SopsKeySocket listener exited with :eaddrinuse"}
+
+    {:ok, failed} =
+      CodeMySpec.Analysis.Reconciler.fail(first, reason, %{
+        output: "CmsHarness.SopsKeySocket listener exited with :eaddrinuse",
+        exit_status: 1
+      })
+
+    assert failed.status == :failed
+    assert failed.stats["error"] =~ "sops_key_socket_address_in_use"
+
+    [{worker, _}] =
+      Registry.lookup(CodeMySpec.PromotionQueue.Registry, ctx.scope.active_project_id)
+
+    send(worker, :gate)
+    assert_receive {:run_analysis_on, ^gate_id, [%{"source" => "exunit"}]}, 15_000
+    assert Repository.get(entry.id).status == :gating
+  end
+
+  test "an unavailable executor retries without ejecting the candidate", ctx do
+    a = candidate(ctx, "executor-retry", "main", "executor_retry.ex", "ok\n")
+    gate = gate_scope(ctx)
+    AnalysisFixtures.fresh_analysis_runs_fixture(gate, ~w(compiler credo spex), commit: a.commit)
+    a_harness_for(ctx.gate.id, ctx.gate_root)
+
+    entry = queue(ctx, a)
+    :ok = PromotionQueue.ensure_worker(ctx.scope)
+
+    gate_id = ctx.gate.id
+    assert_receive {:run_analysis_on, ^gate_id, [%{"source" => "exunit"}]}, 15_000
+    [first] = RunsRepository.running_full_runs(gate, "exunit")
+    {:ok, failed} = CodeMySpec.Analysis.Reconciler.fail(first, :no_executor)
+    assert failed.stats["error"] =~ "no_executor"
+
+    [{worker, _}] =
+      Registry.lookup(CodeMySpec.PromotionQueue.Registry, ctx.scope.active_project_id)
+
+    send(worker, :gate)
+    assert_receive {:run_analysis_on, ^gate_id, [%{"source" => "exunit"}]}, 15_000
+    assert Repository.get(entry.id).status == :gating
+  end
+
+  test "a compiler run with no output or exit status retries without ejecting", ctx do
+    a = candidate(ctx, "compiler-retry", "main", "compiler_retry.ex", "ok\n")
+    gate = gate_scope(ctx)
+    AnalysisFixtures.fresh_analysis_runs_fixture(gate, ~w(credo exunit spex), commit: a.commit)
+    a_harness_for(ctx.gate.id, ctx.gate_root)
+
+    entry = queue(ctx, a)
+    :ok = PromotionQueue.ensure_worker(ctx.scope)
+
+    gate_id = ctx.gate.id
+    assert_receive {:run_analysis_on, ^gate_id, [%{"source" => "compiler"}]}, 15_000
+    [first] = RunsRepository.running_full_runs(gate, "compiler")
+    {:ok, failed} = CodeMySpec.Analysis.Reconciler.fail(first, :compiler_lost_result)
+    assert failed.output == nil and failed.exit_status == nil
+
+    [{worker, _}] =
+      Registry.lookup(CodeMySpec.PromotionQueue.Registry, ctx.scope.active_project_id)
+
+    send(worker, :gate)
+    assert_receive {:run_analysis_on, ^gate_id, [%{"source" => "compiler"}]}, 15_000
+    assert Repository.get(entry.id).status == :gating
+  end
+
+  test "an unavailable executor ejects after the gate retry limit", ctx do
+    a = candidate(ctx, "executor-expired", "main", "executor_expired.ex", "ok\n")
+    gate = gate_scope(ctx)
+    AnalysisFixtures.fresh_analysis_runs_fixture(gate, ~w(compiler credo spex), commit: a.commit)
+    a_harness_for(ctx.gate.id, ctx.gate_root)
+
+    entry = queue(ctx, a)
+    :ok = PromotionQueue.ensure_worker(ctx.scope)
+
+    gate_id = ctx.gate.id
+    assert_receive {:run_analysis_on, ^gate_id, [%{"source" => "exunit"}]}, 15_000
+    [first] = RunsRepository.running_full_runs(gate, "exunit")
+    {:ok, _failed} = CodeMySpec.Analysis.Reconciler.fail(first, :no_executor)
+
+    [{worker, _}] =
+      Registry.lookup(CodeMySpec.PromotionQueue.Registry, ctx.scope.active_project_id)
+
+    :sys.replace_state(worker, fn state ->
+      put_in(state.batch.since, DateTime.add(DateTime.utc_now(), -31, :minute))
+    end)
+
+    send(worker, :gate)
+    assert {:ok, %{status: :ejected, result: %{"reason" => reason}}} = settle(entry)
+    assert reason =~ "no_executor"
   end
 
   # A run that fails at the batch commit is red like a finding, and not retried:
@@ -1030,6 +1277,72 @@ defmodule CodeMySpec.PromotionQueueTest do
   # 2026-10-05, 08:41: the gate copy's harness restarted while its batch was
   # gating, and what it had been asked to run went with the connection. Its
   # rejoin asks the gate again, now, rather than at the next recheck.
+  test "a worker crash logs its application frame before a long exception" do
+    reason =
+      {%DBConnection.ConnectionError{message: String.duplicate("pool busy ", 100)},
+       [
+         {CodeMySpec.PromotionQueue.Repository, :gating, 1,
+          [file: ~c"lib/code_my_spec/promotion_queue/repository.ex", line: 198]}
+       ]}
+
+    log =
+      ExUnit.CaptureLog.capture_log(fn ->
+        assert :ok = Worker.terminate(reason, %{project_id: "project-1", phase: :gating})
+      end)
+
+    assert log =~ "project=project-1 phase=gating"
+    assert log =~ "repository.ex"
+    assert log =~ "line: 198"
+    assert byte_size(log) < 500
+  end
+
+  test "a worker crash resumes the same gate and keeps its analyzer run", ctx do
+    a = candidate(ctx, "crash-resume", "main", "resume.ex", "ok\n")
+    gate = gate_scope(ctx)
+    AnalysisFixtures.fresh_analysis_runs_fixture(gate, ~w(compiler credo spex), commit: a.commit)
+    a_harness_for(ctx.gate.id, ctx.gate_root)
+
+    entry = queue(ctx, a)
+    :ok = PromotionQueue.ensure_worker(ctx.scope)
+    gate_id = ctx.gate.id
+    assert_receive {:run_analysis_on, ^gate_id, [%{"source" => "exunit"}]}, 15_000
+
+    before = Repository.get(entry.id)
+    [run] = RunsRepository.running_full_runs(gate, "exunit")
+    worker = GenServer.whereis(Worker.via(ctx.scope.active_project_id))
+    monitor = Process.monitor(worker)
+    Process.exit(worker, :kill)
+    assert_receive {:DOWN, ^monitor, :process, ^worker, :killed}, 5_000
+
+    :ok = PromotionQueue.ensure_worker(ctx.scope)
+    restarted = GenServer.whereis(Worker.via(ctx.scope.active_project_id))
+    assert restarted != worker
+    assert :sys.get_state(restarted).phase == :gating
+    after_restart = Repository.get(entry.id)
+    assert after_restart.batch_id == before.batch_id
+    assert after_restart.result["timing"]["gate_head"] == a.commit
+    assert [same_run] = RunsRepository.running_full_runs(gate, "exunit")
+    assert same_run.id == run.id
+    refute_receive {:run_analysis_on, ^gate_id, [%{"source" => "exunit"}]}, 500
+
+    {:ok, completed} = RunsRepository.finish_run(run, :completed, %{exit_status: 0})
+
+    RunsRepository.record_tree(completed, %{
+      start_commit: a.commit,
+      start_tree_dirty: false,
+      completed_commit: a.commit
+    })
+
+    Phoenix.PubSub.broadcast(
+      CodeMySpec.PubSub,
+      "analysis:#{ctx.scope.active_project_id}",
+      {:analysis,
+       %{source: "exunit", status: :completed, run_id: run.id, working_copy_id: gate_id}}
+    )
+
+    assert {:ok, %{status: :landed}} = settle(entry)
+  end
+
   test "a batch gating asks the gate again when the gate copy rejoins", ctx do
     a = candidate(ctx, "a", "main", "a.ex", "a\n")
     gate = gate_scope(ctx)

@@ -27,7 +27,7 @@ defmodule CodeMySpec.PromotionQueue do
       CodeMySpec.Users.Scope,
       CodeMySpec.WorkingCopies
     ],
-    exports: [Worker]
+    exports: [Worker, Timings]
 
   alias CodeMySpec.AppRole
   alias CodeMySpec.Issues
@@ -121,9 +121,9 @@ defmodule CodeMySpec.PromotionQueue do
     with :ok <- main_copy(),
          {:ok, story} <- story(scope, story_number),
          {:ok, copy} <- promoting_copy(scope),
-         {:ok, head} <- clean_head(scope, copy),
+         {:ok, head, tree} <- clean_head(scope, copy),
          {:ok, subject} <- subject(scope, story, copy, Keyword.get(opts, :issue_id), head),
-         {:ok, entry} <- queue_or_resume(scope, copy, head, subject, opts) do
+         {:ok, entry} <- queue_or_resume(scope, copy, {head, tree}, subject, opts) do
       ensure_worker(scope)
       {:ok, %{queued: entry, position: Repository.position(entry)}}
     else
@@ -149,13 +149,14 @@ defmodule CodeMySpec.PromotionQueue do
          }}
   end
 
-  defp queue_or_resume(scope, copy, head, subject, opts) do
+  defp queue_or_resume(scope, copy, {head, tree}, subject, opts) do
     attrs =
       Map.merge(subject_attrs(subject), %{
         project_id: scope.active_project_id,
         working_copy_id: copy.id,
         commit: head,
         requested_by_agent_id: Keyword.get(opts, :notify),
+        task_id: Keyword.get(opts, :task_id),
         restart: Keyword.get(opts, :restart, false),
         fresh: Keyword.get(opts, :fresh, false)
       })
@@ -167,7 +168,8 @@ defmodule CodeMySpec.PromotionQueue do
       :none ->
         with :ok <- qa_passed(scope, subject, head),
              :ok <- assigned_issues_clear(scope, copy, subject),
-             :ok <- Promotion.red_at(%{scope | active_working_copy_id: copy.id}, head) do
+             :ok <- Promotion.red_at(%{scope | active_working_copy_id: copy.id}, head, tree),
+             :ok <- certified_head(scope, copy, head, tree) do
           Repository.enqueue(attrs)
         end
 
@@ -237,18 +239,33 @@ defmodule CodeMySpec.PromotionQueue do
   @doc "What to tell the caller that enqueued."
   @spec queued_text({:ok, map()} | {:error, map()}) :: String.t()
   def queued_text({:ok, %{queued: entry, timed_out: true}}) do
-    "Still queued after waiting: #{describe(entry)}. It has not landed and was not taken " <>
-      "out; the queue is still working on it. Do not promote again to check."
+    "Still queued after waiting: #{describe(entry)}. Entry #{entry.id}, revision #{entry.commit}, task #{inspect(entry.task_id)}. It has not landed and was not taken " <>
+      "out; the queue is still working on it. Do not promote again to check." <>
+      other_open_warning(entry)
   end
 
   def queued_text({:ok, %{queued: entry, position: position}}) do
-    "Queued for promotion at position #{position}: #{describe(entry)}. Nothing is merged " <>
+    "Queued for promotion at position #{position}: #{describe(entry)}. Entry #{entry.id}, revision #{entry.commit}, task #{inspect(entry.task_id)}. Nothing is merged " <>
       "yet. The queue gates it with the candidates ahead of it and lands it on main " <>
       "when that batch is green; you will be told when it lands, or why it was taken " <>
-      "out. Keep working; do not promote again to check."
+      "out. Keep working; do not promote again to check." <>
+      other_open_warning(entry)
   end
 
   def queued_text({:error, %{reason: reason}}), do: "Your promotion was not queued. #{reason}"
+
+  defp other_open_warning(entry) do
+    case Repository.other_open_for_copy(entry) do
+      [] ->
+        ""
+
+      entries ->
+        " Warning: another revision is still queued or gating: " <>
+          Enum.map_join(entries, ", ", fn other ->
+            "#{other.commit} (entry #{other.id}, #{other.status})"
+          end) <> "."
+    end
+  end
 
   @doc "What became of an entry, in a sentence."
   @spec outcome_text(Entry.t()) :: String.t()
@@ -498,12 +515,34 @@ defmodule CodeMySpec.PromotionQueue do
   defp promoting_copy(_scope),
     do: {:error, %{reason: "no working copy on this scope; nothing to promote."}}
 
-  # A clean, committed checkout, read where it lives.
+  # A candidate must already have passed every analyzer on its exact tree, on
+  # any copy or commit (story 1174). The queue's later gate still certifies the
+  # combined batch before publication.
+  defp certified_head(scope, copy, head, tree) do
+    case Promotion.uncertified(%{scope | active_working_copy_id: copy.id}, head, tree) do
+      [] ->
+        :ok
+
+      missing ->
+        {:error,
+         %{
+           reason:
+             "#{copy.id} at #{head} is not certified: #{Enum.join(missing, ", ")} " <>
+               "#{if length(missing) == 1, do: "has", else: "have"} not passed its tree. " <>
+               "Run #{if length(missing) == 1, do: "it", else: "them"} and fix the findings " <>
+               "at this HEAD before promoting. Nothing was queued.",
+           uncertified: missing
+         }}
+    end
+  end
+
+  # A clean, committed checkout, read where it lives, and its git tree (nil
+  # from a harness that does not report one).
   defp clean_head(scope, copy) do
     environment = WorkingCopies.execution_context(%{scope | active_working_copy_id: copy.id})
 
     case Runner.precheck(environment, copy.root, copy.id, nil) do
-      {:ok, %{head: head}} when is_binary(head) -> {:ok, head}
+      {:ok, %{head: head} = checkout} when is_binary(head) -> {:ok, head, checkout[:tree]}
       {:ok, _} -> {:error, %{reason: "could not read #{copy.root}'s HEAD."}}
       {:error, _} = error -> error
     end

@@ -10,6 +10,7 @@ defmodule CodeMySpec.Requirements do
   use Boundary,
     top_level?: true,
     deps: [
+      CodeMySpec.Analysis.HarnessRegistry,
       CodeMySpec.Stories,
       CodeMySpec.Agents.RoleProfile,
       CodeMySpec.BddRules,
@@ -28,6 +29,7 @@ defmodule CodeMySpec.Requirements do
       # to answer. So the graph reads it — from this leaf, not from `Promotion`,
       # which sits above the graph and must not be called by it.
       CodeMySpec.Promotion.RunningCopy,
+      CodeMySpec.Qa,
       CodeMySpec.Qa.QaAttempt,
       CodeMySpec.Qa.Verdict,
       CodeMySpec.Questions,
@@ -329,15 +331,19 @@ defmodule CodeMySpec.Requirements do
 
   `compute_graph_with_actionable_metrics/1` recomputes instead: it is the way to
   *time* a compute, and timing a read of the rows would measure nothing.
+
+  The graph carries the components it was read with, dependencies preloaded,
+  so a caller laying it out need not load them again.
   """
   @spec project_graph_with_actionable_metrics(Scope.t()) ::
-          {%{nodes: [Requirement.t()], edges: [map()], actionable: [Requirement.t()]}, map()}
-  def project_graph_with_actionable_metrics(%Scope{} = scope) do
-    {{nodes, edges, actionable}, metrics} =
-      RequirementGraph.cached_graph_with_actionable_metrics(scope)
-
-    {%{nodes: nodes, edges: edges, actionable: actionable}, metrics}
-  end
+          {%{
+             nodes: [Requirement.t()],
+             edges: [map()],
+             actionable: [Requirement.t()],
+             components: [map()]
+           }, map()}
+  def project_graph_with_actionable_metrics(%Scope{} = scope),
+    do: RequirementGraph.cached_graph_with_actionable_metrics(scope)
 
   @doc """
   Compute all requirement nodes across the project.
@@ -400,7 +406,7 @@ defmodule CodeMySpec.Requirements do
   defp owner_of(%{project_id: id}), do: {"project", to_string(id)}
 
   @doc """
-  Every requirement node, read from `requirements` and `requirement_edges`
+  Every requirement node, read from `requirements` and the project's edges
   (through `Requirements.Projection`) once the projector has applied what is
   pending, so it is current. `computed_at` says when the rows were written.
   """

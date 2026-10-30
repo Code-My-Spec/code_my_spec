@@ -105,19 +105,19 @@ defmodule CodeMySpec.Files.SpexOwnershipTest do
 
   describe "a QA evidence file" do
     test "resolves through the story number its directory names" do
-      path = ".code_my_spec/qa/42/brief.md"
+      path = ".code_my_spec/qa/42/result_complete.md"
       read_model = %ReadModel{story_ids: MapSet.new([875]), story_ids_by_number: %{42 => 875}}
 
-      [resolved] = Scanner.resolve_owners([%{path: path, role: :qa_brief}], read_model)
+      [resolved] = Scanner.resolve_owners([%{path: path, role: :qa_result}], read_model)
 
       assert resolved.story_id == 875
     end
 
     test "a directory named by a story's id owns nothing" do
-      path = ".code_my_spec/qa/875/brief.md"
+      path = ".code_my_spec/qa/875/result_complete.md"
       read_model = %ReadModel{story_ids: MapSet.new([875]), story_ids_by_number: %{42 => 875}}
 
-      [resolved] = Scanner.resolve_owners([%{path: path, role: :qa_brief}], read_model)
+      [resolved] = Scanner.resolve_owners([%{path: path, role: :qa_result}], read_model)
 
       assert is_nil(resolved.story_id)
     end

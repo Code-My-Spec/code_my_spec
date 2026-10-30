@@ -8,7 +8,7 @@ defmodule CodeMySpec.Requirements.StoryExecution do
   require Logger
 
   alias CodeMySpec.Agents.RoleProfile
-  alias CodeMySpec.Requirements.{GraphWatcher, Preloader, Projection, Registry, RequirementGraph}
+  alias CodeMySpec.Requirements.{Preloader, Projection, Registry, RequirementGraph}
   alias CodeMySpec.{Stories, WorkingCopies}
 
   @slow_read_ms 1_000
@@ -44,11 +44,10 @@ defmodule CodeMySpec.Requirements.StoryExecution do
 
     with {:ok, copy} <- WorkingCopies.fetch(scope.active_working_copy_id),
          true <- copy.project_id == scope.active_project_id,
-         :ok <- lap(:settle, fn -> GraphWatcher.settle(scope) end),
-         {:ok, ctx} <- lap(:preload, fn -> Preloader.load(scope) end),
+         :ok <- lap(:settle, fn -> RequirementGraph.settle(scope) end),
+         ctx = lap(:preload, fn -> RequirementGraph.read_context(scope) end),
          ctx = Map.put(ctx, :withheld?, withheld?),
-         {{nodes, edges}, _actionable, _at} <-
-           lap(:graph, fn -> RequirementGraph.cached_graph_with_actionable(scope) end) do
+         {nodes, edges} <- lap(:graph, fn -> RequirementGraph.served_graph(scope, ctx) end) do
       {nodes, edges, ctx} =
         lap(:placed, fn -> across_project(scope, role, nodes, edges, ctx) end)
 
@@ -78,10 +77,10 @@ defmodule CodeMySpec.Requirements.StoryExecution do
     end
   end
 
-  # c93e5fdc: a project-wide read (main's stop) once took 13.5s with nothing in
-  # the logs to say where. The steps that can wait on something else -- the
-  # projector draining, the preload, the graph, the placed stories -- are timed
-  # as they run, and a read slower than a second says which one it spent it on.
+  # A slow read with nothing in the logs cannot say where its time went. The
+  # steps that can wait on something else -- the projector draining, the
+  # preload, the graph, the placed stories -- are timed as they run, and a read
+  # slower than a second says which one it spent it on.
   defp lap(step, fun) do
     {us, result} = :timer.tc(fun)
     Process.put(@laps, [{step, div(us, 1000)} | Process.get(@laps, [])])

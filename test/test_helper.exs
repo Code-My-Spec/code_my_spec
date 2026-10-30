@@ -21,6 +21,9 @@ sops_exclusions = if CodeMySpec.Provisioning.Sops.available?(), do: [], else: [:
 sqlite_exclusions =
   if CodeMySpec.Repo.sqlite?(), do: [:concurrent_writers, :postgres], else: []
 
+# Temp entries a halted test VM left owned and never removed (issue 6c9defed).
+CodeMySpec.TempFile.sweep_orphans(:timer.minutes(10))
+
 ExUnit.start(
   # A push behind a DB write and a PubSub hop overran ExUnit's 100ms default in a
   # loaded gate (conversation_channel_test, 2026-10-06). A passing assert returns
@@ -166,7 +169,7 @@ report_dirty_tables = fn label ->
            UNION ALL SELECT 'stories', count(*), min(inserted_at), max(inserted_at) FROM stories
            UNION ALL SELECT 'components', count(*), min(inserted_at), max(inserted_at) FROM components
            UNION ALL SELECT 'requirements', count(*), min(inserted_at), max(inserted_at) FROM requirements
-           UNION ALL SELECT 'requirement_edges', count(*), min(inserted_at), max(inserted_at) FROM requirement_edges
+           UNION ALL SELECT 'requirement_topologies', count(*), min(inserted_at), max(inserted_at) FROM requirement_topologies
            """,
            []
          ) do
@@ -296,11 +299,12 @@ end
 # without anything the analyzer does being special.
 Enum.each(~w(CMS_SERVER_URL CMS_TOKEN CMS_DEPLOY_KEY CMS_HARNESS_ID), &System.delete_env/1)
 
-# Started here rather than from `CodeMySpecWeb.Application`'s test children, so
-# the cloud application does not gain a compile-time reference to `CmsHarness`
-# that only the test suite ever wanted. Its endpoint is `server: false` in test,
-# so this costs a registry and an idle DynamicSupervisor.
-{:ok, _} = CmsHarness.Supervisor.start_link([])
+# The test BEAM must bind its own socket even when a parent harness passes
+# CMS_SOPS_KEY_SOCKET_PATH down to `mix test`. Reusing that inherited path
+# collides with the parent listener during a promotion gate's ExUnit run.
+# Scope the path before starting any harness children. The helper also starts
+# the tree for spex runs, which do not load this file.
+:ok = CmsHarnessTest.Projects.ensure_harness_supervisor_started()
 
 # Auto-load envs/test.env (gitignored) for e2e tests so OAuth client_id /
 # secret / test-account creds are available without manual sourcing.

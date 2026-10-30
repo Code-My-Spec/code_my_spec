@@ -33,7 +33,25 @@ defmodule CodeMySpecWeb.Plugs.SafeCodeReloader do
 
   @impl true
   def call(conn, opts) do
-    Phoenix.CodeReloader.call(conn, opts)
+    reloader = Keyword.fetch!(opts, :reloader)
+
+    case reloader.(conn.private.phoenix_endpoint, opts) do
+      :ok ->
+        conn
+
+      {:error, output} = error ->
+        Logger.error("[CodeMySpecWeb] Phoenix.CodeReloader compile failed:\n#{output}")
+
+        if String.starts_with?(conn.request_path, "/mcp/") do
+          conn
+          |> Plug.Conn.put_resp_content_type("text/plain")
+          |> Plug.Conn.put_resp_header("retry-after", "1")
+          |> Plug.Conn.send_resp(503, "Code reload in progress; retry shortly.")
+          |> Plug.Conn.halt()
+        else
+          Phoenix.CodeReloader.call(conn, Keyword.put(opts, :reloader, fn _, _ -> error end))
+        end
+    end
   catch
     kind, reason ->
       Logger.warning(

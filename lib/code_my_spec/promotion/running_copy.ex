@@ -7,27 +7,26 @@ defmodule CodeMySpec.Promotion.RunningCopy do
 
   use Boundary,
     top_level?: true,
-    deps: [CodeMySpec.Issues, CodeMySpec.Users.Scope, CodeMySpec.WorkingCopies]
+    deps: [CodeMySpec.Issues, CodeMySpec.Users.Scope]
 
   alias CodeMySpec.Issues
   alias CodeMySpec.Users.Scope
-  alias CodeMySpec.WorkingCopies
 
   @doc """
   The requirement-graph checker: `{satisfied?, details}`.
 
-  Answers from the story's own `promoted_version` stamp, which
-  `Promotion.record_landed_stories/4` writes when a landing carries that story
-  onto main. Nothing the checkout does afterwards can unsatisfy it; only
-  clearing the stamp, or a story fix submitted after the last promotion, does.
+  Answers from the story's publication stamp and the QA revision that landing
+  carried. `Promotion.record_landed_stories/4` writes both after publication.
+  Later work on the checkout does not change an earlier publication, but a new
+  QA certification or an unshipped story fix requires another landing.
   Whether a checkout is in sync with main is `promote`'s question, answered
   live by git. See knowledge/promotion, "Running-copy verdict".
   """
   @spec running_copy_check(Scope.t(), term()) :: {boolean(), map()}
   def running_copy_check(%Scope{} = scope, entity) do
-    scope
-    |> WorkingCopies.main()
-    |> verdict(scope, with_fix(entity, fixes(scope, [entity])), :unread)
+    entity
+    |> with_fix(fixes(scope, [entity]))
+    |> promoted()
   end
 
   @doc """
@@ -36,15 +35,12 @@ defmodule CodeMySpec.Promotion.RunningCopy do
   Returns `{unpromoted_verdict, %{story_id => verdict}}`: the verdict every
   unstamped story gets, and one per stamped story — a sweep's default and its
   exceptions, the shape `Requirements.Handlers` settles with. Both paths go
-  through `verdict/4`, so they cannot disagree.
+  through `promoted/1`, so they cannot disagree.
   """
   @spec running_copy_verdicts(Scope.t(), [term()]) ::
           {{boolean(), map()}, %{optional(term()) => {boolean(), map()}}}
   def running_copy_verdicts(%Scope{} = scope, stories) do
-    running = WorkingCopies.main(scope)
-    local = local_copy(running, scope)
-
-    unpromoted = verdict(running, scope, %{promoted_version: nil}, local)
+    unpromoted = promoted(%{promoted_version: nil})
 
     stamped = Enum.filter(stories, &is_binary(Map.get(&1, :promoted_version)))
     fixes = fixes(scope, stamped)
@@ -52,24 +48,35 @@ defmodule CodeMySpec.Promotion.RunningCopy do
     promoted =
       for story <- stamped,
           into: %{},
-          do: {story.id, verdict(running, scope, with_fix(story, fixes), local)}
+          do: {story.id, promoted(with_fix(story, fixes))}
 
     {unpromoted, promoted}
   end
 
   # Publication is independent of the destination's presence or health, including
   # when the submitting checkout is itself the main device.
-  defp verdict(_running, %Scope{} = scope, entity, _local) do
-    case WorkingCopies.fetch(scope.active_working_copy_id) do
-      {:ok, copy} -> promoted(entity, copy)
-      _ -> promoted(entity, nil)
+  defp promoted(entity) do
+    case unpublished_qa_revision(entity) do
+      nil -> promoted_with_fix(entity)
+      reason -> {false, %{reason: reason, promoted: false}}
     end
   end
 
-  defp local_copy(_running, _scope), do: :unread
+  defp unpublished_qa_revision(%{promoted_version: version, qa_ready_commit: qa_commit} = story)
+       when is_binary(version) and is_binary(qa_commit) do
+    if Map.get(story, :promoted_qa_commit) == qa_commit and
+         is_binary(Map.get(story, :promoted_candidate_commit)) do
+      nil
+    else
+      "the QA-certified revision #{qa_commit} has no tracked publication. " <>
+        "The earlier promotion stamp (version #{version}) does not carry this work. " <>
+        "Promote this story by completing its story_promoted task."
+    end
+  end
 
-  # The story's own stamp, not a read of the checkout it was promoted from.
-  defp promoted(entity, copy) do
+  defp unpublished_qa_revision(_entity), do: nil
+
+  defp promoted_with_fix(entity) do
     case {Map.get(entity, :promoted_version), unshipped_fix(entity)} do
       {version, nil} when is_binary(version) ->
         {true, %{status: "Promoted at version #{version}"}}
@@ -78,7 +85,7 @@ defmodule CodeMySpec.Promotion.RunningCopy do
         fix_not_promoted(version, issue_id, submitted_at, open?)
 
       _ ->
-        not_yet_promoted(copy)
+        not_yet_promoted()
     end
   end
 
@@ -151,7 +158,7 @@ defmodule CodeMySpec.Promotion.RunningCopy do
 
   # Says what is read and how to satisfy it: an agent that checked git found
   # the code on main and concluded the gate lied.
-  defp not_yet_promoted(_copy) do
+  defp not_yet_promoted() do
     {false,
      %{
        reason:

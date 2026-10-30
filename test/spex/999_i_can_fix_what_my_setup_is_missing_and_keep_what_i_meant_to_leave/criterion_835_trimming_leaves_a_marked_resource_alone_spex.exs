@@ -96,7 +96,7 @@ defmodule CodeMySpecSpex.Story999.Criterion8305Spex do
         {:ok, view, _html} =
           live(context.conn, "/app/projects/#{context.project.id}/console/inventory")
 
-        render_async(view, 5_000)
+        render_settled(view)
 
         {:ok, Map.merge(context, %{view: view, recorder: recorder})}
       end

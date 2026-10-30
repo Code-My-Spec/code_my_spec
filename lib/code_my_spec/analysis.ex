@@ -32,9 +32,11 @@ defmodule CodeMySpec.Analysis do
       CodeMySpec.ExecutionContexts,
       CodeMySpec.Files,
       CodeMySpec.Problems,
+      CodeMySpec.PromotionQueue.Entry,
       CodeMySpec.Repo,
       CodeMySpec.StaticAnalysis,
       CodeMySpec.Tests,
+      CodeMySpec.Analysis.HarnessRegistry,
       CodeMySpec.Tools,
       CodeMySpec.Users.Scope,
       CodeMySpec.Validation.Blocking
@@ -61,6 +63,7 @@ defmodule CodeMySpec.Analysis do
 
   alias CodeMySpec.Problems.ProblemConverter
   alias CodeMySpec.Users.Scope
+  alias CodeMySpec.Validation.Blocking
 
   # `:async` (default) runs jobs through the per-copy ProjectServer.
   # `:inline` (test env) executes in the caller process: sandbox-owned DB
@@ -277,10 +280,9 @@ defmodule CodeMySpec.Analysis do
   # 8db9e442: longer than the harness's own full round trip for a run, not
   # just its analyzer kill timeout alone -- `CmsHarness.Project.AnalysisServer`
   # only arms that kill timer once `CmsHarness.AnalysisSlots.acquire/1` grants
-  # a machine-wide slot, and `acquire/1` itself waits up to its own
-  # `wait_ceiling/0` first (both 30 minutes as of this writing, so a run can
-  # legitimately take up to an hour and still be the harness working, not an
-  # unresponsive one). Kept as an independent constant, not a call into
+  # a machine-wide slot, and `acquire/1` waits in line for one with no limit,
+  # so this bounds only how long a caller waits for the answer; the run itself
+  # still finishes and records its result. Kept as an independent constant, not a call into
   # `CmsHarness` (undeclared Boundary dep, and a real deployment's harness is
   # not even the same process): if either of those two change, this needs to
   # stay ahead of their sum, not just one of them.
@@ -306,6 +308,13 @@ defmodule CodeMySpec.Analysis do
         {:error, :unknown_run}
 
       %Run{} = run ->
+        # The final result and the live end event travel asynchronously. If the
+        # result arrives first, the later event is rejected after this row closes.
+        # ExUnit and spex need no payload from their end event. Credo's event
+        # carries checked-file totals, so preserve that event's own payload.
+        if run.source in ["exunit", "spex"] and LiveRuns.get(run.id),
+          do: LiveRuns.fold(run.id, %{"event" => "finished"})
+
         run = RunsRepository.record_tree(run, Map.take(payload, ["completed_commit"]))
         run = RunsRepository.record_executed(run, payload)
         result = apply_remote_result(scope, run, payload)
@@ -377,6 +386,27 @@ defmodule CodeMySpec.Analysis do
   @spec live_state(integer()) :: LiveRuns.t() | nil
   defdelegate live_state(run_id), to: LiveRuns, as: :get
 
+  @doc """
+  Why a queued run (`Run.queued?/1`) is still waiting, or `nil` once it has
+  started or finished.
+
+  `harness_connected: false` means nothing holding this working copy's
+  executor slot is reachable at all -- the run cannot be picked up, no
+  matter how long it waits. A caller otherwise has no way to tell that
+  apart from ordinary load (issue 90492d2d).
+  """
+  @spec queue_wait(Run.t()) ::
+          %{queued_seconds: non_neg_integer(), harness_connected: boolean()} | nil
+  def queue_wait(%Run{} = run) do
+    if Run.queued?(run) do
+      %{
+        queued_seconds: DateTime.diff(DateTime.utc_now(), run.started_at),
+        harness_connected:
+          match?({:ok, _, _}, HarnessRegistry.executor_holder(run.working_copy_id))
+      }
+    end
+  end
+
   defp record_failure(scope, %{"event" => "test", "state" => "failed"} = test) do
     {:ok, _} =
       CodeMySpec.Problems.create_problems(scope, [
@@ -415,7 +445,8 @@ defmodule CodeMySpec.Analysis do
 
   @doc """
   Record the commit a harness's analyzer started on, whether the tree was
-  clean, and when it began. The run may have sat in the harness's queue since
+  clean, its git tree (`start_tree`, absent from a harness that predates story
+  1174), and when it began. The run may have sat in the harness's queue since
   dispatch, so this is when it actually ran.
   """
   @spec record_remote_start(Scope.t(), map()) :: {:ok, Run.t()} | {:error, :unknown_run}
@@ -430,7 +461,7 @@ defmodule CodeMySpec.Analysis do
          RunsRepository.record_tree(
            run,
            payload
-           |> Map.take(["start_commit", "start_tree_dirty"])
+           |> Map.take(["start_commit", "start_tree_dirty", "start_tree"])
            |> Map.put("began_at", DateTime.utc_now())
          )}
     end
@@ -499,7 +530,7 @@ defmodule CodeMySpec.Analysis do
        when is_map(raw) do
     case Runners.from_raw(run.source, raw) do
       {:ok, result} ->
-        result = note_analyzer_staleness(result, payload)
+        result = result |> note_analyzer_staleness(payload) |> put_live_timings(run)
         reconcile_or_finish_tied(scope, run, result, payload["tied_to"])
 
       {:error, reason} ->
@@ -520,6 +551,14 @@ defmodule CodeMySpec.Analysis do
     reason = payload["error"] || "superseded by a run already queued"
     Reconciler.supersede(run, reason)
     {:error, {:superseded, reason}}
+  end
+
+  # A capacity refusal happened before the analyzer ran. Close the ledger row
+  # without reconciling Problems or recording a clean analyzer result.
+  defp apply_remote_result(_scope, run, %{"status" => "refused"} = payload) do
+    reason = payload["error"] || "analyzer refused before starting"
+    RunsRepository.abandon_run(run, reason)
+    {:error, {:refused, reason}}
   end
 
   # Somebody cancelled it: closed as that, and accepted, since it is the
@@ -553,6 +592,28 @@ defmodule CodeMySpec.Analysis do
 
   defp reconcile_or_finish_tied(scope, run, result, tied_to) when is_integer(tied_to),
     do: Reconciler.finish_tied(scope, run, result)
+
+  # Keep the streamed timing data with the ledger row so promotion history can
+  # still show slow tests and files after LiveRuns prunes its in-memory state.
+  defp put_live_timings(result, %Run{source: source, id: run_id})
+       when source in ["exunit", "spex"] do
+    case LiveRuns.get(run_id) do
+      %{tests: tests, file_timings: files} ->
+        timed_tests =
+          for %{name: name, file: file, duration_us: duration} <- tests,
+              is_binary(name) and is_integer(duration) and duration >= 0 do
+            %{"name" => name, "file" => file, "duration_us" => duration}
+          end
+
+        timings = %{"tests" => timed_tests, "files" => files}
+        %{result | stats: Map.put(result.stats || %{}, "timings", timings)}
+
+      _ ->
+        result
+    end
+  end
+
+  defp put_live_timings(result, _run), do: result
 
   # Whether the harness ran analyzer code older than the tree it judged —
   # computed there, carried on `stats`, so the stop response can say whether
@@ -888,15 +949,75 @@ defmodule CodeMySpec.Analysis do
   end
 
   @doc """
-  Where runs execute here (`Analysis.Supervisor`), at boot: close the runs the
-  last server took with it, and settle them as `resume_orphaned/2` does. No
-  harness rejoins to do it, so whoever was waiting would otherwise never hear.
+  At boot, fail local runs whose executor died with the server and mark
+  remote runs for recovery by their returning harness.
   """
   @spec settle_stranded_runs() :: {:ok, non_neg_integer()}
   def settle_stranded_runs do
+    {:ok, _recovering} = RunsRepository.mark_remote_for_recovery()
     {:ok, failed} = RunsRepository.fail_stranded_runs()
     Enum.each(failed, &resume_orphan(&1, []))
     {:ok, length(failed)}
+  end
+
+  @doc "Recover remote runs marked at server boot; preserve claims and readmit queued work."
+  def reconcile_rejoined(%Scope{} = scope, claimed) do
+    channel = HarnessRegistry.executor_holder(scope.active_working_copy_id)
+
+    for run <- RunsRepository.running_for_copy(scope), run.orphaned do
+      cond do
+        run.id in claimed ->
+          RunsRepository.claim_recovering_run(run)
+
+        Run.queued?(run) and match?({:ok, _, _}, channel) ->
+          {:ok, pid, _} = channel
+          RunsRepository.claim_recovering_run(run)
+          args = get_in(run.args || %{}, ["args"]) || []
+
+          send(
+            pid,
+            {:run_analysis,
+             [
+               %{
+                 "run_id" => run.id,
+                 "source" => run.source,
+                 "args" => args,
+                 "priority" => slot_priority(run.requested_by)
+               }
+             ]}
+          )
+
+        true ->
+          abandon_and_report(run, "harness rejoined without this run")
+      end
+    end
+
+    :ok
+  end
+
+  @doc "Give remote harnesses time to reclaim runs left by a server restart."
+  def abandon_unclaimed_after_restart(cutoff) do
+    for run <- RunsRepository.remote_running_before(cutoff),
+        HarnessRegistry.executor_holder(run.working_copy_id) == :error do
+      abandon_and_report(run, "harness did not rejoin after server restart")
+    end
+
+    :ok
+  end
+
+  defp abandon_and_report(run, reason) do
+    case RunsRepository.abandon_run(run, reason) do
+      {:ok, abandoned} ->
+        Reconciler.announce_failed(
+          abandoned,
+          "not run: #{reason}. Start it again if you still need it."
+        )
+
+        :ok
+
+      :already_closed ->
+        :ok
+    end
   end
 
   defp resume_orphan(run, claimed) do
@@ -1011,6 +1132,49 @@ defmodule CodeMySpec.Analysis do
   end
 
   @doc """
+  The newest run that passed `source` on git `tree`, from any working copy or
+  commit of the project, else nil (story 1174). Passed: full, completed, started
+  clean on `tree` and finished at the commit it started on, with no finding that
+  would block (`Blocking`), read from the run's own recorded findings, not a
+  copy's current Problems. A compiler run counts only forced, as the gate runs
+  it. Failed, abandoned, partial and dirty runs never pass; a nil tree (dirty,
+  or reported by a harness that predates it) has none.
+  """
+  @spec passed_on_tree(Scope.t(), String.t() | nil, String.t()) :: Run.t() | nil
+  def passed_on_tree(_scope, nil, _source), do: nil
+
+  def passed_on_tree(%Scope{} = scope, tree, source) when is_binary(tree) do
+    advisory = Blocking.advisory_findings(scope)
+
+    scope
+    |> RunsRepository.completed_on_tree(tree, source)
+    |> Enum.find(&passed?(&1, advisory))
+  end
+
+  defp passed?(%Run{findings: %{"problems" => problems}} = run, advisory)
+       when is_list(problems),
+       do: forced?(run) and not Enum.any?(problems, &blocks?(&1, run.source, advisory))
+
+  defp passed?(_run, _advisory), do: false
+
+  # An incremental compile reports only what it recompiled (`Promotion.gate/3`).
+  defp forced?(%Run{source: "compiler", args: %{"args" => args}}) when is_list(args),
+    do: "--force" in args
+
+  defp forced?(%Run{source: "compiler"}), do: false
+  defp forced?(_run), do: true
+
+  defp blocks?(problem, source, advisory) do
+    finding = %{
+      severity: if(problem["severity"] == "info", do: :info, else: problem["severity"]),
+      file_path: problem["file_path"]
+    }
+
+    Blocking.can_block?(finding, advisory) and
+      match?({[_], _}, Blocking.split_by_story_enforcement(source, [finding], nil))
+  end
+
+  @doc """
   Whether a full run of `source` still running on this copy will answer for
   `commit`: started there on a clean tree, or queued and not started yet.
   """
@@ -1062,10 +1226,12 @@ defmodule CodeMySpec.Analysis do
     }
   end
 
-  # Path-like args mean the caller targeted specific files, so the run is
-  # `:partial`: it never satisfies freshness and never replaces Problems.
+  # Targeted runs, including a failed-tests-only rerun, never satisfy
+  # freshness or replace the Problems from a whole-project sweep.
   defp kind_for(args) do
-    if Enum.any?(args, &(not String.starts_with?(&1, "-"))), do: :partial, else: :full
+    if Enum.any?(args, &(not String.starts_with?(&1, "-"))),
+      do: :partial,
+      else: :full
   end
 
   @passthrough_opts [
@@ -1125,7 +1291,15 @@ defmodule CodeMySpec.Analysis do
 
     send(
       channel,
-      {:run_analysis, [%{"run_id" => run.id, "source" => job.source, "args" => job.args}]}
+      {:run_analysis,
+       [
+         %{
+           "run_id" => run.id,
+           "source" => job.source,
+           "args" => job.args,
+           "priority" => slot_priority(job.requested_by)
+         }
+       ]}
     )
 
     {:ok, :joined, run.id}
@@ -1154,7 +1328,15 @@ defmodule CodeMySpec.Analysis do
     else
       send(
         channel,
-        {:run_analysis, [%{"run_id" => run.id, "source" => job.source, "args" => job.args}]}
+        {:run_analysis,
+         [
+           %{
+             "run_id" => run.id,
+             "source" => job.source,
+             "args" => job.args,
+             "priority" => slot_priority(job.requested_by)
+           }
+         ]}
       )
 
       {:ok, :started, run.id}
@@ -1230,4 +1412,12 @@ defmodule CodeMySpec.Analysis do
   # Grace added to the caller's timeout so "slow" and "gone" stay
   # distinguishable; configurable for tests.
   defp call_grace_ms, do: Application.get_env(:code_my_spec, :call_grace_ms, 5_000)
+
+  # A promotion gate's run goes ahead of agents' runs for the machine's analyzer
+  # slots: every team's landing waits on the gate, and a gate run that waited
+  # out the slot ceiling behind certification runs ejected its candidate.
+  @gate_kinds ["promotion", "promotion_flake_rerun"]
+  defp slot_priority(%{kind: kind}) when kind in @gate_kinds, do: "gate"
+  defp slot_priority(%{"kind" => kind}) when kind in @gate_kinds, do: "gate"
+  defp slot_priority(_requested_by), do: "normal"
 end

@@ -381,6 +381,31 @@ defmodule CodeMySpec.Problems.ProblemRepository do
     {:ok, count}
   end
 
+  @doc "Paths of file problems no longer present in a complete manifest."
+  @spec missing_problem_file_paths(Scope.t(), [String.t()]) :: [String.t()]
+  def missing_problem_file_paths(%Scope{active_project_id: project_id} = scope, current_paths) do
+    Problem
+    |> where([p], p.project_id == ^project_id)
+    |> scope_to_harness(scope)
+    |> where([p], not is_nil(p.file_path) and p.file_path != "unknown")
+    |> where([p], p.file_path not in ^current_paths)
+    |> select([p], p.file_path)
+    |> distinct(true)
+    |> Repo.all()
+  end
+
+  @doc "Clear file problems for a bounded set of paths in this checkout."
+  @spec clear_problems_for_paths(Scope.t(), [String.t()]) :: {:ok, integer()}
+  def clear_problems_for_paths(%Scope{active_project_id: project_id} = scope, paths) do
+    {count, _} =
+      Problem
+      |> where([p], p.project_id == ^project_id and p.file_path in ^paths)
+      |> scope_to_harness(scope)
+      |> Repo.delete_all()
+
+    {:ok, count}
+  end
+
   @doc """
   Atomically replaces problems for specific components and source.
 

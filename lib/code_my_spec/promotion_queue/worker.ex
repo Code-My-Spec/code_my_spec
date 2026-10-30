@@ -20,12 +20,13 @@ defmodule CodeMySpec.PromotionQueue.Worker do
   require Logger
 
   alias CodeMySpec.Analysis
-  alias CodeMySpec.Analysis.Run
+  alias CodeMySpec.Analysis.{Flakes, Run, RunsRepository}
   alias CodeMySpec.Analysis.ValidationHolds
   alias CodeMySpec.Projects
   alias CodeMySpec.Promotion
   alias CodeMySpec.Promotion.Runner
   alias CodeMySpec.PromotionQueue.Entry
+  alias CodeMySpec.PromotionQueue.FlakeReports
   alias CodeMySpec.PromotionQueue.Repository
   alias CodeMySpec.PromotionQueue.Waits
   alias CodeMySpec.Qa
@@ -59,7 +60,8 @@ defmodule CodeMySpec.PromotionQueue.Worker do
   @doc "The label the project's gate copy carries."
   def gate_label, do: @gate_label
 
-  def gate_label(source_id), do: @gate_label <> ":" <> source_id
+  @doc "The shared gate label for one project on one promoting device."
+  def gate_label(device_id), do: @gate_label <> ":device:" <> device_id
 
   def local_only?(scope),
     do:
@@ -71,7 +73,6 @@ defmodule CodeMySpec.PromotionQueue.Worker do
     PubSub.subscribe(CodeMySpec.PubSub, "analysis:#{project_id}")
     PubSub.subscribe(CodeMySpec.PubSub, "validation_holds:#{project_id}")
     PubSub.subscribe(CodeMySpec.PubSub, "completion_handoffs:#{project_id}")
-    Repository.requeue_gating(project_id)
     send(self(), :next)
 
     {:ok,
@@ -86,6 +87,27 @@ defmodule CodeMySpec.PromotionQueue.Worker do
        gate_wait_since: nil
      }}
   end
+
+  @impl true
+  def terminate({error, stacktrace}, state) when is_list(stacktrace) do
+    frame =
+      Enum.find(stacktrace, fn
+        {module, _, _, _} -> String.starts_with?(Atom.to_string(module), "Elixir.CodeMySpec.")
+        _ -> false
+      end) || List.first(stacktrace)
+
+    # The packaged log keeps only the beginning of a crash report. Put the
+    # project, phase and application frame before the exception text.
+    Logger.error(
+      ("[PromotionQueue] crash project=#{state.project_id} phase=#{state.phase} " <>
+         "at=#{inspect(frame)} error=#{inspect(error, limit: 2, printable_limit: 100)}")
+      |> String.slice(0, 450)
+    )
+
+    :ok
+  end
+
+  def terminate(_reason, _state), do: :ok
 
   @impl true
   def handle_cast({:scope, %Scope{} = scope}, state), do: {:noreply, %{state | scope: scope}}
@@ -150,11 +172,58 @@ defmodule CodeMySpec.PromotionQueue.Worker do
     state = cancel_timer(state)
 
     if ValidationHolds.promotion_allowed?(state.project_id) do
-      reserve_next(state)
+      case Repository.gating(state.project_id) do
+        [entry | _] -> recover_gating(state, entry)
+        [] -> reserve_next(state)
+      end
     else
       {:noreply, idle(state)}
     end
   end
+
+  defp recover_gating(state, entry) do
+    scope = %{state.scope | active_working_copy_id: entry.working_copy_id}
+    saved = timing(entry)
+
+    with head when is_binary(head) <- saved["gate_head"],
+         base when is_binary(base) <- saved["gate_base"],
+         gate_id when is_binary(gate_id) <- saved["gate_copy_id"],
+         {:ok, %WorkingCopy{} = gate} <- WorkingCopies.fetch(gate_id),
+         {:ok, ^head} <- head_of(scope, gate, "the gate copy"),
+         {:ok, ^base} <- main_head(scope),
+         since_string when is_binary(since_string) <- saved["gate_since"],
+         {:ok, since, _} <- DateTime.from_iso8601(since_string) do
+      batch = %{
+        id: entry.batch_id,
+        entries: [entry],
+        gate: gate,
+        scope: scope_for(scope, gate),
+        base: base,
+        head: head,
+        branch: development_branch(scope),
+        format: recovered_format(saved["gate_format"]),
+        since: since
+      }
+
+      Logger.info("[PromotionQueue] resuming batch #{entry.batch_id} at #{head}")
+      send(self(), :gate)
+      {:noreply, recheck_later(%{state | scope: scope, phase: :gating, batch: batch})}
+    else
+      {:error, reason} ->
+        Logger.warning("[PromotionQueue] cannot check gate recovery yet: #{describe(reason)}")
+        {:noreply, recheck_later(idle(state), :next)}
+
+      _ ->
+        Logger.warning("[PromotionQueue] gate changed; rebuilding candidate #{entry.id}")
+        {:ok, _} = Repository.move(entry, :queued, %{batch_id: nil})
+        reserve_next(state)
+    end
+  end
+
+  defp recovered_format(%{"commit" => commit, "files" => files}),
+    do: %{commit: commit, files: files}
+
+  defp recovered_format(_), do: nil
 
   defp reserve_next(state) do
     with [entry] <- Repository.queued(state.project_id, @batch_cap) do
@@ -195,7 +264,7 @@ defmodule CodeMySpec.PromotionQueue.Worker do
   end
 
   defp reserve_and_build(state, entry, base) do
-    case Repository.move(entry, :gating, %{}) do
+    case Repository.move(entry, :gating, %{result: start_timing(entry)}) do
       {:ok, reserved} ->
         build_on(%{state | reserved_entries: [reserved]}, [reserved], base)
 
@@ -420,7 +489,21 @@ defmodule CodeMySpec.PromotionQueue.Worker do
 
   defp begin_gating(state, entries, gate, base, head, format) do
     batch_id = Ecto.UUID.generate()
-    in_batch = Enum.map(entries, &moved(&1, :gating, %{batch_id: batch_id}))
+
+    in_batch =
+      Enum.map(entries, fn entry ->
+        entry = finish_stage(entry, "gate-build", "build_started_at")
+
+        timing =
+          timing(entry)
+          |> Map.put("gate_copy_id", gate.id)
+          |> Map.put("gate_base", base)
+          |> Map.put("gate_head", head)
+          |> Map.put("gate_since", DateTime.to_iso8601(DateTime.utc_now()))
+          |> Map.put("gate_format", format)
+
+        moved(entry, :gating, %{batch_id: batch_id, result: put_timing(entry, timing)})
+      end)
 
     batch = %{
       id: batch_id,
@@ -437,18 +520,36 @@ defmodule CodeMySpec.PromotionQueue.Worker do
       since: DateTime.add(DateTime.utc_now(), -1, :second)
     }
 
-    Logger.info(
-      "[PromotionQueue] gating #{length(in_batch)} candidate(s) at #{head} on #{base} in #{gate.root}"
-    )
+    environment = WorkingCopies.execution_context(batch.scope)
 
-    # Asked now, and again on the recheck timer whatever happens to this one:
-    # a lost `:gate` must not stall the queue.
-    send(self(), :gate)
+    case Runner.select_tests(environment, gate.root, base, head, gate.id) do
+      {:ok, selection} ->
+        selection = Map.new(selection, fn {key, value} -> {to_string(key), value} end)
 
-    {:noreply,
-     %{state | phase: :gating, batch: batch, reserved_entries: []}
-     |> Map.put(:gate_wait_since, nil)
-     |> recheck_later()}
+        in_batch =
+          Enum.map(in_batch, fn entry ->
+            result = Map.put(entry.result || %{}, "test_selection", selection)
+            moved(entry, :gating, %{result: result})
+          end)
+
+        batch = %{batch | entries: in_batch}
+
+        Logger.info(
+          "[PromotionQueue] gating #{length(in_batch)} candidate(s) at #{head} on #{base} in #{gate.root}"
+        )
+
+        # Asked now, and again on the recheck timer whatever happens to this one:
+        # a lost `:gate` must not stall the queue.
+        send(self(), :gate)
+
+        {:noreply,
+         %{state | phase: :gating, batch: batch, reserved_entries: []}
+         |> Map.put(:gate_wait_since, nil)
+         |> recheck_later()}
+
+      {:error, reason} ->
+        could_not_gate(%{state | batch: batch}, in_batch, reason)
+    end
   end
 
   # Taken, and stopped short of a verdict. Ejected rather than requeued: a
@@ -486,19 +587,66 @@ defmodule CodeMySpec.PromotionQueue.Worker do
   defp gate(%{batch: batch} = state) do
     state = cancel_timer(state)
 
-    case failed_runs(batch) do
-      [] -> gate_runs(state)
-      failed -> could_not_run(state, failed)
+    if Map.has_key?(batch, :flake_reruns) do
+      finish_flake_reruns(state)
+    else
+      case failed_runs(batch) do
+        {[], []} ->
+          gate_runs(state)
+
+        {[], unavailable} ->
+          if gate_retry_expired?(batch),
+            do: could_not_run(state, unavailable),
+            else: gate_runs(state)
+
+        {failed, _unavailable} ->
+          could_not_run(state, failed)
+      end
     end
   end
 
   defp gate_runs(%{batch: batch} = state) do
-    case Promotion.gate(batch.scope, batch.head, fresh_since: fresh_since(batch.entries)) do
-      {:ok, swept} -> state |> note_reused(swept) |> assets_build(swept)
-      {:pending, _pending} -> {:noreply, recheck_later(state)}
-      {:error, reason} -> red(state, reason)
+    batch = with_tree(batch)
+    state = %{state | batch: batch}
+
+    case Promotion.gate(batch.scope, batch.head,
+           tree: batch.tree,
+           fresh_since: fresh_since(batch.entries),
+           retry_failed_since: queued_since(batch.entries)
+         ) do
+      {:ok, swept} ->
+        state = %{state | batch: record_runs(batch, swept)}
+        state |> note_reused(swept) |> assets_build(swept)
+
+      {:pending, _pending} ->
+        {:noreply, recheck_later(state)}
+
+      {:error, reason} ->
+        red(state, reason)
     end
   end
+
+  # The batch commit's git tree: an analyzer that already passed it, anywhere,
+  # is not run again (story 1174). Read once from the copy it is checked out
+  # in; nil (no reuse) when that copy has moved or its harness does not say.
+  defp with_tree(%{tree: tree} = batch) when is_binary(tree), do: batch
+
+  defp with_tree(batch) do
+    tree =
+      case head_and_tree(batch) do
+        {:ok, %{head: head, tree: tree}} when head == batch.head and is_binary(tree) -> tree
+        _ -> nil
+      end
+
+    Map.put(batch, :tree, tree)
+  end
+
+  defp head_and_tree(batch),
+    do:
+      Runner.current(WorkingCopies.execution_context(batch.scope), batch.gate.root, batch.gate.id)
+
+  defp queued_since(entries),
+    do: entries |> Enum.map(& &1.inserted_at) |> Enum.min(DateTime, fn -> nil end)
 
   # The earliest a fresh entry in the batch was queued: runs before it answer
   # for none of them. `nil` when no entry asked.
@@ -515,22 +663,56 @@ defmodule CodeMySpec.PromotionQueue.Worker do
   defp assets_build(%{batch: batch} = state, swept) do
     environment = WorkingCopies.execution_context(batch.scope)
 
-    case Runner.build_assets(environment, batch.gate.root, batch.gate.id) do
+    started = DateTime.utc_now()
+    result = Runner.build_assets(environment, batch.gate.root, batch.gate.id)
+    state = %{state | batch: record_stage(batch, "asset-build", started)}
+
+    case result do
       {:ok, _} -> stories_green(state, swept)
       {:error, reason} -> eject_batch(state, reason.reason)
     end
   end
 
-  # A run that failed at the batch commit is red like a finding: the batch's own
-  # change may be what stops the analyzer running (a broken mix.exs, a config
-  # the suite cannot boot with), and a failure at main too is main's to fix.
-  # Not retried. Runs orphaned by a harness going away are not failures here.
-  defp failed_runs(batch),
-    do:
-      Enum.filter(
-        Run.sources(),
-        &(Analysis.failed_at_commit(batch.scope, &1, batch.head, batch.since) > 0)
-      )
+  # A run failure from unavailable infrastructure says nothing about the
+  # candidate. Other failed runs can be caused by its code and remain terminal.
+  defp failed_runs(batch) do
+    Enum.reduce(Run.sources(), {[], []}, fn source, {failed, unavailable} ->
+      runs = RunsRepository.failed_runs_at_commit(batch.scope, source, batch.head, batch.since)
+
+      cond do
+        Enum.any?(runs, &(not retryable_failure?(&1))) -> {[source | failed], unavailable}
+        runs != [] -> {failed, [source | unavailable]}
+        true -> {failed, unavailable}
+      end
+    end)
+  end
+
+  defp retryable_failure?(%Run{stats: %{"error" => error}} = run)
+       when is_binary(error),
+       do:
+         retryable_socket_failure?(run) or infrastructure_failure?(error) or
+           (run.source == "compiler" and run.exit_status == nil and
+              run.output in [nil, ""] and run.stats["execution_terminal"] != true and
+              not String.contains?(error, "compile_diagnostics_unavailable"))
+
+  defp retryable_failure?(_), do: false
+
+  defp infrastructure_failure?(error) do
+    error = String.downcase(error)
+
+    Enum.any?(
+      ["no_executor", "busy", "harness_disconnected", "eperm"],
+      &String.contains?(error, &1)
+    )
+  end
+
+  defp retryable_socket_failure?(%Run{source: "exunit", stats: %{"error" => reason}})
+       when is_binary(reason) do
+    String.contains?(reason, ":test_suite_did_not_run") and
+      String.contains?(reason, ":sops_key_socket_address_in_use")
+  end
+
+  defp retryable_socket_failure?(_), do: false
 
   defp could_not_run(%{batch: batch} = state, sources) do
     why = Enum.map_join(sources, "\n\n", &cannot_run(batch.scope, &1))
@@ -547,6 +729,9 @@ defmodule CodeMySpec.PromotionQueue.Worker do
       %{output: output} when is_binary(output) and output != "" ->
         "#{source}: …#{String.slice(output, -800, 800)}"
 
+      %{stats: %{"error" => error}} when is_binary(error) ->
+        "#{source}: #{error}"
+
       _ ->
         "#{source}: its runs fail with no output"
     end
@@ -559,7 +744,9 @@ defmodule CodeMySpec.PromotionQueue.Worker do
       for entry <- batch.entries,
           story = story_of(state.scope, entry),
           files_scope = %{state.scope | active_working_copy_id: entry.working_copy_id},
-          {:error, reason} <- [Promotion.story_spex_check(batch.scope, story, files_scope)],
+          {:error, reason} <- [
+            Promotion.story_spex_check(batch.scope, story, files_scope, Map.get(batch, :tree))
+          ],
           do: {entry, reason}
 
     case failing do
@@ -578,19 +765,275 @@ defmodule CodeMySpec.PromotionQueue.Worker do
   end
 
   defp red(%{batch: batch} = state, reason) do
-    problems = Promotion.blocking_problems_at(batch.scope, batch.head)
+    problems = Promotion.blocking_problems_at(batch.scope, batch.head, Map.get(batch, :tree))
 
-    if problems == [] do
-      # No finding about the code: the gate could not run (an analyzer would
-      # not start, the tree was dirty).
-      could_not_gate(state, batch.entries, reason)
+    cond do
+      problems == [] and retryable_start_failure?(Map.get(reason, :start_failures, [])) ->
+        gate_unavailable(state, reason.reason)
+
+      problems == [] ->
+        could_not_gate(state, batch.entries, reason)
+
+      rerunnable_test_failures?(batch, problems) ->
+        start_flake_reruns(state, problems)
+
+      true ->
+        log_flake_classifications(batch)
+        eject_batch(state, findings(problems))
+    end
+  end
+
+  defp rerunnable_test_failures?(batch, problems) do
+    sources = problems |> Enum.map(& &1.source) |> Enum.uniq()
+
+    length(gate_answers(batch)) == length(Run.sources()) and
+      Enum.all?(problems, &(&1.source_type == :test and &1.source in ~w(exunit spex))) and
+      Enum.all?(sources, fn source ->
+        case Analysis.answer_at_commit(batch.scope, source, batch.head) do
+          %Run{kind: :full, findings: %{"failures" => [_ | _]}} -> true
+          _ -> false
+        end
+      end)
+  end
+
+  defp start_flake_reruns(%{batch: batch} = state, problems) do
+    sources = problems |> Enum.map(& &1.source) |> Enum.uniq()
+
+    result =
+      Enum.reduce_while(sources, %{}, fn source, reruns ->
+        with {:ok, targets} <- failed_test_targets(batch, source),
+             {:ok, :started, run_id} <-
+               Analysis.start_run(batch.scope, source, targets,
+                 requested_by: %{kind: "promotion_flake_rerun"}
+               ) do
+          {:cont, Map.put(reruns, source, {run_id, targets})}
+        else
+          other -> {:halt, {:error, {source, other}}}
+        end
+      end)
+
+    case result do
+      {:error, {source, failure}} ->
+        eject_batch(
+          state,
+          "the " <> source <> " failed-test rerun could not start: " <> inspect(failure)
+        )
+
+      reruns ->
+        batch = batch |> Map.put(:flake_reruns, reruns) |> Map.put(:flake_problems, problems)
+        {:noreply, recheck_later(%{state | batch: batch})}
+    end
+  end
+
+  defp failed_test_targets(batch, source) do
+    case Analysis.answer_at_commit(batch.scope, source, batch.head) do
+      %Run{kind: :full, findings: %{"failures" => [_ | _] = failures}} ->
+        suffix = if source == "spex", do: "_spex.exs", else: "_test.exs"
+
+        if Enum.all?(failures, fn failure ->
+             file = failure["file"]
+             line = failure["line"]
+
+             is_binary(file) and String.starts_with?(file, "test/") and
+               String.ends_with?(file, suffix) and Path.type(file) == :relative and
+               ".." not in Path.split(file) and is_integer(line) and line > 0
+           end) do
+          targets =
+            failures |> Enum.map(&"#{&1["file"]}:#{&1["line"]}") |> Enum.uniq() |> Enum.sort()
+
+          {:ok, targets}
+        else
+          {:error, :unusable_failure_location}
+        end
+
+      _ ->
+        {:error, :missing_full_gate_failures}
+    end
+  end
+
+  defp finish_flake_reruns(%{batch: batch} = state) do
+    runs =
+      for {source, {run_id, targets}} <- batch.flake_reruns, into: %{} do
+        {source, {RunsRepository.get_run_in_project(batch.scope, run_id), targets}}
+      end
+
+    cond do
+      Enum.any?(runs, fn {_source, {run, _targets}} -> match?(%Run{status: :running}, run) end) ->
+        {:noreply, recheck_later(state)}
+
+      Enum.all?(runs, fn {source, {run, targets}} ->
+        flake_rerun_passed?(batch, source, run, targets)
+      end) ->
+        for {source, {run, _targets}} <- runs,
+            %Run{findings: %{"failures" => failures}} <-
+              [Analysis.answer_at_commit(batch.scope, source, batch.head)],
+            failure <- failures do
+          Logger.info(
+            "[PromotionQueue] " <>
+              to_string(failure["file"]) <>
+              ": " <>
+              to_string(failure["name"]) <> " — confirmed flake; rerun=" <> to_string(run.id)
+          )
+        end
+
+        swept = gate_answers(batch)
+        state = %{state | batch: record_runs(batch, swept)}
+        assets_build(state, swept)
+
+      true ->
+        log_flake_classifications(batch)
+        eject_batch(state, findings(batch.flake_problems))
+    end
+  end
+
+  defp flake_rerun_passed?(batch, source, %Run{} = run, targets) do
+    run.working_copy_id == batch.gate.id and run.source == source and
+      run.kind == :partial and get_in(run.args || %{}, ["args"]) == targets and
+      Run.at_commit?(run, batch.head) and run.exit_status == 0 and
+      Map.get(run.findings || %{}, "failures", []) == [] and
+      rerun_executed_tests?(source, run)
+  end
+
+  defp flake_rerun_passed?(_batch, _source, _run, _targets), do: false
+
+  defp confirmed_flakes(batch) do
+    for source <- ~w(exunit spex),
+        %Run{findings: %{} = findings} = gate_run <-
+          [Analysis.answer_at_commit(batch.scope, source, batch.head)],
+        failure <- Map.get(findings, "failures", []),
+        is_binary(failure["file"]) and is_binary(failure["name"]),
+        %Run{} = rerun <- [passing_flake_rerun(batch, failure)] do
+      %{
+        source: source,
+        file: failure["file"],
+        name: failure["name"],
+        message: to_string(failure["message"]),
+        gate_run_id: gate_run.id,
+        rerun_id: rerun.id,
+        commit: batch.head
+      }
+    end
+  end
+
+  # The rerun behind a "not a flake" verdict, so the line says what decided it.
+  defp rerun_note(batch, failure) do
+    source = if String.starts_with?(failure["file"], "test/spex/"), do: "spex", else: "exunit"
+
+    case Map.get(Map.get(batch, :flake_reruns, %{}), source) do
+      {run_id, _targets} -> "rerun=#{run_id} failed again"
+      _ -> "no rerun"
+    end
+  end
+
+  defp passing_flake_rerun(batch, failure) do
+    source = if String.starts_with?(failure["file"], "test/spex/"), do: "spex", else: "exunit"
+
+    case Map.get(Map.get(batch, :flake_reruns, %{}), source) do
+      {run_id, targets} ->
+        run = RunsRepository.get_run_in_project(batch.scope, run_id)
+
+        if match?(%Run{status: :completed}, run) and
+             run.working_copy_id == batch.gate.id and run.source == source and
+             run.kind == :partial and get_in(run.args || %{}, ["args"]) == targets and
+             Run.at_commit?(run, batch.head) and is_map(run.findings) and
+             rerun_executed_tests?(source, run) and
+             not Enum.any?(Map.get(run.findings, "failures", []), fn rerun_failure ->
+               rerun_failure["file"] == failure["file"] and
+                 rerun_failure["name"] == failure["name"]
+             end) do
+          run
+        end
+
+      _ ->
+        nil
+    end
+  end
+
+  defp rerun_executed_tests?("exunit", run) do
+    is_integer((run.stats || %{})["tests"]) and (run.stats || %{})["tests"] > 0
+  end
+
+  defp rerun_executed_tests?("spex", run) do
+    case Regex.run(~r/\b(\d+) tests?, \d+ failures?\b/, run.output || "") do
+      [_, count] -> String.to_integer(count) > 0
+      _ -> false
+    end
+  end
+
+  defp retryable_start_failure?([_ | _] = failures) do
+    Enum.all?(failures, fn %{error: error} -> infrastructure_failure?(error) end)
+  end
+
+  defp retryable_start_failure?(_), do: false
+
+  defp gate_unavailable(%{batch: batch} = state, reason) do
+    if gate_retry_expired?(batch) do
+      eject_batch(state, "the gate could not start analyzers for 30 minutes: #{reason}")
     else
-      eject_batch(state, findings(problems))
+      Logger.warning("[PromotionQueue] gate analyzers unavailable at #{batch.head}: #{reason}")
+      {:noreply, recheck_later(state)}
+    end
+  end
+
+  defp gate_retry_expired?(batch),
+    do: DateTime.diff(DateTime.utc_now(), batch.since, :millisecond) >= @gate_wait_limit_ms
+
+  defp log_flake_classifications(batch) do
+    unrelated? = fn run, failure -> unrelated_candidate?(batch, run, failure) end
+
+    for %{source: source, result: result} <-
+          Flakes.classify_gate_failures(batch.scope, batch.gate.id, batch.head,
+            unrelated_candidate?: unrelated?
+          ) do
+      failure = result.failure
+
+      case passing_flake_rerun(batch, failure) do
+        %Run{} = rerun ->
+          Logger.info(
+            "[PromotionQueue] #{source} #{failure["file"]}: #{failure["name"]} — confirmed flake; rerun=#{rerun.id}; evidence=#{rerun.id}"
+          )
+
+        nil ->
+          evidence = Enum.map_join(result.evidence, ",", &"#{&1.run_id}:#{&1.working_copy_id}")
+          label = if result.classification == :suspected_flake, do: "suspect", else: "not a flake"
+
+          Logger.info(
+            "[PromotionQueue] #{source} #{failure["file"]}: #{failure["name"]} — #{label}; " <>
+              "#{rerun_note(batch, failure)}; evidence=#{evidence}"
+          )
+      end
+    end
+  rescue
+    error ->
+      Logger.warning(
+        "[PromotionQueue] flake classification unavailable: #{Exception.message(error)}"
+      )
+  end
+
+  defp unrelated_candidate?(batch, run, failure) do
+    file = failure["file"]
+
+    covered =
+      file |> String.replace_prefix("test/", "lib/") |> String.replace_suffix("_test.exs", ".ex")
+
+    environment = WorkingCopies.execution_context(batch.scope)
+
+    if run.working_copy_id in [batch.gate.id | Enum.map(batch.entries, & &1.working_copy_id)] do
+      false
+    else
+      case Runner.changed(environment, batch.gate.root, batch.base, run.commit, batch.gate.id) do
+        {:ok, %{paths: paths}} when is_list(paths) ->
+          file not in paths and covered not in paths
+
+        _ ->
+          false
+      end
     end
   end
 
   # A red batch is its one candidate's.
   defp eject_batch(%{batch: batch} = state, reason) do
+    batch = record_runs(batch, gate_answers(batch))
     release_gate(state)
     Enum.each(batch.entries, &eject(state.scope, &1, reason <> format_note(batch)))
     next(idle(state))
@@ -647,7 +1090,7 @@ defmodule CodeMySpec.PromotionQueue.Worker do
       tell(
         state.scope,
         entry,
-        "Your promotion of #{subject(entry)} is already on main " <>
+        "Your promotion of #{subject(entry)} has landed on main already " <>
           "(#{String.slice(head, 0, 12)}): there was nothing to gate or land."
       )
     end
@@ -692,6 +1135,7 @@ defmodule CodeMySpec.PromotionQueue.Worker do
     notify = batch.entries |> Enum.map(& &1.requested_by_agent_id) |> Enum.reject(&is_nil/1)
 
     landing = if local_only?(state.scope), do: :land, else: :land_remote
+    landing_started = DateTime.utc_now()
 
     case apply(Promotion, landing, [
            batch.scope,
@@ -709,9 +1153,12 @@ defmodule CodeMySpec.PromotionQueue.Worker do
            ]
          ]) do
       {:ok, report} = result ->
+        batch = record_stage(batch, "landing", landing_started)
+
         for entry <- batch.entries do
-          moved(entry, :landed, %{result: landed_result(batch, report)})
+          moved(entry, :landed, %{result: landed_result(entry, batch, report)})
           issue_landed(state.scope, entry, batch.head)
+          FlakeReports.record_landed(state.scope, entry, confirmed_flakes(batch))
 
           # The landing report itself, in memory, for a caller waiting on this
           # entry (`PromotionQueue.await/2`): it answers with what a direct
@@ -795,8 +1242,10 @@ defmodule CodeMySpec.PromotionQueue.Worker do
     next(%{state | phase: :idle, batch: nil})
   end
 
-  defp landed_result(batch, report) do
+  defp landed_result(entry, batch, report) do
     base = %{
+      "timing" => timing(entry),
+      "test_selection" => Map.get(entry.result || %{}, "test_selection"),
       "version" => report[:version],
       "head" => batch.head,
       "promotion_id" => batch.id,
@@ -850,9 +1299,8 @@ defmodule CodeMySpec.PromotionQueue.Worker do
         "#{source} (finished #{Calendar.strftime(at, "%H:%M:%SZ")})"
       end)
 
-    " Certified on runs recorded at this commit before you promoted: #{runs}. If anything " <>
-      "outside the commit changed since (a path dependency such as client_utils), promote " <>
-      "again with fresh: true."
+    " Certified on runs that passed this tree before you promoted: #{runs}. If anything " <>
+      "outside the tree changed since (a path dependency), promote again with fresh: true."
   end
 
   defp reused_note(_batch), do: ""
@@ -866,9 +1314,129 @@ defmodule CodeMySpec.PromotionQueue.Worker do
 
   # -- Helpers ----------------------------------------------------------------
 
+  defp timing(entry), do: get_in(entry.result || %{}, ["timing"]) || %{}
+
+  defp put_timing(entry, value), do: Map.put(entry.result || %{}, "timing", value)
+
+  defp start_timing(entry) do
+    now = DateTime.utc_now()
+    stages = %{"queue-wait" => max(DateTime.diff(now, entry.inserted_at, :second), 0)}
+    put_timing(entry, %{"stages" => stages, "build_started_at" => DateTime.to_iso8601(now)})
+  end
+
+  defp finish_stage(entry, stage, start_key) do
+    case get_in(timing(entry), [start_key]) do
+      started when is_binary(started) ->
+        {:ok, at, _} = DateTime.from_iso8601(started)
+
+        stages =
+          Map.put(
+            timing(entry)["stages"] || %{},
+            stage,
+            max(DateTime.diff(DateTime.utc_now(), at, :second), 0)
+          )
+
+        value = timing(entry) |> Map.put("stages", stages) |> Map.delete(start_key)
+        moved(entry, entry.status, %{result: put_timing(entry, value)})
+
+      _ ->
+        entry
+    end
+  end
+
+  defp record_stage(batch, stage, started) do
+    seconds = max(DateTime.diff(DateTime.utc_now(), started, :second), 0)
+
+    entries =
+      Enum.map(batch.entries, fn entry ->
+        stages = Map.put(timing(entry)["stages"] || %{}, stage, seconds)
+
+        moved(entry, entry.status, %{
+          result: put_timing(entry, Map.put(timing(entry), "stages", stages))
+        })
+      end)
+
+    %{batch | entries: entries}
+  end
+
+  defp record_runs(batch, swept) do
+    ids = Enum.map(swept, & &1.run_id) |> Enum.reject(&is_nil/1)
+
+    failures =
+      for source <- ~w(exunit spex),
+          %Run{kind: :full, findings: findings} <-
+            [Analysis.answer_at_commit(batch.scope, source, batch.head)],
+          failure <- Map.get(findings || %{}, "failures", []),
+          is_binary(failure["file"]) and is_binary(failure["name"]),
+          do: failure
+
+    entries =
+      Enum.map(batch.entries, fn entry ->
+        value = Map.put(timing(entry), "run_ids", ids)
+        result = put_timing(entry, value)
+
+        result =
+          case result["test_selection"] do
+            %{} = selection ->
+              selected = selection["selected_tests"] || []
+              changed = selection["changed_files"] || []
+
+              misses =
+                for failure <- failures,
+                    failure["file"] not in selected and
+                      is_nil(passing_flake_rerun(batch, failure)),
+                    do: %{
+                      "file" => failure["file"],
+                      "name" => failure["name"],
+                      "changed_files" => changed
+                    }
+
+              flakes =
+                for failure <- failures,
+                    passing_flake_rerun(batch, failure),
+                    do: failure["file"]
+
+              selection =
+                selection
+                |> Map.put("failed_tests", failures |> Enum.map(& &1["file"]) |> Enum.uniq())
+                |> Map.put("misses", Enum.uniq(misses))
+                |> Map.put("flakes", Enum.uniq(flakes))
+
+              Map.put(result, "test_selection", selection)
+
+            _ ->
+              result
+          end
+
+        moved(entry, entry.status, %{result: result})
+      end)
+
+    %{batch | entries: entries}
+  end
+
+  defp gate_answers(batch) do
+    for source <- Run.sources(),
+        %Run{kind: :full} = run <- [
+          Analysis.passed_on_tree(batch.scope, Map.get(batch, :tree), source) ||
+            Analysis.answer_at_commit(batch.scope, source, batch.head)
+        ] do
+      %{
+        source: source,
+        run_id: run.id,
+        finished_at: run.finished_at,
+        commit: run.completed_commit
+      }
+    end
+  end
+
   defp eject(scope, %Entry{} = entry, reason) do
     entry = Repository.get(entry.id) || entry
-    moved(entry, :ejected, %{batch_id: nil, result: %{"reason" => reason}})
+
+    moved(entry, :ejected, %{
+      batch_id: nil,
+      result: Map.put(entry.result || %{}, "reason", reason)
+    })
+
     Logger.info("[PromotionQueue] ejected #{subject(entry)}: #{reason}")
 
     tell_durably(
@@ -963,33 +1531,100 @@ defmodule CodeMySpec.PromotionQueue.Worker do
   # checkout and a harness, which sit above this queue, so it is requested as
   # an event (`Staffing` answers it) and read back.
   defp gate_copy(scope) do
-    case find_gate_copy(scope) do
+    with {:ok, label} <- gate_label_for(scope),
+         {:ok, gate} <- find_or_make_gate(scope, label) do
+      retire_legacy_gates(scope, gate)
+      {:ok, gate}
+    end
+  end
+
+  defp find_or_make_gate(scope, label) do
+    case find_gate_copy(scope, label) do
       %WorkingCopy{} = gate ->
         {:ok, gate}
 
       nil ->
-        :telemetry.execute([:code_my_spec, :promotion_queue, :gate_copy_needed], %{}, %{
-          scope: scope,
-          label: gate_label_for(scope),
-          source_copy_id: if(local_only?(scope), do: nil, else: scope.active_working_copy_id)
-        })
-
-        case find_gate_copy(scope) do
-          %WorkingCopy{} = gate -> {:ok, gate}
-          nil -> {:error, %{reason: "the project has no gate copy and none could be made"}}
+        case legacy_gate_copy(scope) do
+          %WorkingCopy{} = legacy -> WorkingCopies.relabel(scope, legacy, label)
+          nil -> make_gate_copy(scope, label)
         end
     end
   end
 
-  defp find_gate_copy(scope) do
-    scope
-    |> WorkingCopies.list_harnesses()
-    |> Enum.find(
-      &(gate_on_source?(scope, &1) and &1.label == gate_label_for(scope) and is_binary(&1.root) and
-          &1.root != "")
-    )
+  defp make_gate_copy(scope, label) do
+    :telemetry.execute([:code_my_spec, :promotion_queue, :gate_copy_needed], %{}, %{
+      scope: scope,
+      label: label,
+      source_copy_id: if(local_only?(scope), do: nil, else: scope.active_working_copy_id)
+    })
+
+    case find_gate_copy(scope, label) do
+      %WorkingCopy{} = gate -> {:ok, gate}
+      nil -> {:error, %{reason: "the project has no gate copy and none could be made"}}
+    end
   end
 
+  defp find_gate_copy(scope) do
+    with {:ok, label} <- gate_label_for(scope), do: find_gate_copy(scope, label)
+  end
+
+  defp find_gate_copy(scope, label) do
+    scope
+    |> WorkingCopies.list_harnesses()
+    |> Enum.find(&(gate_on_source?(scope, &1) and &1.label == label and gate_root?(&1)))
+  end
+
+  defp legacy_gate_copy(scope) do
+    if local_only?(scope) do
+      nil
+    else
+      scope
+      |> WorkingCopies.list_harnesses()
+      |> Enum.find(
+        &(gate_on_source?(scope, &1) and legacy_gate_label?(&1.label) and gate_root?(&1))
+      )
+    end
+  end
+
+  # A gate whose checkout its harness reports gone is no gate: kept, its record
+  # stood in for the copy and every batch was refused on its unreadable HEAD
+  # (03:00Z, a disk cleanup removed the folders and left the records). Passed
+  # over, it is asked for again, and `Staffing` retires the gone record.
+  defp gate_root?(%WorkingCopy{root: root} = gate),
+    do: is_binary(root) and root != "" and is_nil(gate.path_missing_since)
+
+  defp legacy_gate_label?("promotion-gate:" <> suffix),
+    do: not String.starts_with?(suffix, "device:")
+
+  defp legacy_gate_label?(_), do: false
+
+  defp retire_legacy_gates(scope, gate) do
+    unless local_only?(scope) do
+      scope
+      |> WorkingCopies.list_harnesses()
+      |> Enum.filter(
+        &(&1.id != gate.id and gate_on_source?(scope, &1) and
+            legacy_gate_label?(&1.label) and gate_root?(&1))
+      )
+      |> Enum.each(fn obsolete ->
+        obsolete_scope = scope_for(scope, obsolete)
+
+        unless Analysis.running_on?(obsolete_scope) or
+                 Repository.publication_gate_in_use?(scope.active_project_id, obsolete.id) do
+          :telemetry.execute([:code_my_spec, :promotion_queue, :gate_copy_obsolete], %{}, %{
+            scope: scope,
+            gate: obsolete,
+            source_copy_id: scope.active_working_copy_id
+          })
+        end
+      end)
+    end
+  end
+
+  # The gate is a worktree of the source checkout, so it must run on that device
+  # to reach Git, dependencies and the build/test environment. The server or
+  # another device cannot assume access to that disk. One gate per device lets
+  # every source copy there reuse it without crossing this boundary.
   defp gate_on_source?(scope, gate) do
     if local_only?(scope) do
       true
@@ -1040,8 +1675,16 @@ defmodule CodeMySpec.PromotionQueue.Worker do
     end
   end
 
-  defp gate_label_for(scope),
-    do: if(local_only?(scope), do: @gate_label, else: gate_label(scope.active_working_copy_id))
+  defp gate_label_for(scope) do
+    if local_only?(scope) do
+      {:ok, @gate_label}
+    else
+      case WorkingCopies.fetch(scope.active_working_copy_id) do
+        {:ok, %WorkingCopy{device_id: id}} when is_binary(id) -> {:ok, gate_label(id)}
+        _ -> {:error, %{reason: "the source copy has no device for a promotion gate"}}
+      end
+    end
+  end
 
   defp development_branch(scope) do
     case Projects.get_project(scope, scope.active_project_id) do
@@ -1068,7 +1711,10 @@ defmodule CodeMySpec.PromotionQueue.Worker do
       }
 
       for entry <- batch.entries,
-          do: moved(entry, :gating, %{result: %{"publication" => publication}})
+          do:
+            moved(entry, :gating, %{
+              result: Map.put(entry.result || %{}, "publication", publication)
+            })
 
       Map.put(batch, :publication_sequence, sequence)
     end

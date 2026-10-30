@@ -28,6 +28,7 @@ defmodule CodeMySpec.Promotion do
       CodeMySpec.Qa,
       CodeMySpec.Repo,
       CodeMySpec.Stories,
+      CodeMySpec.TestImpact,
       CodeMySpec.Users.Scope,
       CodeMySpec.Utils,
       CodeMySpec.Validation.Blocking,
@@ -137,8 +138,8 @@ defmodule CodeMySpec.Promotion do
     with {:ok, pre} <-
            Runner.precheck(copy_environment(scope, from), from.root, from.id, main),
          {:ok, head} <- reported_head(pre, named),
-         {:ok, swept} <- gate(scope, head, opts),
-         :ok <- story_spex_pass(scope, story, named) do
+         {:ok, swept} <- gate(scope, head, Keyword.put(opts, :tree, pre[:tree])),
+         :ok <- story_spex_pass(scope, story, named, nil, pre[:tree]) do
       {:ok, %{head: head, certified_by: swept, precheck: pre}}
     end
   end
@@ -565,8 +566,11 @@ defmodule CodeMySpec.Promotion do
 
   defp complete_and_stamp_story(scope, story, version, commit, copy_id, expected_revision) do
     case Qa.complete_reviewed_story_issues(scope, story, commit, expected_revision) do
-      {:ok, _issues} -> stamp_promoted_story(scope, story, version, commit, copy_id)
-      {:error, reason} -> Repo.rollback(reason)
+      {:ok, _issues} ->
+        stamp_promoted_story(scope, story, version, commit, copy_id, expected_revision)
+
+      {:error, reason} ->
+        Repo.rollback(reason)
     end
   end
 
@@ -597,10 +601,15 @@ defmodule CodeMySpec.Promotion do
         story: story
       })
 
-  defp stamp_promoted_story(_scope, nil, _version, _commit, _copy_id), do: :ok
+  defp stamp_promoted_story(_scope, nil, _version, _commit, _copy_id, _candidate), do: :ok
 
-  defp stamp_promoted_story(scope, story, version, commit, copy_id) do
-    opts = [at: DateTime.utc_now(), commit: commit, working_copy_id: copy_id]
+  defp stamp_promoted_story(scope, story, version, commit, copy_id, candidate) do
+    opts = [
+      at: DateTime.utc_now(),
+      commit: commit,
+      candidate_commit: candidate,
+      working_copy_id: copy_id
+    ]
 
     case Stories.mark_story_promoted(scope, story, version, opts) do
       {:ok, _story} ->
@@ -621,20 +630,27 @@ defmodule CodeMySpec.Promotion do
   story in a batch: the findings are the gate copy's run, and `files_scope`
   (the candidate's own copy) says which files are the story's spex — the gate
   copy's file rows may not have caught up with the checkout a batch just made.
+  When spex already passed `tree` (`Analysis.passed_on_tree/3`), no spex
+  failed there, whatever the copy's Problems still hold from an older run.
   """
-  @spec story_spex_check(Scope.t(), Stories.Story.t() | nil, Scope.t() | nil) ::
+  @spec story_spex_check(Scope.t(), Stories.Story.t() | nil, Scope.t() | nil, String.t() | nil) ::
           :ok | {:error, map()}
-  def story_spex_check(%Scope{active_working_copy_id: id} = scope, story, files_scope \\ nil),
-    do: story_spex_pass(scope, story, named_copy(id), files_scope)
+  def story_spex_check(
+        %Scope{active_working_copy_id: id} = scope,
+        story,
+        files_scope \\ nil,
+        tree \\ nil
+      ),
+      do: story_spex_pass(scope, story, named_copy(id), files_scope, tree)
 
   # `files_scope` is the copy whose file rows say which spex are the story's —
   # the promotion queue's candidate, when the run being read is the gate copy's.
-  defp story_spex_pass(scope, story, named, files_scope \\ nil)
+  defp story_spex_pass(scope, story, named, files_scope \\ nil, tree \\ nil)
 
-  defp story_spex_pass(_scope, nil, _named, _files_scope), do: :ok
+  defp story_spex_pass(_scope, nil, _named, _files_scope, _tree), do: :ok
 
   # Every red spex on the story refuses it.
-  defp story_spex_pass(scope, story, named, files_scope) do
+  defp story_spex_pass(scope, story, named, files_scope, tree) do
     files_scope = files_scope || scope
     numbers = scope |> AcceptanceCriteria.list_story_criteria(story.id) |> MapSet.new(& &1.number)
 
@@ -651,9 +667,12 @@ defmodule CodeMySpec.Promotion do
           do: path
 
     failing =
-      scope
-      |> ProblemRepository.list_project_problems(source: "spex")
-      |> Enum.filter(&MapSet.member?(paths, &1.file_path))
+      if Analysis.passed_on_tree(scope, tree, "spex"),
+        do: [],
+        else:
+          scope
+          |> ProblemRepository.list_project_problems(source: "spex")
+          |> Enum.filter(&MapSet.member?(paths, &1.file_path))
 
     spex_verdict(story, file_paths, failing, named)
   end
@@ -898,11 +917,21 @@ defmodule CodeMySpec.Promotion do
   run started there on a clean tree answers for. `:none` otherwise.
   """
   @spec clean_head(Scope.t()) :: {:ok, String.t()} | :none
-  def clean_head(%Scope{} = scope) do
+  def clean_head(%Scope{} = scope), do: clean(scope, :head)
+
+  @doc """
+  The git tree of the caller's working copy's HEAD, when its tree is clean:
+  what a pass recorded there answers for (story 1174). `:none` otherwise, and
+  from a harness that does not report one.
+  """
+  @spec clean_tree(Scope.t()) :: {:ok, String.t()} | :none
+  def clean_tree(%Scope{} = scope), do: clean(scope, :tree)
+
+  defp clean(scope, key) do
     with {:ok, copy} <- promoting_copy(scope, nil),
-         {:ok, %{head: head}} when is_binary(head) <-
+         {:ok, %{^key => value}} when is_binary(value) <-
            Runner.precheck(copy_environment(scope, copy), copy.root, copy.id) do
-      {:ok, head}
+      {:ok, value}
     else
       _ -> :none
     end
@@ -924,7 +953,10 @@ defmodule CodeMySpec.Promotion do
   @doc """
   Whether the promoting copy (`scope.active_working_copy_id`) may merge `head`.
 
-  Every analyzer needs a run at `head` (`Analysis.answer_at_commit/3`). The
+  An analyzer that already passed `opts[:tree]`, `head`'s git tree, on any copy
+  or commit (`Analysis.passed_on_tree/3`) answers without running again (story
+  1174). Every other analyzer needs a run at `head` on this copy
+  (`Analysis.answer_at_commit/3`). The
   problems those runs recorded must be zero (every red spex refuses). Compiler,
   credo and exunit findings refuse at
   `:error` or `:warning`; `:info` (low-priority credo) is advisory. A spex
@@ -952,9 +984,13 @@ defmodule CodeMySpec.Promotion do
     with {:ok, scope, named} <- gate_copy(scope, working_copy_id) do
       # Every source, whatever the project's config: config decides what the
       # stop hook sweeps, never what promote demands.
-      {answered, missing} = answers_at(scope, Run.sources(), head, opts[:fresh_since])
+      {answered, missing, reused} =
+        answers_at(scope, Run.sources(), head, opts[:tree], opts[:fresh_since])
 
-      case blocking_problems(scope, Map.keys(answered)) do
+      {answered, missing} =
+        retry_failed_answers(scope, answered, missing, reused, opts[:retry_failed_since])
+
+      case blocking_problems(scope, judged(answered, reused)) do
         [] -> certify(scope, answered, missing, head, named, opts)
         problems -> gate_result(problems, named)
       end
@@ -994,16 +1030,25 @@ defmodule CodeMySpec.Promotion do
   defp gate_outcome({:error, refusal}), do: "refused (#{inspect(refusal[:counts])})"
 
   @doc """
-  Whether the scope's copy is already certified at `head`: every analyzer has a
-  run that answers for it there, and none of them found anything blocking. A
-  read — nothing is started.
+  Whether the scope's copy is already certified at `head`, whose git tree is
+  `tree`: `uncertified/3` is empty. A read — nothing is started.
   """
-  @spec certified_at?(Scope.t(), String.t()) :: boolean()
-  def certified_at?(%Scope{} = scope, head) do
-    case answers_at(scope, Run.sources(), head) do
-      {answered, []} -> blocking_problems(scope, Map.keys(answered)) == []
-      {_answered, _missing} -> false
-    end
+  @spec certified_at?(Scope.t(), String.t(), String.t() | nil) :: boolean()
+  def certified_at?(%Scope{} = scope, head, tree \\ nil),
+    do: uncertified(scope, head, tree) == []
+
+  @doc """
+  The analyzers that have not passed `head`, in `Run.sources/0` order. One has
+  passed when a run on any copy or commit passed `tree`
+  (`Analysis.passed_on_tree/3`), or when this copy's run at `head` found nothing
+  blocking. A nil `tree` (a harness that does not report one) leaves only the
+  second.
+  """
+  @spec uncertified(Scope.t(), String.t(), String.t() | nil) :: [String.t()]
+  def uncertified(%Scope{} = scope, head, tree) do
+    {answered, missing, reused} = answers_at(scope, Run.sources(), head, tree)
+    red = scope |> blocking_problems(judged(answered, reused)) |> Enum.map(& &1.source)
+    Enum.filter(Run.sources(), &(&1 in missing or &1 in red))
   end
 
   @doc """
@@ -1011,9 +1056,9 @@ defmodule CodeMySpec.Promotion do
   or the gate's refusal. A read — it starts nothing, and a source with no answer
   at `head` is not a refusal.
   """
-  @spec red_at(Scope.t(), String.t()) :: :ok | {:error, map()}
-  def red_at(%Scope{active_working_copy_id: id} = scope, head) do
-    case blocking_problems_at(scope, head) do
+  @spec red_at(Scope.t(), String.t(), String.t() | nil) :: :ok | {:error, map()}
+  def red_at(%Scope{active_working_copy_id: id} = scope, head, tree \\ nil) do
+    case blocking_problems_at(scope, head, tree) do
       [] -> :ok
       problems -> gate_result(problems, named_copy(id))
     end
@@ -1021,16 +1066,16 @@ defmodule CodeMySpec.Promotion do
 
   @doc """
   The problems `gate/3` judges at `head`: those of the sources whose latest
-  run on the scope's copy is at `head`.
+  run on the scope's copy is at `head`, and that have not passed `tree`.
 
   Problems are kept per copy, not per commit, so a source not yet answered at
   `head` still holds its previous run's problems — another commit's. A red
   batch is triaged on exactly what refused it, never on those.
   """
-  @spec blocking_problems_at(Scope.t(), String.t()) :: [struct()]
-  def blocking_problems_at(%Scope{} = scope, head) do
-    {answered, _missing} = answers_at(scope, Run.sources(), head)
-    blocking_problems(scope, Map.keys(answered))
+  @spec blocking_problems_at(Scope.t(), String.t(), String.t() | nil) :: [struct()]
+  def blocking_problems_at(%Scope{} = scope, head, tree \\ nil) do
+    {answered, _missing, reused} = answers_at(scope, Run.sources(), head, tree)
+    blocking_problems(scope, judged(answered, reused))
   end
 
   defp certify(_scope, answered, [], _head, _named, _opts), do: {:ok, certified_by(answered)}
@@ -1040,24 +1085,64 @@ defmodule CodeMySpec.Promotion do
 
   # The running-copy path's check: `sources` answered at `head`, or started.
   defp runs_at(scope, sources, head, named, opts) do
-    case answers_at(scope, sources, head) do
-      {_answered, []} -> :ok
-      {_answered, missing} -> start_missing(scope, missing, head, named, opts)
+    case answers_at(scope, sources, head, nil) do
+      {_answered, [], _reused} -> :ok
+      {_answered, missing, _reused} -> start_missing(scope, missing, head, named, opts)
     end
   end
 
+  # Per source: a pass on `tree` from anywhere (`reused`, a pass by its own
+  # findings), else this copy's run at `head`, judged by the copy's Problems.
+  #
   # `fresh_since`: a promote asked for runs of its own (`fresh: true`), so one
-  # recorded at the commit before then does not answer. A path dependency can
-  # change on disk without the commit moving (issue c9d61407).
-  defp answers_at(scope, sources, head, fresh_since \\ nil) do
+  # recorded before then does not answer, reused or not. A path dependency can
+  # change on disk without the tree moving.
+  defp answers_at(scope, sources, head, tree, fresh_since \\ nil) do
     runs =
       Map.new(sources, fn source ->
-        run = gate_answer(source, Analysis.answer_at_commit(scope, source, head))
-        {source, since(run, fresh_since)}
+        case since(Analysis.passed_on_tree(scope, tree, source), fresh_since) do
+          %Run{} = run ->
+            {source, {:reused, run}}
+
+          nil ->
+            run = gate_answer(source, Analysis.answer_at_commit(scope, source, head))
+            {source, since(run, fresh_since)}
+        end
       end)
 
     {answered, missing} = Enum.split_with(runs, fn {_source, run} -> run end)
-    {Map.new(answered), Enum.map(missing, &elem(&1, 0))}
+    reused = for {source, {:reused, _run}} <- answered, do: source
+    answered = Map.new(answered, fn {source, answer} -> {source, unwrap(answer)} end)
+    {answered, Enum.map(missing, &elem(&1, 0)), reused}
+  end
+
+  defp unwrap({:reused, run}), do: run
+  defp unwrap(run), do: run
+
+  # The answered sources whose verdict is the copy's Problems: not those
+  # reused, which passed on their own findings, and whose copy may be another.
+  defp judged(answered, reused), do: Map.keys(answered) -- reused
+
+  # A new queue attempt may reuse green answers at the same commit. A red
+  # answer from before this attempt must get one new run; once that run lands,
+  # its findings decide this attempt without starting it over. Keep the old run
+  # for same-commit flake evidence.
+  defp retry_failed_answers(_scope, answered, missing, _reused, nil), do: {answered, missing}
+
+  defp retry_failed_answers(scope, answered, missing, reused, queued_at) do
+    failed_sources =
+      scope
+      |> blocking_problems(judged(answered, reused))
+      |> Enum.map(& &1.source)
+      |> MapSet.new()
+
+    {retry, reusable} =
+      Enum.split_with(answered, fn {source, run} ->
+        MapSet.member?(failed_sources, source) and
+          not is_nil(run.finished_at) and DateTime.compare(run.finished_at, queued_at) == :lt
+      end)
+
+    {Map.new(reusable), missing ++ Enum.map(retry, &elem(&1, 0))}
   end
 
   defp since(run, nil), do: run
@@ -1115,7 +1200,9 @@ defmodule CodeMySpec.Promotion do
            Enum.map_join(failed, ", ", fn {source, error} ->
              "#{source} (could not start one: #{inspect(error)})"
            end) <> ". Nothing was merged.",
-       working_copy: named
+       working_copy: named,
+       start_failures:
+         Enum.map(failed, fn {source, error} -> %{source: source, error: inspect(error)} end)
      }}
   end
 
@@ -1135,7 +1222,12 @@ defmodule CodeMySpec.Promotion do
   # runs are visibly the same verdict.
   defp certified_by(answered) do
     for source <- Run.sources(), %Run{} = run <- [answered[source]] do
-      %{source: source, finished_at: run.finished_at, commit: run.completed_commit}
+      %{
+        source: source,
+        run_id: run.id,
+        finished_at: run.finished_at,
+        commit: run.completed_commit
+      }
     end
   end
 
@@ -1266,7 +1358,7 @@ defmodule CodeMySpec.Promotion do
   end
 
   defp reload_opts(scope, running, opts) do
-    opts = Keyword.put(opts, :loaded, loaded_here(running))
+    opts = Keyword.put(opts, :loaded, loaded_here(running.root))
 
     with {:ok, instance} <- default_instance(scope, running) do
       Keyword.put(opts, :reload_supported, AppInstances.reload_supported?(scope, instance.id))
@@ -1275,9 +1367,44 @@ defmodule CodeMySpec.Promotion do
     end
   end
 
-  # What this server has loaded, when the app being deployed is this server.
-  defp loaded_here(%WorkingCopy{root: root}) do
+  @doc """
+  The sources this server has loaded when `root` is the checkout it runs from,
+  else `[]`: `deployment_plan/2`'s `:loaded`.
+  """
+  @spec loaded_here(String.t() | nil) :: [String.t()]
+  def loaded_here(root) do
     if is_binary(root) and root == BootVersion.root(), do: BootVersion.loaded_sources(), else: []
+  end
+
+  @doc """
+  Runs pending migrations inside this server when `root` is the checkout it
+  runs from, before a reload; elsewhere does nothing. A `mix ecto.migrate`
+  beside the running server waited for the build lock its code reloader held,
+  and every request hung behind it. The reload's `/health` still reports any
+  migration left pending, which restarts the app instead.
+
+  `{:error, %{reason:}}` names the migration that raised, so the landing's
+  outcome says this server was left unmigrated.
+  """
+  @spec migrate_here(String.t() | nil, String.t()) ::
+          {:ok, [integer()]} | {:error, %{reason: String.t()}}
+  def migrate_here(root, path \\ Ecto.Migrator.migrations_path(Repo)) do
+    if is_binary(root) and root == BootVersion.root(),
+      do: migrate(path),
+      else: {:ok, []}
+  end
+
+  defp migrate(path) do
+    {:ok, Ecto.Migrator.run(Repo, path, :up, all: true)}
+  rescue
+    error ->
+      failed =
+        Enum.find_value(Ecto.Migrator.migrations(Repo, [path]), "a migration", fn
+          {:down, version, name} -> "migration #{version} #{name}"
+          _up -> nil
+        end)
+
+      {:error, %{reason: "#{failed} failed in the running server: #{Exception.message(error)}"}}
   end
 
   # Dispatched, never awaited: the restart may kill this very BEAM before it
@@ -1325,9 +1452,12 @@ defmodule CodeMySpec.Promotion do
     {"restart", outcome}
   end
 
+  # A migration that fails here fails the reload, as a pending one failing
+  # `/health` would.
   defp deploy_now(%{action: :reload}, scope, root, instance_id, opts) do
-    scope
-    |> Runner.reload(root, instance_id)
+    with {:ok, _versions} <- migrate_here(root) do
+      Runner.reload(scope, root, instance_id)
+    end
     |> reloaded(scope, root, instance_id, opts)
   end
 
@@ -1485,12 +1615,13 @@ defmodule CodeMySpec.Promotion do
 
   # By here `verify_unconfirmed/3` has settled a lost acknowledgement, so a
   # correction is a real failure or an app verified still on the old commit.
-  defp tell_the_agent({:failed, reason} = outcome, scope, root, _done, agent_id) do
+  # `done` carries why a reload became a restart, such as a migration that failed.
+  defp tell_the_agent({:failed, reason} = outcome, scope, root, done, agent_id) do
     text =
       "Correction on the promotion I just reported. The merge landed, but the " <>
         "deployment that followed it failed, so the application at #{root} is NOT " <>
         "serving your work — disregard the part of that message saying QA can " <>
-        "start.\n\nWhat went wrong: #{reason}\n\nNothing was rolled back; the merge " <>
+        "start.\n\nWhat went wrong: the #{done} failed: #{reason}\n\nNothing was rolled back; the merge " <>
         "is still on the running copy. Fix what broke the restart and promote again."
 
     deliver(scope, agent_id, text, "restart failure")

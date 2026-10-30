@@ -292,16 +292,14 @@ defmodule CodeMySpec.Stories.Tools.Responses do
     hybrid_response(summary, data)
   end
 
-  def criterion_retired_response(criterion, removed \\ [], orphans \\ []) do
+  def criterion_retired_response(criterion, orphans \\ []) do
     {:ok,
      "Criterion retired (criterion #{criterion.number}): #{criterion.description}" <>
-       spex_section("Its spex", removed) <> spex_section("Orphaned spex swept", orphans)}
+       orphan_section(orphans)}
   end
 
-  defp spex_section(_title, []), do: ""
-
-  defp spex_section(title, results),
-    do: "\n\n#{title}:\n" <> SpecCleanup.report(results)
+  defp orphan_section([]), do: ""
+  defp orphan_section(orphans), do: "\n\n" <> SpecCleanup.report(orphans)
 
   def criterion_restored_response(criterion) do
     {:ok, "Criterion restored (criterion #{criterion.number}): #{criterion.description}"}

@@ -1,8 +1,9 @@
 # Running the harness in a Claude Code cloud session
 
-A claude.ai/code session on this repo runs its own harness, which joins the
-CodeMySpec server at `CMS_SERVER_URL`. Nothing in the repo changes: everything
-comes from the cloud environment's settings.
+A claude.ai/code session on this repo runs its own harness. The server URL is
+resolved by `scripts/start-harness` from `CMS_SERVER_URL`, the checkout's existing
+`.cms_harness.json`, or `.code_my_spec/config.yml`. The cloud hook does not
+substitute a server URL when none is configured.
 
 ## Environment settings (claude.ai/code → environment)
 
@@ -14,12 +15,14 @@ comes from the cloud environment's settings.
   /usr/local/lib by hand), and `archive.ubuntu.com` plus
   `security.ubuntu.com` for `inotify-tools`. Without inotifywait the harness's
   file watcher cannot start and the project channel rejoins about once a second.
-- **Environment variables:**
-
-      CMS_SERVER_URL=https://dev.codemyspec.com
-      CMS_DEPLOY_KEY=<the code_my_spec project's deploy key>
+- **Environment variables:** Set `CMS_HARNESS_PORT=4004`. Set
+  `CMS_SERVER_URL=https://dev.codemyspec.com` only when the checkout has no
+  server URL in `.code_my_spec/config.yml` or `.cms_harness.json`.
 
 - **Setup script:** paste `setup.sh` in full.
+
+The setup script uses the same source entry point as a local checkout. It prints a device verification URL and code in `~/.codemyspec/harness.out` on first boot; approve that code once. The device UI generates a separate setup using a proxy network secret. Both pass `CMS_HARNESS_PORT` to the harness and Claude settings. Use a plugin version
+that supports this override; older published plugins have a fixed port of 4003.
 
 `dev.codemyspec.com` is the local `mix phx.server` on :4000 behind the Cloudflare
 tunnel, so the Mac has to be up and serving for the cloud harness to join.
@@ -32,12 +35,8 @@ SessionStart hook, `cms-cloud-session`, which runs only when `CLAUDE_CODE_REMOTE
 is `true` and does this, detached:
 
 1. `git submodule update --init` for `.code_my_spec`
-2. `mix cms.harness.onboard . --server-url $CMS_SERVER_URL`
-   on the first session; it writes the gitignored `.cms_harness.json`, including
-   the deploy key used to authenticate. Keep this file untracked. The script reads
-   `CMS_DEPLOY_KEY` only from the environment and never embeds its value in scripts
-   or settings.
-3. starts the harness from source on :4004 (`MIX_ENV=harness mix run --no-halt`)
+2. runs `bash scripts/start-harness`, which resolves the server URL, installs missing Hex and Rebar, requests device approval on first use, and writes the gitignored `.cms_harness.json`. Approve the verification code shown in `~/.codemyspec/harness.out`. Keep this file untracked.
+3. starts the harness from source on :4004 after approval
 4. once the harness has joined and installed the project's age keys, decrypts
    `envs/dev.env` and `envs/test.env` for the analyzers
 

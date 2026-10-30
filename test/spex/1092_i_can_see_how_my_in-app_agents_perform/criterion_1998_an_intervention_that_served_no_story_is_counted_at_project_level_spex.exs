@@ -75,7 +75,7 @@ defmodule CodeMySpecSpex.Story1092.Criterion1998Spex do
 
       then_ "the restart is counted as a project-level intervention", context do
         {:ok, index, _html} = live(context.conn, index_path(context))
-        html = render_async(index)
+        html = await_report(index)
 
         assert html =~ "project" and html =~ "restart",
                "the restart made while no team held a story is not shown as a project-level intervention"

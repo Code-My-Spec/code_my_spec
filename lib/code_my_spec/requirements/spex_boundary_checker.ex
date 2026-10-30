@@ -47,11 +47,38 @@ defmodule CodeMySpec.Requirements.SpexBoundaryChecker do
     # `.ex` under here" and one needs the app name, which `add_fixtures_bridge_gap/3`
     # resolves from a synced `mix.exs` further down. Over-matching is harmless —
     # every check below re-tests with `starts_with?` or `MapSet.member?`.
-    verdict_from_paths(scope, Files.list_paths_under(scope, search_prefixes()))
+    verdict_from_paths(Files.list_paths_under(scope, search_prefixes()), synced_app_name(scope))
   end
 
   def complete?(_scope, _entity) do
     {false, %{reason: "No active project in scope — cannot verify spex boundary files."}}
+  end
+
+  @doc """
+  The same verdict from the checkout's files, handed in: no query, so a harness
+  with no database answers it from its own scan.
+  """
+  @spec complete?(Scope.t(), term(), map()) :: {boolean(), map()}
+  def complete?(_scope, _entity, %{files_by_project: files}) when is_list(files),
+    do: verdict_from_paths(paths_under(files), app_name(files))
+
+  def complete?(scope, entity, _ctx), do: complete?(scope, entity)
+
+  @doc "Paths of `files` under the locations the gaps below look at."
+  @spec paths_under([map()]) :: MapSet.t(String.t())
+  def paths_under(files) do
+    prefixes = search_prefixes()
+
+    for file <- files,
+        Enum.any?(prefixes, &String.starts_with?(file.path, &1)),
+        into: MapSet.new(),
+        do: file.path
+  end
+
+  @doc "The app name `mix.exs` declared, as the scanner parsed it, out of `files`."
+  @spec app_name([map()]) :: String.t() | nil
+  def app_name(files) do
+    files |> Enum.find(&(&1.path == "mix.exs")) |> declared_app_name()
   end
 
   @doc """
@@ -62,13 +89,13 @@ defmodule CodeMySpec.Requirements.SpexBoundaryChecker do
   checker with no test and a query that now returns four orders of magnitude
   fewer rows needs that to be possible.
   """
-  @spec verdict_from_paths(Scope.t(), MapSet.t(String.t())) :: {boolean(), map()}
-  def verdict_from_paths(%Scope{} = scope, paths) do
+  @spec verdict_from_paths(MapSet.t(String.t()), String.t() | nil) :: {boolean(), map()}
+  def verdict_from_paths(paths, app_name) do
     gaps =
       []
       |> add_credo_check_gaps(paths)
       |> add_local_credo_check_gap(paths)
-      |> add_fixtures_bridge_gap(paths, scope)
+      |> add_fixtures_bridge_gap(paths, app_name)
       |> add_project_bdd_plan_gap(paths)
 
     case gaps do
@@ -135,14 +162,15 @@ defmodule CodeMySpec.Requirements.SpexBoundaryChecker do
   # scope's working copy, which matters: two checkouts of one project can be
   # different applications (issue `282428a3`). Read here rather than through
   # `AgentTasks.Setup.Helpers`, which the graph sits below.
-  defp synced_app_name(scope) do
-    case Files.get_by_path(scope, "mix.exs") do
-      %{validation_errors: %{"data" => %{"app_name" => name}}} when is_binary(name) -> name
-      _ -> nil
-    end
-  end
+  defp synced_app_name(scope), do: scope |> Files.get_by_path("mix.exs") |> declared_app_name()
 
-  defp add_fixtures_bridge_gap(gaps, paths, scope) do
+  defp declared_app_name(%{validation_errors: %{"data" => %{"app_name" => name}}})
+       when is_binary(name),
+       do: name
+
+  defp declared_app_name(_file), do: nil
+
+  defp add_fixtures_bridge_gap(gaps, paths, app_name) do
     # The synced answer only. `Setup.Helpers.app_name/1` falls back to reading
     # `mix.exs` through the environment, which for a harness-served project is a
     # `GenServer.call` with a 35-second limit — and this runs inside the graph
@@ -151,7 +179,7 @@ defmodule CodeMySpec.Requirements.SpexBoundaryChecker do
     #
     # Nothing is lost: not knowing the app name was already an outcome here, and
     # `mix.exs` is synced on any project far enough along to have spex at all.
-    case synced_app_name(scope) do
+    case app_name do
       nil ->
         ["Could not determine app name from `mix.exs` — cannot verify fixtures bridge." | gaps]
 

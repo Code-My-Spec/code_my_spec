@@ -48,6 +48,16 @@ defmodule CmsHarness.Agents.ProviderTest do
     end
   end
 
+  # 8428cef0: the brief in the system prompt sat after a long transcript.
+  describe "the provider brief on codex" do
+    test "opens every full prompt, as Alloy's preamble" do
+      {:ok, opts} = Provider.options("openai-codex", %{}, provider_brief: "## Your tools")
+      {_module, config} = Keyword.fetch!(opts, :provider)
+
+      assert config.preamble == "## Your tools"
+    end
+  end
+
   # eb09b076: `claude -p` compacting a ~1M-token resumed session took about
   # 180s, the old wall clock was 180s, and every retry re-ran the same
   # compaction into the same kill.
@@ -55,7 +65,7 @@ defmodule CmsHarness.Agents.ProviderTest do
     test "as long as a claude-code call: a turn runs whole test files and spex" do
       {:ok, codex} = Provider.options("openai-codex", %{}, timeout_ms: nil)
       {:ok, claude} = Provider.options("claude-code", %{}, timeout_ms: nil)
-      {Alloy.Provider.Codex, codex_config} = Keyword.fetch!(codex, :provider)
+      {CmsHarness.Agents.CodexWithTools, codex_config} = Keyword.fetch!(codex, :provider)
       {AlloyClaudeCode, claude_config} = Keyword.fetch!(claude, :provider)
 
       assert codex_config.timeout_ms == claude_config.timeout_ms
@@ -75,6 +85,15 @@ defmodule CmsHarness.Agents.ProviderTest do
              "the transcript can reach #{compacts_at_chars} characters before compacting, " <>
                "leaving too little of codex's 1,048,576-character cap for the system " <>
                "prompt, tool definitions and schema a fresh thread also sends"
+    end
+
+    # b97db538: Codex's own thread compacted only near 455k of a 475k window,
+    # every call resending up to that.
+    test "Codex's own thread compacts at the same budget" do
+      {:ok, opts} = Provider.options("openai-codex", %{})
+      {CmsHarness.Agents.CodexWithTools, codex} = Keyword.fetch!(opts, :provider)
+
+      assert "model_auto_compact_token_limit=#{opts[:max_tokens]}" in codex.config_overrides
     end
   end
 
@@ -97,7 +116,7 @@ defmodule CmsHarness.Agents.ProviderTest do
   describe "which model an agent asks for" do
     test "a codex agent names none unless one was asked for" do
       {:ok, opts} = Provider.options("openai-codex", %{})
-      {Alloy.Provider.Codex, config} = Keyword.fetch!(opts, :provider)
+      {CmsHarness.Agents.CodexWithTools, config} = Keyword.fetch!(opts, :provider)
 
       refute config.model,
              "a hardcoded model is a guess about the account's plan. This shipped " <>
@@ -107,7 +126,7 @@ defmodule CmsHarness.Agents.ProviderTest do
 
     test "a codex agent borrows the home's login, not its config" do
       {:ok, opts} = Provider.options("openai-codex", %{})
-      {Alloy.Provider.Codex, config} = Keyword.fetch!(opts, :provider)
+      {CmsHarness.Agents.CodexWithTools, config} = Keyword.fetch!(opts, :provider)
 
       assert config.codex_home == Path.expand("~/.codex")
 
@@ -119,7 +138,7 @@ defmodule CmsHarness.Agents.ProviderTest do
 
     test "a codex agent resumes its own thread and runs no command of its own" do
       {:ok, opts} = Provider.options("openai-codex", %{}, working_copy: "/tmp/copy")
-      {Alloy.Provider.Codex, config} = Keyword.fetch!(opts, :provider)
+      {CmsHarness.Agents.CodexWithTools, config} = Keyword.fetch!(opts, :provider)
 
       assert config.persist_session
       assert config.workdir == "/tmp/copy"
@@ -131,14 +150,14 @@ defmodule CmsHarness.Agents.ProviderTest do
     # ask for the outer Edit/Write tools at all.
     test "a codex agent is not told it cannot write" do
       {:ok, opts} = Provider.options("openai-codex", %{})
-      {Alloy.Provider.Codex, config} = Keyword.fetch!(opts, :provider)
+      {CmsHarness.Agents.CodexWithTools, config} = Keyword.fetch!(opts, :provider)
 
       assert "include_permissions_instructions=false" in config.config_overrides
     end
 
     test "a codex agent uses the model it was given" do
       {:ok, opts} = Provider.options("openai-codex", %{}, model: "gpt-5.6-terra")
-      {Alloy.Provider.Codex, config} = Keyword.fetch!(opts, :provider)
+      {CmsHarness.Agents.CodexWithTools, config} = Keyword.fetch!(opts, :provider)
 
       assert config.model == "gpt-5.6-terra"
     end

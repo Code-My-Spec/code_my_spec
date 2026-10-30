@@ -2,19 +2,22 @@ defmodule CodeMySpecWeb.Telemetry do
   use Supervisor
   import Telemetry.Metrics
 
+  require Logger
+
   def start_link(arg) do
     Supervisor.start_link(__MODULE__, arg, name: __MODULE__)
   end
 
   @impl true
   def init(_arg) do
-    children = [
-      # Telemetry poller will execute the given period measurements
-      # every 10_000ms. Learn more here: https://hexdocs.pm/telemetry_metrics
-      {:telemetry_poller, measurements: periodic_measurements(), period: 10_000}
-      # Add reporters as children of your supervision tree.
-      # {Telemetry.Metrics.ConsoleReporter, metrics: metrics()}
-    ]
+    children =
+      [
+        # Telemetry poller will execute the given period measurements
+        # every 10_000ms. Learn more here: https://hexdocs.pm/telemetry_metrics
+        {:telemetry_poller, measurements: periodic_measurements(), period: 10_000}
+        # Add reporters as children of your supervision tree.
+        # {Telemetry.Metrics.ConsoleReporter, metrics: metrics()}
+      ] ++ memory_poller(Application.get_env(:code_my_spec, :memory_report_period, 60_000))
 
     Supervisor.init(children, strategy: :one_for_one)
   end
@@ -111,4 +114,94 @@ defmodule CodeMySpecWeb.Telemetry do
       # {CodeMySpecWeb, :count_users, []}
     ]
   end
+
+  # Where the node's memory goes, once a minute: one `[Memory]` log line (the
+  # box's Vector ships it to ClickHouse) and a `[:code_my_spec, :vm, :memory]`
+  # event. The VM totals alone do not say which process or table grew.
+  defp memory_poller(period) when is_integer(period) and period > 0 do
+    [
+      Supervisor.child_spec(
+        {:telemetry_poller,
+         measurements: [{__MODULE__, :report_memory, []}],
+         period: period,
+         name: :code_my_spec_memory_poller},
+        id: :code_my_spec_memory_poller
+      )
+    ]
+  end
+
+  defp memory_poller(_off), do: []
+
+  @doc false
+  def report_memory do
+    memory = Map.new(:erlang.memory())
+    :telemetry.execute([:code_my_spec, :vm, :memory], memory, %{})
+    Logger.info(memory_report(memory, top_processes(5), top_tables(5)))
+  end
+
+  @doc """
+  The `[Memory]` line, from `:erlang.memory/0` and the largest processes and
+  ETS tables as `{name, bytes}`. Public so its shape is testable.
+  """
+  def memory_report(memory, processes, tables) do
+    totals =
+      Enum.map_join(~w(total processes binary ets atom code system)a, " ", fn key ->
+        "#{key}=#{mb(Map.get(memory, key, 0))}MB"
+      end)
+
+    "[Memory] #{totals} procs=#{:erlang.system_info(:process_count)} " <>
+      "top_procs=#{named(processes)} top_ets=#{named(tables)}"
+  end
+
+  defp top_processes(n) do
+    Process.list()
+    |> Enum.flat_map(fn pid ->
+      case Process.info(pid, [:memory, :label, :registered_name, :initial_call, :dictionary]) do
+        nil -> []
+        info -> [{process_name(info), info[:memory]}]
+      end
+    end)
+    |> top(n)
+  end
+
+  @doc false
+  def process_name(info) do
+    case info[:label] do
+      label when label not in [nil, :undefined] -> inspect(label)
+      _ -> registered_or_initial_call(info)
+    end
+  end
+
+  defp registered_or_initial_call(info) do
+    case info[:registered_name] do
+      name when is_atom(name) and name not in [nil, []] ->
+        inspect(name)
+
+      _ ->
+        initial_call(Keyword.get(info[:dictionary] || [], :"$initial_call", info[:initial_call]))
+    end
+  end
+
+  defp initial_call({m, f, a}), do: "#{inspect(m)}.#{f}/#{a}"
+  defp initial_call(_), do: "?"
+
+  defp top_tables(n) do
+    word = :erlang.system_info(:wordsize)
+
+    :ets.all()
+    |> Enum.flat_map(fn table ->
+      case :ets.info(table, :memory) do
+        words when is_integer(words) -> [{inspect(:ets.info(table, :name)), words * word}]
+        _ -> []
+      end
+    end)
+    |> top(n)
+  end
+
+  defp top(entries, n), do: entries |> Enum.sort_by(&elem(&1, 1), :desc) |> Enum.take(n)
+
+  defp named(entries),
+    do: Enum.map_join(entries, ",", fn {name, bytes} -> "#{name}:#{mb(bytes)}MB" end)
+
+  defp mb(bytes), do: Float.round(bytes / 1_048_576, 1)
 end

@@ -47,6 +47,11 @@ defmodule CodeMySpec.CodeMode.Catalog do
     "run_script" =>
       "you are already in one — a script starting a script nests a VM inside a tool call",
     "tool_docs" => "read the documentation before writing the script, not from inside it",
+    "read" => "Main has it directly, with the working copy's id",
+    "write" => "Main has it directly, with the working copy's id",
+    "edit" => "Main has it directly, with the working copy's id",
+    "bash" =>
+      "Main has it directly, with the working copy's id; a command can outlive a script's 30 seconds",
 
     # The spine: already a direct tool, so going through Lua buys nothing. The
     # reason says so, because an agent told the wrong reason looks in the

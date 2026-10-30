@@ -5,12 +5,16 @@ defmodule CodeMySpec.Requirements.StoryIssueGraph do
   alias CodeMySpec.Requirements.{Requirement, RequirementDefinitionData}
 
   def issues(story, ctx, config) do
-    threshold = config.fix_issues_min_severity || :medium
-
     ctx
-    |> Map.get(:story_issues, [])
-    |> Enum.filter(&(&1.story_id == story.id and Issue.fix_offered?(&1, threshold)))
+    |> offered(config)
+    |> Enum.filter(&(&1.story_id == story.id))
     |> Enum.sort_by(& &1.id)
+  end
+
+  @doc "Every story issue with a branch in the graph: the ones offering a fix."
+  def offered(ctx, config) do
+    threshold = Map.get(config, :fix_issues_min_severity) || :medium
+    ctx |> Map.get(:story_issues, []) |> Enum.filter(&Issue.fix_offered?(&1, threshold))
   end
 
   def nodes(story, ctx, config, fingerprint \\ nil) do

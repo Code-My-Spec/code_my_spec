@@ -202,7 +202,8 @@ defmodule CodeMySpec.Agents.EveryWakeGoesThroughOneDecisionTest do
 
       AnalysisReport.deliver(ctx.scope, "spex", [%{severity: :error, source: "spex"}], coding.id)
 
-      assert {:hold, {:off, _}} = asked(coding, :own_reply)
+      id = coding.id
+      refute_receive {:wake, %{agent_id: ^id, event: :own_reply}}, 1_000
       refute_received {:agent_dispatch, _, _, _}
     end
 

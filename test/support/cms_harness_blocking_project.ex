@@ -149,18 +149,8 @@ defmodule CmsHarnessTest.BlockingProject do
   executes, and a test asserting "while it is running" needs that to be true
   before it acts.
 
-  28a71ba6: the default bound used to be a fixed 500 attempts (5s) — shorter
-  than `CmsHarness.AnalysisSlots.wait_ceiling/0`, the actual upper bound the
-  system itself enforces on how long a dispatched run may legitimately wait
-  for a machine-wide slot. A run queued behind real contention is not "never
-  started," and this fixture's own moduledoc already says so. The default
-  now follows that ceiling (at the unchanged 10ms poll interval) up to a cap
-  of 3,000 attempts (30s, six times the old budget) -- enough margin for the
-  contention actually observed, without tying a test fixture's own wait to
-  production's full 30-minute ceiling and losing this raise's own clear
-  diagnostic to ExUnit's generic test timeout on a real hang. A healthy run
-  writes the marker in a handful of milliseconds regardless, so this does
-  not slow the common case.
+  The default waits up to 30s at a 10ms poll, under ExUnit's own 60s test
+  timeout, so a genuine hang raises this fixture's clear "never started".
   """
   @spec await_started(String.t(), pos_integer()) :: :ok
   def await_started(root, attempts \\ default_attempts()) do
@@ -168,15 +158,7 @@ defmodule CmsHarnessTest.BlockingProject do
     do_await_started(started, attempts)
   end
 
-  # Capped well under ExUnit's own 60s default test timeout: tying this
-  # directly to `wait_ceiling/0` (30 minutes in production, with no test
-  # override) let a genuine hang surface as ExUnit's own generic timeout
-  # instead of this fixture's clear "never started" raise -- observed once
-  # this bag, in a batch run. 30s is six times the old fixed budget (enough
-  # margin for the contention actually observed) while leaving this
-  # fixture's own diagnostic room to fire first.
-  @max_attempts 3_000
-  defp default_attempts, do: min(div(CmsHarness.AnalysisSlots.wait_ceiling(), 10), @max_attempts)
+  defp default_attempts, do: 3_000
 
   defp do_await_started(_started, 0),
     do: raise("the blocking compiler never started — check the run was actually dispatched")

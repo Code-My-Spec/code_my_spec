@@ -26,7 +26,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
   # node: every dependency's exit points at it and it points at each child, so a
   # context with D dependencies and N children draws D + N edges rather than
   # D × N. The parent's own file waits on it too, for a context with no children
-  # yet; with children that edge is redundant and the reduction drops it.
+  # yet; with children that edge is redundant, and only a view reduces it away.
   def context_graph do
     [
       dependencies_met(8),
@@ -417,8 +417,8 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
         name: "qa_setup",
         role: :qa,
         node_scope: :self,
-        check_type: :path_exists,
-        config: %{path: ".code_my_spec/qa/plan.md"},
+        check_type: :delegate,
+        config: %{module: CodeMySpec.Requirements.QaDocumentChecker, function: :plan?},
         satisfied_by: AgentTasks.QaSetup,
         artifact_type: :review,
         description: "QA plan exists with App Overview, Tools Registry, and Seed Strategy",
@@ -431,8 +431,8 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
         name: "qa_journey_plan",
         role: :qa,
         node_scope: :self,
-        check_type: :path_exists,
-        config: %{path: ".code_my_spec/qa/journey_plan.md"},
+        check_type: :delegate,
+        config: %{module: CodeMySpec.Requirements.QaDocumentChecker, function: :journey_plan?},
         satisfied_by: AgentTasks.QaJourney,
         artifact_type: :review,
         description: "QA journey plan exists and valid",

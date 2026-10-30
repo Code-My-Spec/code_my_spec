@@ -16,9 +16,9 @@ defmodule CodeMySpec.Stories.Tools.RetireCriterion do
 
     A retired criterion keeps its number, which is never given to another, and
     drops out of its story's coverage. `restore_criterion` brings it back.
-    Its spex are deleted on every working copy (and any other spex naming a number
-    that is not a live criterion): the result lists each as deleted, or as
-    pending deletion when the working copy cannot be reached.
+    No file is deleted: the result lists every spex on your working copy that
+    now covers nothing (its own, and any other naming a number that is not a
+    live criterion). Delete those in your copy and commit.
     """
   end
 
@@ -38,11 +38,7 @@ defmodule CodeMySpec.Stories.Tools.RetireCriterion do
            AcceptanceCriteria.get_criterion_by_number(scope, params.criterion_number),
          :ok <- check_not_verified(criterion),
          {:ok, retired} <- AcceptanceCriteria.retire_criterion(scope, criterion) do
-      # Its spex goes with it, and any other spex left naming a number that is not
-      # live; each is reported as deleted or pending (issue 73e302aa).
-      removed = SpecCleanup.for_retired(scope, retired.number)
-      orphans = SpecCleanup.sweep_orphans(scope)
-      StoriesMapper.criterion_retired_response(retired, removed, orphans)
+      StoriesMapper.criterion_retired_response(retired, SpecCleanup.orphans(scope))
     else
       nil ->
         StoriesMapper.criterion_not_found_error()

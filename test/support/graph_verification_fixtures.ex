@@ -21,7 +21,7 @@ defmodule CodeMySpecSpex.Fixtures.GraphVerification do
   def change_waiting(scope) do
     {count, _} =
       Repo.update_all(
-        from(n in Node,
+        from(n in {"project_requirements", Node},
           where: n.project_id == ^scope.active_project_id and n.name == "personas_complete"
         ),
         set: [details: %{"waiting_on" => "verification probe"}]

@@ -3,6 +3,7 @@ defmodule CodeMySpecSpex do
   use Boundary,
     top_level?: true,
     deps: [
+      CodeMySpecTest.LiveAsync,
       # `f2ff4147`: the block below (`Agents` through `WorkingCopies`) is what
       # spex actually reach today, measured off a real compiler sweep once the
       # leg stopped silently discarding its findings (see `866ba007b`,

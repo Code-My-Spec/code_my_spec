@@ -10,8 +10,7 @@
 # Nothing in the repo has to change.
 #
 # Environment variables (set them in the environment, not here):
-#   CMS_DEPLOY_KEY   the code_my_spec project's deploy key
-#   CMS_SERVER_URL   e.g. https://dev.codemyspec.com
+#   CMS_SERVER_URL   e.g. https://dev.codemyspec.com (device approval is prompted)
 set -euo pipefail
 
 OTP_VERSION=28.1
@@ -112,15 +111,17 @@ export PATH="/usr/local/bin:$PATH"
 for v in NO_PROXY no_proxy; do
   [ -n "${!v:-}" ] && export "$v=$(echo "${!v}" | tr , '\n' | grep -v crates.io | paste -sd, -)"
 done
-port=4004
+port="${CMS_HARNESS_PORT:-4004}"
+export CMS_HARNESS_PORT="$port"
 root="${CLAUDE_PROJECT_DIR:-$PWD}"
-server="${CMS_SERVER_URL:-https://dev.codemyspec.com}"
+# The source entry resolves the server from CMS_SERVER_URL, the existing
+# harness record, or .code_my_spec/config.yml. Do not guess a remote target.
 mkdir -p "$HOME/.codemyspec"
 log="$HOME/.codemyspec/cloud-session.log"
 
 setsid bash -c '
-  root="$1"; port="$2"; server="$3"; log="$4"
-  echo "== $(date -u +%FT%TZ) session start in $root (server $server)"
+  root="$1"; port="$2"; log="$3"
+  echo "== $(date -u +%FT%TZ) session start in $root"
 
   if curl -fs "localhost:$port/health" >/dev/null; then
     echo "harness already up"
@@ -133,21 +134,11 @@ setsid bash -c '
   export CMS_PROJECT_DIR="$root"
   git submodule update --init || echo "WARN: .code_my_spec submodule did not initialise"
 
-  MIX_ENV=harness mix deps.get >/dev/null
-
-  if [ ! -f .cms_harness.json ]; then
-    if [ -z "${CMS_DEPLOY_KEY:-}" ]; then
-      echo "ERROR: CMS_DEPLOY_KEY is not set in the cloud environment; cannot onboard"
-      exit 0
-    fi
-    MIX_ENV=harness mix cms.harness.onboard "$root" --server-url "$server" \
-      || { echo "ERROR: onboard failed"; exit 0; }
-  fi
-
-  # Backgrounded and detached: the first boot compiles, which takes minutes.
-  CMS_PROJECT_DIR="$root" CMS_HARNESS=1 CMS_HARNESS_PORT=$port CMS_SERVER_URL="$server" CMS_ANALYSIS_SLOTS=1 \
-    MIX_ENV=harness nohup elixir -S mix run --no-halt >>"$HOME/.codemyspec/harness.out" 2>&1 &
-  echo "harness starting (pid $!); boot output in ~/.codemyspec/harness.out"
+  # The shared source entry installs missing prerequisites, asks for device
+  # approval when needed, onboards this copy, then starts the harness.
+  CMS_PROJECT_DIR="$root" CMS_HARNESS_PORT=$port \
+    nohup bash scripts/start-harness >>"$HOME/.codemyspec/harness.out" 2>&1 &
+  echo "harness onboarding/starting (pid $!); approve the code in ~/.codemyspec/harness.out"
 
   # Once the harness has joined it installs the project age keys, and then the
   # test env can be decrypted for the analyzers. Waits in the background.
@@ -182,9 +173,10 @@ setsid bash -c '
       echo "envs/$e.env decrypted"
     done
   ) &
-' _ "$root" "$port" "$server" "$log" </dev/null >>"$log" 2>&1 &
+' _ "$root" "$port" "$log" </dev/null >>"$log" 2>&1 &
 exit 0
 SESSION
+bash -n /usr/local/bin/cms-cloud-session
 chmod +x /usr/local/bin/cms-cloud-session
 
 # The published plugin: hooks and MCP on localhost:4004. Installed for every
@@ -205,6 +197,7 @@ for cloud_user_home in /root /home/*; do
   node -e '
     const fs = require("fs"), f = process.argv[1];
     const s = JSON.parse(fs.readFileSync(f, "utf8"));
+    s.env = Object.assign({}, s.env, {CMS_HARNESS_PORT: process.env.CMS_HARNESS_PORT || "4004"});
     const hook = {hooks: [{type: "command", command: "/usr/local/bin/cms-cloud-session", timeout: 600}]};
     s.hooks = s.hooks || {};
     const list = (s.hooks.SessionStart = s.hooks.SessionStart || []);

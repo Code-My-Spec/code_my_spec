@@ -15,15 +15,13 @@ defmodule CmsHarness.Agents.Shell do
   one case, and nothing else -- we own this tool now.
 
   Rather than drop `-r` (which would also lift its `cd`, `PATH`/`SHELL`/
-  `ENV`/`BASH_ENV` and slash-command guards for the whole command), a single
-  trailing `>`/`>>` clause whose target resolves inside `dir` is stripped
-  before the command ever reaches bash. The command that *is* handed to
-  bash never contains a redirect, so it runs exactly as restricted as
-  always; this module writes the captured output to the target itself,
-  which is also truer to what a real redirect does -- the output goes to
-  the file, not back to the caller. Anything else (no trailing clause, a
-  target outside `dir`, more than one `>` in the command) runs unchanged,
-  letting bash's own refusal stand.
+  `ENV`/`BASH_ENV` and slash-command guards for the whole command), a safe
+  `>`/`>>` clause whose target resolves inside `dir` is stripped before
+  bash runs. This module writes captured output to the target. It also
+  accepts simple semicolon chains by running each segment in order after
+  validating every redirect. Unsupported redirects remain refused, and
+  shell refusals are returned as errors even when a later command would
+  otherwise hide the failing exit status.
   """
 
   alias CmsHarness.Agents.Engine.Execution
@@ -55,38 +53,29 @@ defmodule CmsHarness.Agents.Shell do
 
   @doc "Runs with a deadline, retaining output even when the executor times out."
   def run(command, dir, timeout) do
-    case extract_safe_redirect(command, dir) do
-      {:redirect, clean_command, target, mode} ->
-        with_redirect(clean_command, dir, timeout, target, mode)
+    case compound_redirects(command, dir) do
+      {:ok, segments} ->
+        run_segments(segments, dir, timeout)
 
-      :none ->
-        plain(command, dir, timeout)
+      {:error, reason} ->
+        {:error, "Restricted shell refused command: #{reason}\nexit code: 1"}
+
+      :not_compound ->
+        case extract_safe_redirect(command, dir) do
+          {:redirect, clean_command, target, mode} ->
+            with_redirect(clean_command, dir, timeout, target, mode)
+
+          :none ->
+            plain(command, dir, timeout)
+        end
     end
   end
 
   defp plain(command, dir, timeout) do
     case execute(command, dir, timeout) do
-      {:ok, output, exit_code} -> {:ok, "#{output}\nexit code: #{exit_code}"}
-      {:crash, output, reason} -> crashed(output, reason)
-      {:timeout, output, cleanup} -> timed_out(output, timeout, cleanup)
-    end
-  end
-
-  # The command handed to bash never contains the redirect, so it is exactly
-  # as restricted as `plain/3` -- only the writing of its output is new.
-  defp with_redirect(command, dir, timeout, target, mode) do
-    case execute(command, dir, timeout) do
       {:ok, output, exit_code} ->
-        case write_redirect(target, output, mode) do
-          :ok ->
-            {:ok,
-             "Output written to #{target} (#{byte_size(output)} bytes).\nexit code: #{exit_code}"}
-
-          {:error, reason} ->
-            {:error,
-             "#{output}\nexit code: #{exit_code}\n\nCould not write #{target}: " <>
-               "#{:file.format_error(reason)}"}
-        end
+        result = "#{output}\nexit code: #{exit_code}"
+        if restricted_refusal?(output), do: {:error, result}, else: {:ok, result}
 
       {:crash, output, reason} ->
         crashed(output, reason)
@@ -95,6 +84,87 @@ defmodule CmsHarness.Agents.Shell do
         timed_out(output, timeout, cleanup)
     end
   end
+
+  # The command handed to bash never contains the redirect, so it is exactly
+  # as restricted as `plain/3` -- only the writing of its output is new.
+  defp with_redirect(command, dir, timeout, target, mode) do
+    case execute(command, dir, timeout) do
+      {:ok, output, exit_code} ->
+        redirected_result(target, output, exit_code, mode)
+
+      {:crash, output, reason} ->
+        crashed(output, reason)
+
+      {:timeout, output, cleanup} ->
+        timed_out(output, timeout, cleanup)
+    end
+  end
+
+  defp redirected_result(target, output, exit_code, mode) do
+    case write_redirect(target, output, mode) do
+      :ok ->
+        reply =
+          "Output written to #{target} (#{byte_size(output)} bytes).\nexit code: #{exit_code}"
+
+        if restricted_refusal?(output), do: {:error, reply}, else: {:ok, reply}
+
+      {:error, reason} ->
+        {:error,
+         "#{output}\nexit code: #{exit_code}\n\nCould not write #{target}: " <>
+           "#{:file.format_error(reason)}"}
+    end
+  end
+
+  # A small, unambiguous subset of semicolon chains can be run segment by
+  # segment. Reject a chain with an unsupported redirect before running any
+  # segment, so a later successful command cannot mask bash's refusal.
+  defp compound_redirects(command, dir) do
+    if String.contains?(command, ";") and String.contains?(command, ">") and
+         not String.contains?(command, ["'", "\"", "`", "$", "\\", "&", "|", "(", ")", "<", "\n"]) do
+      segments = String.split(command, ";", trim: true) |> Enum.map(&String.trim/1)
+
+      cond do
+        segments == [] ->
+          {:error, "empty command chain"}
+
+        Enum.any?(segments, fn segment ->
+          String.contains?(segment, ">") and extract_safe_redirect(segment, dir) == :none
+        end) ->
+          {:error, "redirect target is outside the working copy or unsupported"}
+
+        true ->
+          {:ok, segments}
+      end
+    else
+      :not_compound
+    end
+  end
+
+  defp run_segments(segments, dir, timeout) do
+    deadline = System.monotonic_time(:millisecond) + timeout
+
+    Enum.reduce_while(segments, {:ok, []}, fn segment, {:ok, replies} ->
+      remaining = max(deadline - System.monotonic_time(:millisecond), 1)
+
+      result =
+        case extract_safe_redirect(segment, dir) do
+          {:redirect, clean, target, mode} -> with_redirect(clean, dir, remaining, target, mode)
+          :none -> plain(segment, dir, remaining)
+        end
+
+      case result do
+        {:ok, reply} -> {:cont, {:ok, [reply | replies]}}
+        {:error, reply} -> {:halt, {:error, Enum.join(Enum.reverse([reply | replies]), "\n")}}
+      end
+    end)
+    |> then(fn
+      {:ok, replies} -> {:ok, Enum.join(Enum.reverse(replies), "\n")}
+      error -> error
+    end)
+  end
+
+  defp restricted_refusal?(output),
+    do: Regex.match?(~r/(?:^|\n)[^\n]*bash: line \d+: [^\n]*restricted\b/, output)
 
   defp write_redirect(target, output, :truncate), do: File.write(target, output)
   defp write_redirect(target, output, :append), do: File.write(target, output, [:append])

@@ -67,9 +67,10 @@ defmodule CodeMySpec.Analysis.Runners do
     end
   end
 
-  defp run_resolved("compiler", %Scope{} = _scope, _args, opts) do
+  defp run_resolved("compiler", %Scope{} = _scope, args, opts) do
     execute_opts =
-      [execution_context: opts[:execution_context], cwd: opts[:cwd]] |> maybe_output_file(opts)
+      [execution_context: opts[:execution_context], cwd: opts[:cwd], force: "--force" in args]
+      |> maybe_output_file(opts)
 
     result = Compile.execute(execute_opts)
 
@@ -175,7 +176,7 @@ defmodule CodeMySpec.Analysis.Runners do
       {:ok, failures, exit_code, output} ->
         from_raw("spex", %{
           "exit_status" => exit_code,
-          "output" => cap(output),
+          "output" => output,
           "diagnostics" =>
             Enum.map(failures, fn failure ->
               {file, line} = spex_location(failure.error, failure.spec_file)
@@ -201,7 +202,12 @@ defmodule CodeMySpec.Analysis.Runners do
   """
   @spec from_raw(String.t(), map()) :: {:ok, result()} | {:error, term()}
   def from_raw("compiler", raw) do
-    problems = raw |> diagnostics() |> Enum.map(&ProblemConverter.from_compiler/1)
+    problems =
+      raw
+      |> diagnostics()
+      |> Enum.map(&ProblemConverter.from_compiler/1)
+      |> mark_failed_compiler_findings(raw["exit_status"])
+
     {errors, warnings} = Enum.split_with(problems, &(&1.severity == :error))
 
     # A build that failed and said nothing is not a clean build: fail the run
@@ -224,7 +230,9 @@ defmodule CodeMySpec.Analysis.Runners do
   def from_raw("credo", raw) do
     problems = raw |> diagnostics() |> Enum.map(&ProblemConverter.from_credo/1)
 
-    {:ok, summarize(problems, raw["exit_status"], %{"issues" => length(problems)}, raw["output"])}
+    stats = %{"issues" => length(problems), "findings" => length(problems)}
+    stats = if is_integer(raw["files"]), do: Map.put(stats, "files", raw["files"]), else: stats
+    {:ok, summarize(problems, raw["exit_status"], stats, raw["output"])}
   end
 
   # The suite never ran (bad args, compile error, missing deps). An empty `:ok`
@@ -232,7 +240,16 @@ defmodule CodeMySpec.Analysis.Runners do
   # never fresh and is re-enqueued.
   # See knowledge/analysis, "A run that saw nothing is not clean".
   def from_raw("exunit", %{"execution_status" => "error"} = raw) do
-    {:error, {:test_suite_did_not_run, raw["exit_status"], error_excerpt(raw["output"])}}
+    output = raw["output"] || ""
+    excerpt = error_excerpt(output)
+
+    if String.contains?(output, "SopsKeySocket") and
+         String.contains?(output, "eaddrinuse") do
+      {:error,
+       {:test_suite_did_not_run, :sops_key_socket_address_in_use, raw["exit_status"], excerpt}}
+    else
+      {:error, {:test_suite_did_not_run, raw["exit_status"], excerpt}}
+    end
   end
 
   # Zero tests is not zero failures: the same trap reached through a zero exit.
@@ -258,10 +275,16 @@ defmodule CodeMySpec.Analysis.Runners do
 
     case {diagnostics(raw), exit_code} do
       {[], code} when code != 0 ->
-        {:error, {:spex_suite_did_not_run, code, error_excerpt(raw["output"])}}
+        case committed_rows_failure(raw["output"]) do
+          nil ->
+            {:error, {:spex_suite_did_not_run, code, error_excerpt(raw["output"])}}
+
+          failure ->
+            {:ok, with_partition(spex_result([failure], code, raw), raw)}
+        end
 
       {failures, code} ->
-        {:ok, with_partition(spex_result(failures, code, raw["output"]), raw)}
+        {:ok, with_partition(spex_result(failures, code, raw), raw)}
     end
   end
 
@@ -269,12 +292,61 @@ defmodule CodeMySpec.Analysis.Runners do
   # refused: read charitably it would become a clean `:completed` run.
   def from_raw(source, _raw), do: {:error, {:unreadable_result, source}}
 
-  defp spex_result(failures, exit_code, output) do
+  # Boundary and warnings-as-errors can fail compilation while their emitted
+  # diagnostics still say warning. If those are the only findings on a failed
+  # run, expose them as blocking so `list_problems(severity: error)` explains
+  # why the gate stopped. Keep ordinary warnings on a successful compile.
+  defp mark_failed_compiler_findings(problems, status) when is_integer(status) and status != 0 do
+    if Enum.any?(problems, &(&1.severity == :error)) do
+      problems
+    else
+      Enum.map(problems, &%{&1 | severity: :error})
+    end
+  end
+
+  defp mark_failed_compiler_findings(problems, _status), do: problems
+
+  defp committed_rows_failure(output) when is_binary(output) do
+    case Regex.run(~r/spex left committed rows outside the sandbox: [^\n]+/, output) do
+      [message] ->
+        %{
+          "spex" => "Committed fixture rows",
+          "scenario" => "after suite",
+          "file" => "test/support/committed_rows_guard.ex",
+          "line" => nil,
+          "message" => message
+        }
+
+      _ ->
+        nil
+    end
+  end
+
+  defp committed_rows_failure(_output), do: nil
+
+  defp spex_result(failures, exit_code, raw) do
     problems =
       failures
       |> Enum.map(&%{spex_failure_to_problem(&1) | source: "spex"})
 
-    summarize(problems, exit_code, %{"failures" => length(failures)}, output)
+    stats = %{"failures" => length(failures)}
+    reported = get_in(raw, ["stats", "tests"])
+
+    tests =
+      if is_integer(reported) do
+        reported
+      else
+        case Regex.scan(~r/(?:^|\n)\s*(\d+) tests?, \d+ failures?\b/, raw["output"] || "") do
+          [] -> nil
+          matches -> matches |> List.last() |> List.last() |> String.to_integer()
+        end
+      end
+
+    stats = if is_integer(tests), do: Map.put(stats, "tests", tests), else: stats
+
+    problems
+    |> summarize(exit_code, stats, raw["output"])
+    |> Map.put(:failures, Enum.map(failures, &Map.put_new(&1, "name", &1["scenario"])))
   end
 
   # Required, not defaulted: a missing key defaulted to `[]` would report the
@@ -293,9 +365,10 @@ defmodule CodeMySpec.Analysis.Runners do
       |> diagnostics()
       |> Enum.map(fn failure ->
         %{
-          ProblemConverter.from_test_failure(%CodeMySpec.Tests.TestError{
+          ProblemConverter.from_test_failure(%{
             file: failure["file"],
             line: failure["line"],
+            test: failure["test"],
             message: failure["message"]
           })
           | source: "exunit"
@@ -306,6 +379,7 @@ defmodule CodeMySpec.Analysis.Runners do
      with_partition(
        %{
          problems: problems,
+         failures: Enum.map(diagnostics(raw), &Map.put_new(&1, "name", &1["message"])),
          output: cap(raw["output"] || ""),
          exit_status: raw["exit_status"],
          stats: raw["stats"] || %{}

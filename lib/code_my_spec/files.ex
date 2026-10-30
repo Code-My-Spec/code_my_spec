@@ -90,11 +90,15 @@ defmodule CodeMySpec.Files do
 
   defp declared_boundaries(_), do: []
 
-  # Every path each component conventionally owns, pointing back at it. Built
-  # module → path because only that direction is exact (`Git.CLI` cannot be
-  # derived from its path); see `Components.ConventionalPaths`. Later
-  # components win a collision — a naming conflict the architecture layer owns.
-  defp component_by_path(components) do
+  @doc """
+  Every path each component conventionally owns, pointing back at it. Built
+  module → path because only that direction is exact (`Git.CLI` cannot be
+  derived from its path); see `Components.ConventionalPaths`. Later
+  components win a collision — a naming conflict the architecture layer owns.
+  Public so a harness rebuilds it from the components it was served.
+  """
+  @spec component_by_path([map()]) :: %{String.t() => Ecto.UUID.t()}
+  def component_by_path(components) do
     for component <- components,
         path <- ConventionalPaths.for_component(component),
         into: %{},
@@ -712,6 +716,17 @@ defmodule CodeMySpec.Files do
     # path, without loading the table first.
     File
     |> where([f], f.project_id == ^project_id and f.path not in ^current_paths)
+    |> scope_to_harness(scope)
+    |> select([f], f)
+    |> Repo.delete_all()
+  end
+
+  @doc "Delete a bounded set of paths for this checkout, returning the removed rows."
+  @spec delete_removed_paths(Scope.t(), [String.t()]) :: {integer(), [File.t()]}
+  def delete_removed_paths(%Scope{active_project_id: project_id} = scope, paths)
+      when is_list(paths) do
+    File
+    |> where([f], f.project_id == ^project_id and f.path in ^paths)
     |> scope_to_harness(scope)
     |> select([f], f)
     |> Repo.delete_all()

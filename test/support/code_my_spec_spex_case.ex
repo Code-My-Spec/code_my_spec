@@ -171,6 +171,7 @@ defmodule CodeMySpecSpex.Case do
 
       use CodeMySpecWeb, :verified_routes
       use SexySpex, async: unquote(async)
+      CodeMySpecSpex.CommittedRowsGuard.install!()
 
       # Half of setup is a subprocess, so `with_full_cassette` — which needs
       # this import — is reachable from every spex rather than from the ones
@@ -180,6 +181,7 @@ defmodule CodeMySpecSpex.Case do
       import Plug.Conn
       import Phoenix.ConnTest
       import Phoenix.LiveViewTest
+      import CodeMySpecTest.LiveAsync, only: [render_settled: 1]
       # The harness's surface. A working copy reaches the server over
       # `HarnessProjectChannel` — join is where identity is issued and where the
       # lease is taken — and no HTTP endpoint carries that exchange, so a spec
@@ -622,6 +624,20 @@ defmodule CodeMySpecSpex.Case do
 
     Test.stub(CodeMySpec.Provisioning.Dns, &Fakes.Resolver.call(&1, cloudflare))
 
+    previous_step_opts = Application.get_env(:code_my_spec, :provisioning_step_opts, [])
+
+    Application.put_env(
+      :code_my_spec,
+      :provisioning_step_opts,
+      Keyword.put(previous_step_opts, :dns_lookup, fn name, :a, _opts ->
+        Fakes.Resolver.addresses(cloudflare, name)
+      end)
+    )
+
+    on_exit(fn ->
+      Application.put_env(:code_my_spec, :provisioning_step_opts, previous_step_opts)
+    end)
+
     # The *other* DNS seam, and the last recorded thing in this setup. The
     # page's "does this record resolve" check goes through `:dns_resolver`,
     # which in replay reads a table of names recorded on some earlier day — so
@@ -665,13 +681,26 @@ defmodule CodeMySpecSpex.Case do
     # prevent.
     markers = Fixtures.widget_markers()
 
+    widget_test_owner = self()
+
     Test.stub(CodeMySpec.Provisioning.Widget, fn conn ->
-      Conn.send_resp(
-        conn,
-        200,
-        "<html><body><div #{markers.present}>" <>
-          "<button #{markers.toggle}>?</button></div></body></html>"
-      )
+      send(widget_test_owner, {:widget_site_request, conn.method, conn.request_path})
+
+      case {conn.method, conn.request_path} do
+        {"POST", "/_cms/verify/widget"} ->
+          verify_widget_from_fake_app(
+            conn,
+            Map.put(context, :widget_test_owner, widget_test_owner)
+          )
+
+        _ ->
+          Conn.send_resp(
+            conn,
+            200,
+            "<html><body><div #{markers.present}>" <>
+              "<button #{markers.toggle}>?</button></div></body></html>"
+          )
+      end
     end)
 
     # And the deployed site accepting a pull trigger. Publishing is
@@ -707,6 +736,26 @@ defmodule CodeMySpecSpex.Case do
     end)
 
     {:ok, fakes: agents}
+  end
+
+  # Stand-in for the route the generated app must serve. Keep the transport
+  # real: an HTTP acceptance alone must never satisfy the widget proof.
+  defp verify_widget_from_fake_app(conn, context) do
+    authorized? = Conn.get_req_header(conn, "authorization") == ["Bearer dk_fleet_spex"]
+    send(context.widget_test_owner, {:widget_site_authorized, authorized?})
+
+    if authorized? do
+      {:ok, body, conn} = Conn.read_body(conn)
+      %{"probe" => probe} = Jason.decode!(body)
+      :ok = Fixtures.record_widget_probe(context.scope, probe, "#{conn.scheme}://#{conn.host}")
+      send(context.widget_test_owner, {:widget_probe_sent, probe})
+
+      conn
+      |> Conn.put_resp_content_type("application/json")
+      |> Conn.send_resp(202, Jason.encode!(%{accepted: true}))
+    else
+      Conn.send_resp(conn, 401, "deploy key required")
+    end
   end
 
   @doc "The agent holding a fake provider's state, for a `given_` to arrange."
@@ -1061,6 +1110,37 @@ defmodule CodeMySpecSpex.Case do
 
       ref = Phoenix.ChannelTest.push(channel, "send_message", %{"body" => "the widget works"})
       Phoenix.ChannelTest.assert_reply(ref, :ok, %{}, 1000)
+
+      # The setup step sends a fresh probe and accepts only a matching reply.
+      # Drive it through the same widget socket, since cassette replay cannot
+      # create the corresponding database message on its own.
+      previous_step_opts = Application.get_env(:code_my_spec, :provisioning_step_opts, [])
+
+      post = fn url, deploy_key, probe ->
+        expected_host = URI.parse(unquote(site)).host
+        actual_host = URI.parse(url).host
+
+        if actual_host == expected_host do
+          probe_ref = Phoenix.ChannelTest.push(channel, "send_message", %{"body" => probe})
+          Phoenix.ChannelTest.assert_reply(probe_ref, :ok, %{}, 1000)
+          {:ok, %{probe: probe}}
+        else
+          case Keyword.get(previous_step_opts, :post) do
+            nil -> raise "widget probe targeted an unstaged site: #{actual_host}"
+            previous_post -> previous_post.(url, deploy_key, probe)
+          end
+        end
+      end
+
+      Application.put_env(
+        :code_my_spec,
+        :provisioning_step_opts,
+        Keyword.put(previous_step_opts, :post, post)
+      )
+
+      ExUnit.Callbacks.on_exit(fn ->
+        Application.put_env(:code_my_spec, :provisioning_step_opts, previous_step_opts)
+      end)
 
       ctx
     end
@@ -2434,10 +2514,52 @@ defmodule CodeMySpecSpex.Case do
     |> real_working_directory()
   end
 
+  @doc "Generate a fresh application with dependencies for a real local startup probe."
+  def bootable_drill_working_directory(context) do
+    context = drill_working_directory(context)
+
+    if not recording?() and is_nil(persistent_application_dir()) do
+      mix_in(context.project.local_path, ["deps.get"])
+    end
+
+    context
+  end
+
+  @doc "Generate a bootable project whose metadata names the generated OTP app."
+  def bootable_deploy_working_directory(context) do
+    context = bootable_drill_working_directory(context)
+
+    module_name =
+      context.project.local_path
+      |> Path.basename()
+      |> Macro.camelize()
+
+    {:ok, project} = Fixtures.set_project_module_name(context.project, module_name)
+
+    context
+    |> Map.put(:project, project)
+    |> Map.put(:scope, %{context.scope | active_project: project})
+  end
+
+  @doc "Run the generated application's Mix task on its pinned toolchain."
+  def run_generated_application(context, code), do: run_generated_application(context, code, [])
+
+  def run_generated_application(context, code, run_options) do
+    path = context.project.local_path
+
+    System.cmd("mix", ["run"] ++ run_options ++ ["-e", code],
+      cd: path,
+      stderr_to_stdout: true,
+      env: child_mix_env(path)
+    )
+  end
+
   # A name the generator accepts and the provider resources can carry: lowercase
   # letters, digits and underscores, starting with a letter.
   defp generated_app_name(project) do
-    "cms_drill_" <> (project.id |> to_string() |> String.replace(~r/[^0-9a-z]/, ""))
+    # Keep a letter before the UUID so Macro.camelize/underscore round-trips
+    # the OTP app name used by deploy generation.
+    "cms_drill_a" <> (project.id |> to_string() |> String.replace(~r/[^0-9a-z]/, ""))
   end
 
   # The generators a real project gets, in the order a project gets them.
@@ -2840,6 +2962,76 @@ defmodule CodeMySpecSpex.Case do
   change: the plug, the project row and the environment all still agree about
   where the project is.
   """
+  # Give a secrets spex a project repository and committed SOPS configuration.
+  def repo_secret_setup(%{scope: scope, project: project, fakes: fakes} = context) do
+    github = Map.fetch!(fakes, CodeMySpec.GitHub)
+    owner = "sam"
+    name = "spex-secrets-#{project.id}"
+    Fakes.GitHub.add_repository(github, owner, name)
+
+    project =
+      Fixtures.set_project_code_repo(project, "https://github.com/#{owner}/#{name}.git")
+
+    scope = %{scope | active_project: project}
+    local_dir = CodeMySpec.TempFile.owned_dir("spex-repo-secrets")
+    local = CodeMySpec.ExecutionContexts.ExecutionContext.new(:local, local_dir)
+
+    {recipients, private_keys} =
+      Enum.reduce(["prod", "uat"], {%{}, %{}}, fn environment, {recipients, keys} ->
+        {:ok, {public, private}} = CodeMySpec.Provisioning.Sops.generate_key()
+
+        {:ok, _} =
+          CodeMySpec.ProjectSecrets.put_value(
+            scope,
+            CodeMySpec.Provisioning.Steps.age_key_name(environment),
+            private
+          )
+
+        {Map.put(recipients, environment, public), Map.put(keys, environment, private)}
+      end)
+
+    :ok = CodeMySpec.Provisioning.Sops.write_config(local, recipients)
+    config = File.read!(Path.join(local_dir, ".sops.yaml"))
+    Fakes.GitHub.seed_file(github, owner, name, ".sops.yaml", config)
+
+    {:ok,
+     Map.merge(context, %{
+       scope: scope,
+       project: project,
+       repo_secrets: %{
+         github: github,
+         owner: owner,
+         name: name,
+         config: config,
+         private_keys: private_keys
+       }
+     })}
+  end
+
+  def repo_secret_file(context, path) do
+    case Fakes.GitHub.file(
+           context.repo_secrets.github,
+           context.repo_secrets.owner,
+           context.repo_secrets.name,
+           path
+         ) do
+      nil -> {:error, :not_found}
+      %{content: content} -> {:ok, content}
+    end
+  end
+
+  def repo_secret_commits(context), do: Fakes.GitHub.commits(context.repo_secrets.github)
+
+  def repo_secret_decrypt(context, environment, private_key) do
+    {:ok, ciphertext} = repo_secret_file(context, "envs/#{environment}.enc.env")
+    dir = CodeMySpec.TempFile.owned_dir("spex-repo-secret-decrypt")
+    local = CodeMySpec.ExecutionContexts.ExecutionContext.new(:local, dir)
+    File.mkdir_p!(Path.join(dir, "envs"))
+    File.write!(Path.join(dir, ".sops.yaml"), context.repo_secrets.config)
+    File.write!(Path.join(dir, "envs/#{environment}.enc.env"), ciphertext)
+    CodeMySpec.Provisioning.Sops.decrypt(local, environment, private_key)
+  end
+
   def real_working_directory(%{scope: scope, project: project} = context) do
     env = Fixtures.local_execution_context_fixture(working_dir: project.local_path)
 
@@ -2921,7 +3113,7 @@ defmodule CodeMySpecSpex.Case do
 
   The premise of story 970 — the boilerplate arrives with the project — stated
   rather than assumed. Without it the deploy step refuses with "this project is
-  not deploy-ready: missing Dockerfile, missing CI build workflow", correctly,
+  not deploy-ready: missing Dockerfile", correctly,
   and the six steps behind it report nothing; a criterion about setup finishing
   then reads as setup being broken.
 
@@ -2956,7 +3148,17 @@ defmodule CodeMySpecSpex.Case do
     # output.
     app = project.module_name |> Kernel.||("App") |> to_string() |> Macro.underscore()
 
-    {:ok, _written} = Fixtures.generate_deploy_boilerplate(env, app: app, host: domain)
+    {:ok, image} = CodeMySpec.Provisioning.Registry.image(context.scope)
+    {:ok, repository} = CodeMySpec.Provisioning.Registry.repository(context.scope)
+
+    {:ok, _written} =
+      Fixtures.generate_deploy_boilerplate(env,
+        app: app,
+        host: domain,
+        registry: CodeMySpec.Provisioning.Registry.default_host(),
+        image: image,
+        kamal_image: repository
+      )
 
     context
   end
@@ -4027,6 +4229,11 @@ defmodule CodeMySpecSpex.Case do
   pre-flight passes, and step opts carry the host, environment and probe.
   """
   def stage_deploy(%{scope: scope, execution_context: env} = context, scenario \\ :ok) do
+    # This staged deploy has already passed DNS setup. Record its server
+    # address and answer only the two hostnames this fixture stages.
+    ip = "203.0.113.2"
+    {:ok, _} = Fixtures.seed_environment_ip(scope, "uat", ip)
+
     # First, so the `bin/deploy` stub below overwrites the generated one rather
     # than the other way round. The deploy step audits the checkout before it
     # runs anything, and an empty working directory is refused with "this
@@ -4086,6 +4293,9 @@ defmodule CodeMySpecSpex.Case do
       Keyword.merge(previous,
         environment: "uat",
         host: "staged.example.com",
+        dns_lookup: fn name, :a, _opts ->
+          if name in ["uat.example.com", "staged.example.com"], do: [ip], else: []
+        end,
         probe: probe,
         deploy_script: deploy_script,
         deployed_version: %{
@@ -4131,6 +4341,8 @@ defmodule CodeMySpecSpex.Case do
       otherwise the architecture it actually produced (default: matches)
     * `:on_destroy` — called with the shared box's id when `BurstBox.Lifecycle`
       decides to release it
+    * `:now` — the staged lifecycle check time (default 00:58); a second
+      deploy can check the same box before the following billing hour.
     * `:box_release` — what `BurstBox.Lifecycle.check/3` should decide for the
       shared box this build runs on: `:not_due` (default — an ordinary build,
       mid billing-hour, where nothing about release is observable), `:idle`
@@ -4148,6 +4360,7 @@ defmodule CodeMySpecSpex.Case do
     on_destroy = Keyword.get(opts, :on_destroy, fn _id -> :ok end)
     tag = Keyword.get(opts, :tag, "a1b2c3d4e5f6")
     box_release = Keyword.get(opts, :box_release, :not_due)
+    now = Keyword.get(opts, :now, ~U[2026-01-01 00:58:00Z])
 
     context = stage_deploy(context)
 
@@ -4232,7 +4445,7 @@ defmodule CodeMySpecSpex.Case do
         # when `box_release == :idle`, matching what `Lifecycle.check/3`
         # itself would decide.
         busy?: fn _scope, _server -> box_release == :busy end,
-        now: fn -> ~U[2026-01-01 00:58:00Z] end,
+        now: fn -> now end,
         destroy: fn _scope, id -> on_destroy.(id) && {:ok, %{"id" => id}} end,
         ensure_registry: fn _scope, _o -> {:ok, "codemyspec-registry"} end,
         registry_host: "registry.example.com",
@@ -6080,7 +6293,10 @@ defmodule CodeMySpecSpex.Case do
       # `:plug` key, own cassette coverage.
       CmsHarness.Onboarding,
       # Remote onboarding's token exchange now reads the same HTTP plug.
-      CmsHarness.Token
+      CmsHarness.Token,
+      # The authenticated source Git proxy reads its own HTTP plug, so its
+      # upstream requests must be captured and replayed by cassettes.
+      CodeMySpecWeb.SourceGitController
     ]
   end
 

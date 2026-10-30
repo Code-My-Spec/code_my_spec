@@ -199,6 +199,10 @@ defmodule CodeMySpec.Provisioning.Tools.DevopsStatus do
   defp ago(%{recorded_at: %DateTime{} = at}, %{now: now}), do: "#{age(at, now)} ago"
   defp ago(_entry, _ctx), do: "at an unrecorded time"
 
+  defp reason(%{key: key, step_state: :errored, detail: "Deploy refused at " <> _ = text})
+       when key in [:deploy, "deploy"],
+       do: " — " <> text
+
   defp reason(%{step_state: :errored, detail: text}) when is_binary(text) and text != "",
     do: " — " <> Truncate.head_and_tail(text)
 

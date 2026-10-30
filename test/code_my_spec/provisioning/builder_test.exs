@@ -53,6 +53,7 @@ defmodule CodeMySpec.Provisioning.BuilderTest do
   defp opts(overrides) do
     Keyword.merge(
       [
+        architecture: :arm,
         find: fn _scope, _box_name -> {:ok, server()} end,
         destroy: fn _scope, _id -> flunk("a box not due for a check must never be destroyed") end,
         now: fn -> ~U[2026-08-03 00:00:00Z] end
@@ -68,6 +69,7 @@ defmodule CodeMySpec.Provisioning.BuilderTest do
   defp due_opts(overrides) do
     Keyword.merge(
       [
+        architecture: :arm,
         find: fn _scope, _box_name -> {:ok, server(%{"created" => "2026-08-03T00:00:00Z"})} end,
         now: fn -> ~U[2026-08-03 00:58:00Z] end,
         busy?: fn _scope, _server -> false end,
@@ -169,7 +171,11 @@ defmodule CodeMySpec.Provisioning.BuilderTest do
       owner = self()
 
       create = fn _scope, _name, create_opts ->
-        send(owner, {:created, create_opts[:server_type], create_opts[:location]})
+        send(
+          owner,
+          {:created, create_opts[:server_type], create_opts[:location], create_opts[:labels]}
+        )
+
         {:ok, %{"server" => server()}}
       end
 
@@ -188,7 +194,9 @@ defmodule CodeMySpec.Provisioning.BuilderTest do
 
       # cpx31, not cpx32: identical on paper, but cpx32 does not exist in ash or
       # hil, and the builder has to be created wherever the app box is.
-      assert_received {:created, "cpx31", "fsn1"}
+      assert_received {:created, "cpx31", "fsn1", labels}
+      assert labels[Builder.deploy_builder_label()] == "true"
+      assert labels["cms-burst-role"] == "true"
     end
 
     # The builder pushes to a registry on the app box's private network, and a
@@ -249,6 +257,11 @@ defmodule CodeMySpec.Provisioning.BuilderTest do
 
       assert_received {:created, "fsn1"},
                       "a bucket region must not decide which datacenter the builder lands in"
+    end
+
+    test "requires the target architecture before choosing a builder" do
+      assert {:error, {:unknown_architecture, nil}} =
+               Builder.build(scope(), "abc123", opts(architecture: nil))
     end
 
     test "refuses an architecture with no builder rather than guessing one" do
@@ -636,6 +649,84 @@ defmodule CodeMySpec.Provisioning.BuilderTest do
   # (success, failure, raise) reaches the check, and that its answer is
   # reported honestly rather than assumed.
   describe "build/3 — releasing the shared box afterward" do
+    test "deletes a box it creates when the build succeeds" do
+      owner = self()
+
+      create = fn _, name, create_opts ->
+        server =
+          server(%{
+            "name" => name,
+            "created" => "2026-08-03T00:00:00Z",
+            "labels" => create_opts[:labels]
+          })
+
+        send(owner, {:created_box, server["id"]})
+        {:ok, %{"server" => server}}
+      end
+
+      options =
+        opts(
+          find: fn _, _ -> {:error, :not_found} end,
+          ensure_burst_box_image: fn _, _, _ -> {:ok, "image-id"} end,
+          create: create,
+          build_fun: build_fun(),
+          busy?: fn _, _ -> false end,
+          destroy: recording_destroy(owner),
+          now: fn -> ~U[2026-08-03 00:10:00Z] end
+        )
+
+      assert {:ok, build} = Builder.build(scope(), "abc123", options)
+      assert build.builder_destroyed
+      assert_received {:created_box, 42}
+      assert_received {:destroyed, 42}
+    end
+
+    test "deletes an idle deploy-created box after a successful build before the billing window" do
+      created =
+        server(%{
+          "created" => "2026-08-03T00:00:00Z",
+          "labels" => %{Builder.deploy_builder_label() => "true"}
+        })
+
+      options =
+        opts(
+          find: fn _, _ -> {:ok, created} end,
+          now: fn -> ~U[2026-08-03 00:10:00Z] end,
+          busy?: fn _, _ -> false end,
+          destroy: recording_destroy(self()),
+          build_fun: build_fun()
+        )
+
+      assert {:ok, build} = Builder.build(scope(), "abc123", options)
+      assert build.builder_destroyed
+      assert_received {:destroyed, 42}
+    end
+
+    test "deletes an idle deploy-created box after a failed build before the billing window" do
+      created =
+        server(%{
+          "created" => "2026-08-03T00:00:00Z",
+          "labels" => %{Builder.deploy_builder_label() => "true"}
+        })
+
+      build = fn _, _, _, _ -> {:error, :compilation_failed} end
+
+      options =
+        opts(
+          find: fn _, _ -> {:ok, created} end,
+          now: fn -> ~U[2026-08-03 00:10:00Z] end,
+          busy?: fn _, _ -> false end,
+          destroy: recording_destroy(self()),
+          build_fun: build
+        )
+
+      assert {:error, :compilation_failed, disposition} =
+               Builder.build(scope(), "abc123", options)
+
+      assert disposition.builder_destroyed
+      assert_received {:destroyed, 42}
+    end
+
     test "keeps the box, and reports it, when it is not due for a check" do
       assert {:ok, result} = Builder.build(scope(), "abc123", opts(build_fun: build_fun()))
 
@@ -709,6 +800,31 @@ defmodule CodeMySpec.Provisioning.BuilderTest do
       end
 
       assert_received {:destroyed, 42}
+    end
+  end
+
+  describe "where a build's source comes from" do
+    alias CodeMySpec.ExecutionContexts.ExecutionContext
+
+    test "a checkout on this node is archived from it" do
+      opts = [env: ExecutionContext.new(:local, "/work/app")]
+
+      refute Keyword.has_key?(
+               Builder.with_deliver(opts, %{"ip" => "10.0.0.2"}, scope()),
+               :deliver
+             )
+    end
+
+    # A harness copy's checkout is on another machine: `git archive` cannot run
+    # there for us, so the source has to come from the repository's remote.
+    test "a harness copy's source comes from GitHub, not its checkout" do
+      opts = [env: %ExecutionContext{type: :harness, cwd: "/Users/someone/app"}]
+
+      deliver =
+        Keyword.fetch!(Builder.with_deliver(opts, %{"ip" => "10.0.0.2"}, scope()), :deliver)
+
+      assert {:error, {:source_delivery_failed, :no_reachable_source, _}} =
+               deliver.("HEAD", "/build")
     end
   end
 end

@@ -60,7 +60,8 @@ defmodule CmsHarness.ReporterPicksUpWhatTheServerSaysTest do
     previous = %{
       client: Application.get_env(:code_my_spec, :device_client),
       token: Application.get_env(:code_my_spec, :harness_token),
-      path: Application.get_env(:code_my_spec, :device_config_path)
+      path: Application.get_env(:code_my_spec, :device_config_path),
+      roots: Application.get_env(:code_my_spec, :harness_served_roots_dir)
     }
 
     # The harness tree this needs. `mix test` does not start the harness, and
@@ -83,11 +84,13 @@ defmodule CmsHarness.ReporterPicksUpWhatTheServerSaysTest do
     )
 
     Application.put_env(:code_my_spec, :device_config_path, Path.join(dir, "device.json"))
+    Application.put_env(:code_my_spec, :harness_served_roots_dir, Path.join(dir, "roots"))
 
     on_exit(fn ->
       restore(:device_client, previous.client)
       restore(:harness_token, previous.token)
       restore(:device_config_path, previous.path)
+      restore(:harness_served_roots_dir, previous.roots)
       Application.delete_env(:code_my_spec, :test_server_copies)
       File.rm_rf(dir)
     end)
@@ -125,10 +128,13 @@ defmodule CmsHarness.ReporterPicksUpWhatTheServerSaysTest do
         working_copy_id: "copy-1",
         harness_id: "copy-1",
         project_id: Ecto.UUID.generate(),
+        deploy_key: "fixture-key",
         root: root
       })
     )
 
+    assert :ok = CmsHarness.ServedRoots.remember(root)
+    assert root in CmsHarness.ServedRoots.list()
     Application.put_env(:code_my_spec, :test_server_copies, %{"copy-1" => root})
 
     # No hook has arrived for this root, which is the whole premise: after a
@@ -157,6 +163,33 @@ defmodule CmsHarness.ReporterPicksUpWhatTheServerSaysTest do
            "a directory that is not there was adopted. That is what the " <>
              "missing-checkout report is for, and starting a subtree to watch " <>
              "nothing turns a clean answer into a crash loop."
+  end
+
+  # d4747513: nothing dropped a gone checkout's databases.
+  test "a checkout gone from disk has its databases dropped, once", %{dir: dir} do
+    gone = Path.join(dir, "removed-gate-copy")
+    prior = Application.get_env(:code_my_spec, CmsHarness.CopyDatabases)
+
+    Application.put_env(:code_my_spec, CmsHarness.CopyDatabases,
+      runner: CmsHarnessTest.FakeAppInstanceRunner
+    )
+
+    on_exit(fn -> Application.put_env(:code_my_spec, CmsHarness.CopyDatabases, prior) end)
+    start_supervised!(CmsHarnessTest.FakeAppInstanceRunner)
+    Application.put_env(:code_my_spec, :test_server_copies, %{"copy-3" => gone})
+
+    {:ok, pid} =
+      start_supervised({WorkingCopyReporter, name: :drop_gone_test, known: %{"copy-3" => gone}})
+
+    WorkingCopyReporter.report(pid)
+    WorkingCopyReporter.report(pid)
+    WorkingCopyReporter.report(pid)
+
+    asked =
+      for {:idle_databases_matching, [regex]} <- CmsHarnessTest.FakeAppInstanceRunner.calls(),
+          do: regex
+
+    assert [_once] = asked
   end
 
   describe "a project the server offers to generate" do

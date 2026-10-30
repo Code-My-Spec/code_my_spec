@@ -54,6 +54,9 @@ defmodule CmsHarness.AppInstance.Runner do
   @doc "Drop `database`. Never called on anything but this feature's own clone."
   @callback drop_database(database :: String.t()) :: :ok | {:error, term()}
 
+  @doc "The databases whose name matches `regex` (Postgres syntax) and that nothing is connected to."
+  @callback idle_databases_matching(regex :: String.t()) :: [String.t()]
+
   @doc "The commit `root`'s checkout is on, or `nil`."
   @callback current_commit(root :: String.t()) :: String.t() | nil
 
@@ -179,6 +182,9 @@ defmodule CmsHarness.AppInstance.Runner do
 
   @spec drop_database(String.t()) :: :ok | {:error, term()}
   def drop_database(database), do: impl().drop_database(database)
+
+  @spec idle_databases_matching(String.t()) :: [String.t()]
+  def idle_databases_matching(regex), do: impl().idle_databases_matching(regex)
 
   @spec current_commit(String.t()) :: String.t() | nil
   def current_commit(root), do: impl().current_commit(root)

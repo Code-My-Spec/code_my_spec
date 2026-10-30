@@ -10,6 +10,7 @@ defmodule CodeMySpec.Analysis.Tools.GetAnalysisLiveTest do
   import CodeMySpec.AnalysisFixtures
   import CodeMySpec.UsersFixtures
 
+  alias CodeMySpec.Analysis.HarnessRegistry
   alias CodeMySpec.Analysis.LiveRuns
   alias CodeMySpec.Analysis.Run
   alias CodeMySpec.Analysis.Tools.GetAnalysisLive
@@ -28,7 +29,9 @@ defmodule CodeMySpec.Analysis.Tools.GetAnalysisLiveTest do
   end
 
   test "a run that has reported nothing says so", %{scope: scope, run: run} do
-    assert %{"run_id" => id, "live" => "not_retained"} = live(%{run_id: run.id}, scope)
+    assert %{"run_id" => id, "status" => "queued", "live" => "no_events"} =
+             live(%{run_id: run.id}, scope)
+
     assert id == run.id
 
     LiveRuns.fold(run.id, %{"event" => "unknown_to_the_fold"})
@@ -63,6 +66,24 @@ defmodule CodeMySpec.Analysis.Tools.GetAnalysisLiveTest do
 
     assert message =~ "Assertion"
     assert seconds in 0..5
+  end
+
+  # 90492d2d: queued and waiting-on-a-reachable-harness both read as the same
+  # bare "queued" forever, with no way to tell a stalled wait from ordinary load.
+  test "a queued run with no reachable harness says so, not just that it waits", %{
+    scope: scope,
+    run: run
+  } do
+    assert %{"status" => "queued", "harness_connected" => false, "queued_seconds" => seconds} =
+             live(%{run_id: run.id}, scope)
+
+    assert seconds >= 0
+  end
+
+  test "a queued run with a connected harness reports it", %{scope: scope, run: run} do
+    HarnessRegistry.register_executor(scope.active_working_copy_id, "i", "/tmp/root")
+
+    assert %{"harness_connected" => true} = live(%{run_id: run.id}, scope)
   end
 
   test "a run that reported its end is finished", %{scope: scope, run: run} do

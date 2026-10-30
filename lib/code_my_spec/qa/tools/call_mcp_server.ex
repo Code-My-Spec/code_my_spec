@@ -79,7 +79,14 @@ defmodule CodeMySpec.Qa.Tools.CallMcpServer do
     %{
       timeout: {:meta, :integer, [description: "Milliseconds for the call. Defaults to 30000."]},
       path: {:meta, :string, [description: "MCP path on that server. Defaults to /mcp."]},
-      arguments: {:meta, :map, [description: "Arguments for the tool. Defaults to none."]},
+      arguments:
+        {:meta, :map,
+         [
+           description:
+             "Arguments for the tool, any object; `{}` is none. A remote code-mode " <>
+               "server takes its tools through run_script: " <>
+               "tool = \"run_script\", arguments = { script = \"return list_stories()\" }."
+         ]},
       url:
         {:required,
          {:meta, :string, [description: "Base URL of the MCP server, e.g. http://localhost:4004"]}},
@@ -108,7 +115,7 @@ defmodule CodeMySpec.Qa.Tools.CallMcpServer do
     case connect(url, params) do
       {:ok, name} ->
         try do
-          answer(request(name, params))
+          answer(request(name, params), url <> path(params))
         after
           stop(name)
         end
@@ -198,7 +205,7 @@ defmodule CodeMySpec.Qa.Tools.CallMcpServer do
 
   # Named rather than counted. The question this answers is almost always "is
   # <name> there", and a count cannot answer it.
-  defp answer({:listed, []}) do
+  defp answer({:listed, []}, _server) do
     text_response("""
     The server answered and offers no tools at all.
 
@@ -208,32 +215,41 @@ defmodule CodeMySpec.Qa.Tools.CallMcpServer do
     """)
   end
 
-  defp answer({:listed, names}) do
-    text_response("#{length(names)} tool(s):\n" <> Enum.map_join(names, "\n", &"  #{&1}"))
+  # Says whose tools these are: an agent read the far server's list as its own
+  # run_script catalog and stopped (issue b9839146).
+  defp answer({:listed, names}, server) do
+    text_response(
+      "#{server} offers this caller #{length(names)} tool(s). These are that server's " <>
+        "tools, not yours; pass `tool` to call one, and reach its code-mode tools by " <>
+        "calling its `run_script` with `tool = \"run_script\"`:\n" <>
+        Enum.map_join(names, "\n", &"  #{&1}")
+    )
   end
 
-  defp answer({:ok, text}), do: text_response(text)
+  defp answer({:ok, text}, _server), do: text_response(text)
 
   # The far side answered and said the call failed. That is a result, not a
   # transport failure, and a QA agent testing error behaviour wants to read it
   # rather than have it raised as this tool's own failure.
-  defp answer({:called_error, text}) do
+  defp answer({:called_error, text}, _server) do
     text_response("The server answered with an error result:\n\n" <> text)
   end
 
-  defp answer({:error, reason}) do
+  defp answer({:error, reason}, _server) do
     {:error, truncate(inspect(reason))}
   end
 
   defp unreachable(url, params, reason) do
     full = url <> path(params)
 
+    # The diagnosis leads: the client's own exit is `noproc` whatever the
+    # cause, and a 401 under it read as a dead session (issue 3942db94).
     """
     Could not open an MCP session with #{full}.
 
-    #{truncate(inspect(reason))}
-
     #{diagnose(full, params)}
+
+    The MCP client's own exit, which reads the same for every cause: #{truncate(inspect(reason))}
     """
   end
 
@@ -250,10 +266,13 @@ defmodule CodeMySpec.Qa.Tools.CallMcpServer do
         "A plain GET to the same address answered #{status}: it is reachable, so the MCP handshake itself is what failed."
 
       {:ok, %{status: 401}} ->
-        "A plain GET to the same address answered 401: it is reachable but refused this caller's headers."
+        "Refused: HTTP 401. The server is reachable and wants a credential these headers " <>
+          "do not carry, usually `Authorization: Bearer <token>`. (Read from a plain GET to " <>
+          "the same address.)"
 
       {:ok, %{status: 403}} ->
-        "A plain GET to the same address answered 403: it is reachable but refused this caller."
+        "Refused: HTTP 403. The server is reachable and knows this caller, but will not let " <>
+          "it in. (Read from a plain GET to the same address.)"
 
       {:ok, %{status: 404}} ->
         "A plain GET to the same address answered 404: nothing is mounted at this path."

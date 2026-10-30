@@ -10,6 +10,7 @@ defmodule CodeMySpec.Agents.AStoryBoundAgentIsOfferedOnlyItsStoryTest do
   use CodeMySpecSpex.Case, async: true
 
   import CodeMySpec.IssuesFixtures
+  import Ecto.Query, only: [from: 2]
 
   alias CodeMySpec.Agents.Agent
   alias CodeMySpec.Agents.Menu
@@ -75,7 +76,7 @@ defmodule CodeMySpec.Agents.AStoryBoundAgentIsOfferedOnlyItsStoryTest do
   end
 
   test "an agent without an active story still gets the project-level issues_resolved", ctx do
-    Repo.update_all(Agent, set: [story_id: nil])
+    set_story(ctx, nil)
     coding = reload(ctx.coding)
 
     assert Work.bound_story_id(coding) == nil
@@ -114,7 +115,7 @@ defmodule CodeMySpec.Agents.AStoryBoundAgentIsOfferedOnlyItsStoryTest do
     end
 
     test "the same claim is allowed to an agent without a story", ctx do
-      Repo.update_all(Agent, set: [story_id: nil])
+      set_story(ctx, nil)
       {error?, text} = start_project(ctx, reload(ctx.coding), "issues_resolved")
 
       refute error?, text
@@ -171,6 +172,9 @@ defmodule CodeMySpec.Agents.AStoryBoundAgentIsOfferedOnlyItsStoryTest do
   # goes to agents without a story, and does not hold a bound agent's story.
   describe "a project-level requirement the story waits on" do
     setup ctx do
+      {:ok, plan} = CodeMySpec.Qa.Documents.get(ctx.scope, "qa_plan")
+      Repo.delete!(plan)
+
       :ok =
         CodeMySpec.ExecutionContexts.delete_file(
           ctx.execution_context,
@@ -178,6 +182,9 @@ defmodule CodeMySpec.Agents.AStoryBoundAgentIsOfferedOnlyItsStoryTest do
         )
 
       CodeMySpecSpex.GraphGivens.sync(ctx)
+      assert {:ok, nil} = CodeMySpec.Qa.Documents.get(ctx.scope, "qa_plan")
+      :ok = CodeMySpecSpex.Fixtures.recompute_graph(ctx.scope)
+      :ok = CodeMySpecSpex.Fixtures.settle_graph(ctx.scope)
       %{qa: reload(ctx.qa)}
     end
 
@@ -203,7 +210,7 @@ defmodule CodeMySpec.Agents.AStoryBoundAgentIsOfferedOnlyItsStoryTest do
     end
 
     test "still holds the story back for an agent without one", ctx do
-      Repo.update_all(Agent, set: [story_id: nil])
+      set_story(ctx, nil)
       names = names(ctx, reload(ctx.qa))
 
       assert "qa_setup" in names
@@ -222,9 +229,9 @@ defmodule CodeMySpec.Agents.AStoryBoundAgentIsOfferedOnlyItsStoryTest do
 
   describe "an agent already holding an out-of-story task" do
     test "keeps it, and is offered nothing more outside the story", ctx do
-      Repo.update_all(Agent, set: [story_id: nil])
+      set_story(ctx, nil)
       {false, _text} = start_project(ctx, reload(ctx.coding), "issues_resolved")
-      Repo.update_all(Agent, set: [story_id: ctx.story.id])
+      set_story(ctx, ctx.story.id)
 
       coding = reload(ctx.coding)
       assert [%{requirement_name: "issues_resolved", status: :active}] = coding.tasks
@@ -354,4 +361,13 @@ defmodule CodeMySpec.Agents.AStoryBoundAgentIsOfferedOnlyItsStoryTest do
   end
 
   defp reload(agent), do: Repo.get!(Agent, agent.id)
+
+  # This test's agents only: an unscoped update reaches, and locks, every agent
+  # row its transaction can see, including ones other async tests rely on.
+  defp set_story(ctx, story_id) do
+    project_id = ctx.scope.active_project_id
+
+    from(a in Agent, where: a.project_id == ^project_id)
+    |> Repo.update_all(set: [story_id: story_id])
+  end
 end

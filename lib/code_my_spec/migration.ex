@@ -167,7 +167,8 @@ defmodule CodeMySpec.Migration do
       %{
         "name" => scenario.name,
         "status" => scenario.status && to_string(scenario.status),
-        "observation" => scenario.observation
+        "observation" => scenario.observation,
+        "blocker_issue_local_id" => scenario.blocker_issue_id
       }
     end)
   end
@@ -331,6 +332,36 @@ defmodule CodeMySpec.Migration do
     with :ok <- require_paid_plan(scope) do
       do_import(scope, payload)
     end
+  end
+
+  @doc "Import a JSON file within a transaction that always rolls back."
+  def dry_run_file(%Scope{} = scope, path) when is_binary(path) do
+    with {:ok, json} <- File.read(path),
+         {:ok, payload} when is_map(payload) <- Jason.decode(json) do
+      dry_run_project(scope, payload)
+    else
+      {:ok, _} -> {:error, :invalid_export}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  def dry_run_project(%Scope{} = scope, payload) when is_map(payload) do
+    {:error, {:dry_run, result}} =
+      Repo.transaction(fn ->
+        result = import_project(scope, payload)
+        Repo.rollback({:dry_run, result})
+      end)
+
+    report =
+      case result do
+        {:ok, summary} ->
+          %{status: :imported, counts: Map.delete(summary, :skipped), refused: nil}
+
+        {:error, reason} ->
+          %{status: :refused, counts: nil, refused: inspect(reason)}
+      end
+
+    {:ok, Map.put(report, :rolled_back, true)}
   end
 
   # Checked before the transaction opens, so a refused migration writes
@@ -557,10 +588,43 @@ defmodule CodeMySpec.Migration do
       nil ->
         story
         |> attrs(Stories.Story)
+        |> fit_story_to_cap()
         |> put_ref(:epic_id, epics[story["epic_local_id"]])
         |> put_component(scope, story["component_module_name"])
         |> Map.put(:migrated_from_id, story["local_id"])
         |> then(&Stories.create_story(scope, &1))
+    end
+  end
+
+  # Stories written before the 600-character cap carry mechanism in the story
+  # field; the cap refuses them, and with them the whole migration. The full
+  # text moves to `notes` (uncapped), and the story keeps its sentence.
+  @story_cap 600
+
+  defp fit_story_to_cap(attrs) do
+    text = attrs[:story] || attrs[:description] || ""
+
+    if String.length(text) > @story_cap do
+      short = first_sentences(text)
+
+      attrs
+      |> Map.put(:story, short)
+      |> Map.put(:description, short)
+      |> Map.put(
+        :notes,
+        Enum.join(Enum.reject([text, attrs[:notes]], &(&1 in [nil, ""])), "\n\n")
+      )
+    else
+      attrs
+    end
+  end
+
+  defp first_sentences(text) do
+    head = String.slice(text, 0, @story_cap)
+
+    case Regex.scan(~r/[.!?](?=\s)/u, head, return: :index) |> List.last() do
+      [{at, 1}] when at > 200 -> binary_part(head, 0, at + 1)
+      _ -> String.slice(text, 0, @story_cap - 3) <> "..."
     end
   end
 
@@ -744,16 +808,27 @@ defmodule CodeMySpec.Migration do
 
   defp insert_attempt(story, attempt, issues) do
     %QaAttempt{}
-    |> QaAttempt.changeset(%{
+    |> QaAttempt.import_changeset(%{
       story_id: story.id,
       status: attempt["status"],
-      scenarios: attempt["scenarios"],
+      scenarios: remap_scenarios(attempt["scenarios"], issues),
       issue_ids: remap_issue_ids(attempt["issue_local_ids"], issues),
       agent_id: attempt["agent_id"],
       task_id: attempt["task_id"],
       submitted_at: attempt["submitted_at"]
     })
     |> Repo.insert()
+  end
+
+  # A blocked scenario must name its blocker issue, and the issue's id here is
+  # not the local one, so it is rewritten like every other reference.
+  defp remap_scenarios(nil, _issues), do: nil
+
+  defp remap_scenarios(scenarios, issues) do
+    Enum.map(scenarios, fn scenario ->
+      {local_id, scenario} = Map.pop(scenario, "blocker_issue_local_id")
+      Map.put(scenario, "blocker_issue_id", issues[local_id] && issues[local_id].id)
+    end)
   end
 
   # An issue this run did not create is dropped rather than left dangling.

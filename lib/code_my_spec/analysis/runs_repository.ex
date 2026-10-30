@@ -4,7 +4,7 @@ defmodule CodeMySpec.Analysis.RunsRepository do
 
   All queries filter by the scope's active project. The ledger is append-heavy:
   runs are inserted `:running` at enqueue, then completed/failed exactly once.
-  Old rows are pruned per `{project, source}` so the table stays small.
+  Old rows are pruned by the configurable history retention window.
   """
 
   import Ecto.Query, warn: false
@@ -15,10 +15,6 @@ defmodule CodeMySpec.Analysis.RunsRepository do
   alias CodeMySpec.Analysis.RunWaiter
   alias CodeMySpec.Repo
   alias CodeMySpec.Users.Scope
-
-  # Keep this many finished runs per {project, source} — enough for the UI
-  # gauge history and debugging without unbounded growth.
-  @keep_per_source 20
 
   # How long a requested run its harness's departure killed still counts as
   # awaited by its agent. See `awaiting_runs?/3`.
@@ -196,6 +192,27 @@ defmodule CodeMySpec.Analysis.RunsRepository do
     |> Repo.one()
   end
 
+  @tree_answer_fields Run.__schema__(:fields) -- [:output, :stats]
+
+  @doc """
+  Completed full runs of `source` that started clean on `tree` and finished at
+  the commit they started on, from any working copy of the project, newest
+  first. Whether one passed is the caller's rule (`Promotion.passed_on_tree/3`).
+  Without `output` or `stats`, which can run to megabytes.
+  """
+  @spec completed_on_tree(Scope.t(), String.t(), String.t()) :: [Run.t()]
+  def completed_on_tree(%Scope{active_project_id: project_id}, tree, source)
+      when is_binary(tree) do
+    Run
+    |> where([r], r.project_id == ^project_id and r.source == ^source and r.kind == :full)
+    |> where([r], r.status == :completed and r.start_tree == ^tree)
+    |> where([r], r.start_tree_dirty == false and r.start_commit == r.completed_commit)
+    |> order_by([r], desc: r.started_at, desc: r.id)
+    |> limit(20)
+    |> select([r], struct(r, ^@tree_answer_fields))
+    |> Repo.all()
+  end
+
   @doc """
   How many full runs of `source` on this working copy failed to run at
   `commit` during the attempt beginning at `since`: started there, or failed
@@ -204,23 +221,24 @@ defmodule CodeMySpec.Analysis.RunsRepository do
   (`stats.orphaned`) are not counted: they say nothing about the analyzer.
   """
   @spec failed_at_commit(Scope.t(), String.t(), String.t(), DateTime.t()) :: non_neg_integer()
-  def failed_at_commit(%Scope{active_project_id: project_id} = scope, source, commit, since) do
+  def failed_at_commit(scope, source, commit, since),
+    do: scope |> failed_runs_query(source, commit, since) |> Repo.aggregate(:count)
+
+  @doc "Failed full runs from this gate attempt, with their recorded failure reasons."
+  @spec failed_runs_at_commit(Scope.t(), String.t(), String.t(), DateTime.t()) :: [Run.t()]
+  def failed_runs_at_commit(scope, source, commit, since),
+    do: scope |> failed_runs_query(source, commit, since) |> Repo.all()
+
+  defp failed_runs_query(%Scope{active_project_id: project_id} = scope, source, commit, since) do
     since = DateTime.to_naive(since)
 
     Run
     |> where([r], r.project_id == ^project_id and r.source == ^source and r.kind == :full)
     |> where([r], r.status == :failed)
     |> where([r], r.inserted_at >= ^since)
-    |> where(
-      [r],
-      r.start_commit == ^commit or is_nil(r.start_commit)
-    )
-    |> where(
-      [r],
-      not r.orphaned
-    )
+    |> where([r], r.start_commit == ^commit or is_nil(r.start_commit))
+    |> where([r], not r.orphaned)
     |> scope_to_harness(scope)
-    |> Repo.aggregate(:count)
   end
 
   @doc """
@@ -535,7 +553,7 @@ defmodule CodeMySpec.Analysis.RunsRepository do
     # The closed rows come back so their requesters can be told.
     {_count, failed} =
       Run
-      |> where([r], r.project_id == ^project_id and r.status == :running)
+      |> where([r], r.project_id == ^project_id and r.status == :running and not r.orphaned)
       |> scope_to_harness(scope)
       |> exclude_claimed(claimed)
       |> select([r], r)
@@ -565,13 +583,8 @@ defmodule CodeMySpec.Analysis.RunsRepository do
   defp exclude_claimed(query, claimed), do: where(query, [r], r.id not in ^claimed)
 
   @doc """
-  Mark stranded `:running` rows as `:failed`.
-
-  Called at boot, marking each `orphaned`. Runs this server executed died with
-  it; runs dispatched to a harness may still be executing and will be refused
-  as `unknown_run` when they report (the rejoin's `resume_orphaned` can reopen
-  or rerun them). Deliberately blunt and logged: nothing can claim a run at
-  boot because no harness has joined yet, and the alternative is a timer.
+  Mark local `:running` rows as failed at boot. Remote harness runs remain
+  open for the harness to reclaim or for the recovery timer to abandon.
   """
   @spec fail_stranded_runs() :: {:ok, [Run.t()]}
   def fail_stranded_runs do
@@ -579,7 +592,7 @@ defmodule CodeMySpec.Analysis.RunsRepository do
 
     {_count, failed} =
       Run
-      |> where([r], r.status == :running)
+      |> where([r], r.status == :running and is_nil(r.working_copy_id))
       |> select([r], r)
       |> Repo.update_all(
         set: [
@@ -620,25 +633,71 @@ defmodule CodeMySpec.Analysis.RunsRepository do
     end
   end
 
-  @doc "Prune finished runs beyond the newest #{@keep_per_source} per source."
-  @spec prune(Scope.t(), String.t()) :: {:ok, integer()}
-  def prune(%Scope{active_project_id: project_id}, source) do
-    keep_ids =
-      Run
-      |> where([r], r.project_id == ^project_id and r.source == ^source)
-      |> where([r], r.status in [:completed, :failed])
-      |> order_by(desc: :started_at)
-      |> limit(@keep_per_source)
-      |> select([r], r.id)
-      |> Repo.all()
-
+  @doc "Mark remote runs for recovery before the harness rejoins."
+  def mark_remote_for_recovery do
     {count, _} =
       Run
-      |> where([r], r.project_id == ^project_id and r.source == ^source)
-      |> where([r], r.status in [:completed, :failed])
-      |> where([r], r.id not in ^keep_ids)
-      |> Repo.delete_all()
+      |> where([r], r.status == :running and not is_nil(r.working_copy_id))
+      |> Repo.update_all(set: [orphaned: true])
 
     {:ok, count}
   end
+
+  @doc "Remote runs still open when a server restarts."
+  def remote_running_before(cutoff) do
+    Run
+    |> where([r], r.status == :running and not is_nil(r.working_copy_id))
+    |> where([r], r.inserted_at <= ^DateTime.to_naive(cutoff))
+    |> Repo.all()
+  end
+
+  @doc "Running runs for one joined working copy."
+  def running_for_copy(%Scope{active_project_id: project_id, active_working_copy_id: copy_id})
+      when not is_nil(copy_id) do
+    Run
+    |> where([r], r.project_id == ^project_id and r.working_copy_id == ^copy_id)
+    |> where([r], r.status == :running)
+    |> Repo.all()
+  end
+
+  def running_for_copy(_scope), do: []
+
+  @doc "A returning harness has the run; its eventual result is authoritative."
+  def claim_recovering_run(%Run{id: id}) do
+    Run
+    |> where([r], r.id == ^id and r.status == :running)
+    |> Repo.update_all(set: [orphaned: false])
+
+    :ok
+  end
+
+  @doc "Close a lost run as not run, only if it is still open."
+  def abandon_run(%Run{} = run, reason) do
+    now = DateTime.utc_now()
+
+    {count, rows} =
+      Run
+      |> where([r], r.id == ^run.id and r.status == :running)
+      |> select([r], r)
+      |> Repo.update_all(
+        set: [
+          status: :abandoned,
+          finished_at: now,
+          updated_at: now,
+          stats: %{"error" => reason},
+          orphaned: true
+        ]
+      )
+
+    if count == 1 do
+      Enum.each(rows, &CodeMySpec.Analysis.ValidationHolds.terminal/1)
+      {:ok, hd(rows)}
+    else
+      :already_closed
+    end
+  end
+
+  @doc "Prune expired run history using the configured retention window."
+  @spec prune(Scope.t(), String.t()) :: {:ok, non_neg_integer()}
+  def prune(%Scope{} = scope, _source), do: CodeMySpec.Analysis.History.prune(scope)
 end

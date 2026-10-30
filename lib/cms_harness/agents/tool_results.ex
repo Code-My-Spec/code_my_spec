@@ -18,10 +18,15 @@ defmodule CmsHarness.Agents.ToolResults do
   alias Alloy.Agent.State
 
   @max_chars 2_000
+  @timeout_message "Timed out waiting for the server's reply. The action may have taken effect; inspect its current state before retrying."
 
   @impl true
   def call(:after_tool_call, %State{} = state) do
     case state.config.context[:current_tool_result] do
+      %{content: "timeout", is_error: true} = result ->
+        name = state.config.context[:current_tool_call][:name] || "tool"
+        {:result, %{result | content: sentence(true, name, :timeout)}}
+
       %{content: content} = result when not is_binary(content) and not is_list(content) ->
         name = state.config.context[:current_tool_call][:name] || "tool"
         {:result, %{result | content: sentence(result.is_error, name, content)}}
@@ -35,6 +40,10 @@ defmodule CmsHarness.Agents.ToolResults do
 
   @doc "What a tool's failure says, as a sentence."
   @spec describe(term()) :: String.t()
+  def describe(:timeout), do: @timeout_message
+  def describe("timeout"), do: @timeout_message
+  def describe(%Req.TransportError{reason: :timeout}), do: @timeout_message
+  def describe(%Anubis.MCP.Error{data: %{original_reason: :timeout}}), do: @timeout_message
   def describe(text) when is_binary(text), do: text
 
   def describe(%Anubis.MCP.Error{message: message, data: data}) do

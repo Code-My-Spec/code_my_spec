@@ -47,26 +47,54 @@ defmodule CmsHarness.Agents.ShellRedirectTest do
   test "a target outside the working copy is still refused", %{tmp_dir: dir} do
     outside = Path.join(dir, "../outside-#{System.unique_integer([:positive])}.txt")
 
-    assert {:ok, message} = Shell.run("echo hello > ../#{Path.basename(outside)}", dir, 5_000)
+    assert {:error, message} = Shell.run("echo hello > ../#{Path.basename(outside)}", dir, 5_000)
     assert message =~ "restricted"
     refute File.exists?(outside)
   end
 
   test "a target starting with ~ is not treated as inside the copy", %{tmp_dir: dir} do
-    assert {:ok, message} = Shell.run("echo hello > ~/out.txt", dir, 5_000)
+    assert {:error, message} = Shell.run("echo hello > ~/out.txt", dir, 5_000)
     assert message =~ "restricted"
   end
 
   test "a second > left in the command is refused, not guessed at", %{tmp_dir: dir} do
-    assert {:ok, message} = Shell.run("echo a > one.txt > two.txt", dir, 5_000)
+    assert {:error, message} = Shell.run("echo a > one.txt > two.txt", dir, 5_000)
     assert message =~ "restricted"
     refute File.exists?(Path.join(dir, "one.txt"))
     refute File.exists?(Path.join(dir, "two.txt"))
   end
 
   test "with no working directory, redirection is never attempted" do
-    assert {:ok, message} = Shell.run("echo hello > out.txt", nil, 5_000)
+    assert {:error, message} = Shell.run("echo hello > out.txt", nil, 5_000)
     assert message =~ "restricted"
+  end
+
+  test "a redirect inside a simple command chain writes into the copy and continues", %{
+    tmp_dir: dir
+  } do
+    assert {:ok, reply} =
+             Shell.run("echo once >> file.txt; touch a; touch b", dir, 5_000)
+
+    assert reply =~ "Output written to"
+    assert reply =~ "exit code: 0"
+    assert File.read!(Path.join(dir, "file.txt")) == "once\n"
+    assert File.exists?(Path.join(dir, "a"))
+    assert File.exists?(Path.join(dir, "b"))
+  end
+
+  test "an unsupported redirect in a chain fails before later commands run", %{tmp_dir: dir} do
+    assert {:error, reply} =
+             Shell.run("echo no > ../outside.txt; touch after", dir, 5_000)
+
+    assert reply =~ "Restricted shell refused command"
+    assert reply =~ "exit code: 1"
+    refute File.exists?(Path.join(dir, "after"))
+  end
+
+  test "a restricted redirect masked by a later command is reported as an error", %{tmp_dir: dir} do
+    assert {:error, reply} = Shell.run("echo no > '../outside.txt'; touch after", dir, 5_000)
+    assert reply =~ "restricted"
+    assert File.exists?(Path.join(dir, "after"))
   end
 
   test "a command with no redirect behaves as before", %{tmp_dir: dir} do
@@ -74,7 +102,7 @@ defmodule CmsHarness.Agents.ShellRedirectTest do
   end
 
   test "cd is still refused inside a command whose redirect is allowed", %{tmp_dir: dir} do
-    assert {:ok, reply} = Shell.run("cd / && pwd > out.txt", dir, 5_000)
+    assert {:error, reply} = Shell.run("cd / && pwd > out.txt", dir, 5_000)
 
     assert reply =~ "exit code: 1",
            "cd && pwd should fail at cd (short-circuiting pwd), same as any other command " <>

@@ -257,6 +257,7 @@ defmodule CodeMySpecWeb.ProjectDefinitionTest do
     conversation = Conversations.get_agent_conversation_by_id(scope, conversation_id)
     before_messages = Conversations.list_messages(conversation)
     {:ok, _} = Onboarding.save(scope, %{onboarding: %{description: "Product recorded our plan"}})
+    settle(view)
 
     assert has_element?(
              view,

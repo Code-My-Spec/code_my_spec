@@ -90,6 +90,18 @@ defmodule CmsHarness.ServedRootsTest do
     refute root in ServedRoots.list()
   end
 
+  test "boot ignores a server roster entry from another HOME", %{dir: dir} do
+    foreign = copy(dir, "other-home")
+    roster = Map.new([foreign], &serve_then_lose/1)
+    assert foreign in ServedRoots.list()
+    assert :ok = ServedRoots.forget(foreign)
+    assert ServedRoots.list() == []
+
+    boot_reporter(roster)
+    refute foreign in Projects.list()
+    refute foreign in ServedRoots.list()
+  end
+
   test "boot skips missing paths and changed identities or servers", %{dir: dir} do
     roots = Enum.map(~w(missing identity server), &copy(dir, &1))
     roster = Map.new(roots, &serve_then_lose/1)
@@ -122,6 +134,12 @@ defmodule CmsHarness.ServedRootsTest do
     )
 
     assert ServedRoots.list() == []
+    assert {:error, :no_credential} = Credentials.any()
+
+    conn = CmsHarness.Web.HealthController.index(Plug.Test.conn(:get, "/health"), %{})
+    health = Jason.decode!(conn.resp_body)
+    assert health["credential"] == false
+    assert Map.has_key?(health, "authorization")
   end
 
   defp boot_reporter(roster) do

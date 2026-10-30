@@ -24,6 +24,9 @@ defmodule CodeMySpec.AgentPerformance.AgentTurn do
     field :output_tokens, :integer
     field :cache_read_tokens, :integer
     field :cache_write_tokens, :integer
+    # Why this turn started a new Codex thread mid-conversation (the whole
+    # transcript went out uncached); nil when it did not.
+    field :fresh_thread, :string
 
     timestamps(updated_at: false, type: :utc_datetime_usec)
   end
@@ -38,7 +41,8 @@ defmodule CodeMySpec.AgentPerformance.AgentTurn do
     :input_tokens,
     :output_tokens,
     :cache_read_tokens,
-    :cache_write_tokens
+    :cache_write_tokens,
+    :fresh_thread
   ]
 
   @doc false

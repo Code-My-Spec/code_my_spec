@@ -32,12 +32,14 @@ defmodule CodeMySpec.Requirements.Profiles do
   alias CodeMySpec.Requirements.DevopsSetupChecker
   alias CodeMySpec.Requirements.PersonasChecker
   alias CodeMySpec.Requirements.Preloader
+  alias CodeMySpec.Stories
   alias CodeMySpec.Stories.AcceptanceCriteria.Criterion
   alias CodeMySpec.Stories.Story
   alias CodeMySpec.Users.Scope
 
   @type name ::
-          :issues
+          :dispatch
+          | :issues
           | :files
           | :links
           | :stories
@@ -46,12 +48,48 @@ defmodule CodeMySpec.Requirements.Profiles do
           | :personas
   @type t :: map()
 
+  @shared [:stories, :links, :qa, :personas, :architecture]
+  @cache {__MODULE__, :drain}
+
   @doc """
   Load one profile. Called at most once per drain, however many requirements
-  read it.
+  read it: within `once_per_drain/1` a profile no checkout changes is loaded
+  once for every vantage the drain settles.
   """
   @spec load(Scope.t(), name()) :: t()
-  def load(%Scope{} = scope, :issues) do
+  def load(scope, name) when name in @shared do
+    case Process.get(@cache) do
+      nil ->
+        fetch(scope, name)
+
+      cache ->
+        profile = Map.get_lazy(cache, name, fn -> fetch(scope, name) end)
+        Process.put(@cache, Map.put(cache, name, profile))
+        profile
+    end
+  end
+
+  def load(scope, name), do: fetch(scope, name)
+
+  @doc """
+  Run `fun` with each profile that reads no checkout's files loaded at most once.
+
+  `:files` is one checkout's files, and `:issues` leaves out issues on stories
+  placed at another checkout, so those load at every vantage; the rest read
+  only records.
+  """
+  @spec once_per_drain((-> result)) :: result when result: term()
+  def once_per_drain(fun) do
+    Process.put(@cache, %{})
+
+    try do
+      fun.()
+    after
+      Process.delete(@cache)
+    end
+  end
+
+  defp fetch(%Scope{} = scope, :issues) do
     threshold = Configurations.fix_issues_min_severity(scope)
 
     %{
@@ -70,7 +108,7 @@ defmodule CodeMySpec.Requirements.Profiles do
   # The entity lists are for the unsatisfied side: a component missing its
   # implementation needs its own `expected_path` in details, so those are
   # enumerated rather than swept. Files are one checkout's (`scope_files_to_copy/2`).
-  def load(%Scope{active_project_id: project_id} = scope, :files) do
+  defp fetch(%Scope{active_project_id: project_id} = scope, :files) do
     files =
       Repo.all(
         from(f in FileRecord,
@@ -82,16 +120,20 @@ defmodule CodeMySpec.Requirements.Profiles do
         |> scope_files_to_copy(scope)
       )
 
+    files_profile(
+      files,
+      scope.active_project,
+      Repo.all(from(c in Component, where: c.project_id == ^project_id)),
+      Repo.all(from(s in Story, where: s.project_id == ^project_id, select: s.id))
+    )
+  end
+
+  # What `work_dispatched` reads of `:stories`, without the Three Amigos
+  # collections it does not.
+  defp fetch(%Scope{active_project_id: project_id} = scope, :dispatch) do
     %{
-      project: scope.active_project,
-      components: Repo.all(from(c in Component, where: c.project_id == ^project_id)),
-      story_ids: Repo.all(from(s in Story, where: s.project_id == ^project_id, select: s.id)),
-      by_component_role: index_by(files, :component_id),
-      by_story_role: index_by(files, :story_id),
-      # For the project `path_exists` requirements, which ask about named
-      # paths rather than an owner's roles. Same read.
-      by_path: Map.new(files, &{&1.path, &1}),
-      all: files
+      stories: Repo.all(from(s in Story, where: s.project_id == ^project_id)),
+      epic_in_progress?: Epics.in_progress?(scope)
     }
   end
 
@@ -100,7 +142,7 @@ defmodule CodeMySpec.Requirements.Profiles do
   # `component_linked` asks whether the named component exists, `deploy`
   # whether the recorded deploy passed its health check; neither is answerable
   # from the story row alone.
-  def load(%Scope{active_project_id: project_id} = scope, :links) do
+  defp fetch(%Scope{active_project_id: project_id} = scope, :links) do
     %{
       # What an undeployed story's `deploy` is waiting on, if anything.
       uat_setup_missing: DevopsSetupChecker.missing(scope, "uat"),
@@ -137,7 +179,7 @@ defmodule CodeMySpec.Requirements.Profiles do
   # Every story, not only ready ones: a sweep touches only rows that exist, so
   # parked stories are harmless, and filtering would copy `Preloader`'s gate.
   # The collections are in `Preloader`'s shape, which `BddRulesChecker` reads.
-  def load(%Scope{active_project_id: project_id} = scope, :stories) do
+  defp fetch(%Scope{active_project_id: project_id} = scope, :stories) do
     stories = Repo.all(from(s in Story, where: s.project_id == ^project_id))
     story_ids = Enum.map(stories, & &1.id)
 
@@ -159,26 +201,38 @@ defmodule CodeMySpec.Requirements.Profiles do
   # The newest QA attempt per story, invalidations preloaded — what
   # `QaAttempts.complete?/2` fetches one story at a time. The attempt, not a
   # boolean: what counts as a pass is the Qa context's judgement.
-  def load(%Scope{active_project_id: project_id} = scope, :qa) do
+  defp fetch(%Scope{active_project_id: project_id} = scope, :qa) do
     story_ids = Repo.all(from(s in Story, where: s.project_id == ^project_id, select: s.id))
+    threshold = Configurations.fix_issues_min_severity(scope)
+
+    latest_by_story =
+      Repo.all(
+        from(a in QaAttempt,
+          where: a.story_id in ^story_ids and not a.stale,
+          order_by: [desc_nulls_last: a.review_started_at, desc: a.submitted_at, desc: a.id],
+          preload: [:invalidations]
+        )
+      )
+      |> Enum.group_by(& &1.story_id)
+      |> Map.new(fn {story_id, [latest | _]} -> {story_id, latest} end)
+
+    # A partial/fail attempt may cite issues on another story. Read those
+    # issues once for the whole profile instead of resolving every cited ID
+    # separately while settling each story.
+    issues_by_id =
+      if Enum.any?(latest_by_story, fn {_id, attempt} ->
+           attempt.status in [:partial, :fail] and attempt.invalidations == []
+         end) do
+        Map.new(Issues.list_issues(scope), &{&1.id, &1})
+      else
+        %{}
+      end
 
     %{
-      submission_snapshots:
-        Issues.story_submission_snapshots(
-          scope,
-          story_ids,
-          Configurations.fix_issues_min_severity(scope)
-        ),
-      latest_by_story:
-        Repo.all(
-          from(a in QaAttempt,
-            where: a.story_id in ^story_ids and not a.stale,
-            order_by: [desc_nulls_last: a.review_started_at, desc: a.submitted_at, desc: a.id],
-            preload: [:invalidations]
-          )
-        )
-        |> Enum.group_by(& &1.story_id)
-        |> Map.new(fn {story_id, [latest | _]} -> {story_id, latest} end)
+      submission_snapshots: Issues.story_submission_snapshots(scope, story_ids, threshold),
+      latest_by_story: latest_by_story,
+      issues_by_id: issues_by_id,
+      issue_threshold: threshold
     }
   end
 
@@ -186,7 +240,7 @@ defmodule CodeMySpec.Requirements.Profiles do
   #
   # Project-wide, not checkout-scoped: a persona describes the project whichever
   # tree its summary was written in.
-  def load(%Scope{} = scope, :personas) do
+  defp fetch(%Scope{} = scope, :personas) do
     %{
       personas: Personas.list_personas(scope),
       files: Files.list_project_files_with_roles(scope, PersonasChecker.persona_roles())
@@ -194,9 +248,41 @@ defmodule CodeMySpec.Requirements.Profiles do
   end
 
   # Whether the architecture was authored through the tools — half of
-  # `architecture_designed`'s "a plan exists".
-  def load(%Scope{} = scope, :architecture) do
-    %{authored?: Components.any_authored?(scope)}
+  # `architecture_designed`'s "a plan exists" — and what a proposal may name.
+  defp fetch(%Scope{} = scope, :architecture) do
+    {:ok, stories} = Stories.list_project_stories(scope)
+
+    %{
+      authored?: Components.any_authored?(scope),
+      story_numbers: Enum.map(stories, & &1.number),
+      context_names: scope |> Components.list_contexts() |> Enum.map(& &1.module_name)
+    }
+  end
+
+  @doc """
+  The `:files` profile from one checkout's files and the project's records, read
+  from nothing: a harness builds it from its own scan.
+  """
+  @spec files_profile([map()], map() | nil, [map()], [integer()]) :: t()
+  def files_profile(files, project, components, story_ids) do
+    %{
+      project: project,
+      components: components,
+      story_ids: story_ids,
+      by_component_role: index_by(files, :component_id),
+      by_story_role: index_by(files, :story_id),
+      # For the project `path_exists` requirements, which ask about named
+      # paths rather than an owner's roles. Same read.
+      by_path: Map.new(files, &{&1.path, &1}),
+      all: files
+    }
+  end
+
+  @doc "The project's live criteria by story, as `:stories` holds them."
+  @spec criteria(Scope.t()) :: %{integer() => [map()]}
+  def criteria(%Scope{active_project_id: project_id}) do
+    Repo.all(from(s in Story, where: s.project_id == ^project_id, select: s.id))
+    |> criteria_by_story()
   end
 
   # `{owner_id, role} => file`, keeping the first of any duplicates — the same
