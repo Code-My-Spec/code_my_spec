@@ -43,17 +43,15 @@ defmodule CodeMySpec.Provisioning.Builder.VersionTest do
   test "looks up the requested commit and its release tag through GitHub" do
     sha = "abc123" <> String.duplicate("0", 34)
 
+    responses = %{
+      {"/repos/acme/app/commits/abc123", nil} => %{sha: sha},
+      {"/repos/acme/app/tags", "1"} => [%{name: "v2.4.6", commit: %{sha: sha}}],
+      {"/repos/acme/app/tags", "2"} => []
+    }
+
     Req.Test.stub(Version, fn conn ->
-      case {conn.request_path, Plug.Conn.Query.decode(conn.query_string)["page"]} do
-        {"/repos/acme/app/commits/abc123", _} ->
-          Req.Test.json(conn, %{sha: sha})
-
-        {"/repos/acme/app/tags", "1"} ->
-          Req.Test.json(conn, [%{name: "v2.4.6", commit: %{sha: sha}}])
-
-        {"/repos/acme/app/tags", "2"} ->
-          Req.Test.json(conn, [])
-      end
+      key = {conn.request_path, Plug.Conn.Query.decode(conn.query_string)["page"]}
+      Req.Test.json(conn, Map.fetch!(responses, key))
     end)
 
     assert {:ok, "v2.4.6"} =
