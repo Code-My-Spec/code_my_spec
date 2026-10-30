@@ -129,6 +129,10 @@ defmodule CodeMySpec.Provisioning.Builder do
       |> Keyword.put(:architecture, architecture)
       |> Keyword.put(:server_type, Keyword.get(opts, :server_type) || spec.server_type)
       |> Keyword.put(:location, Keyword.get(opts, :builder_location) || spec.location)
+      # A deploy build box builds other images; it does not run this app.
+      # Without this, a first box for an architecture with no snapshot yet
+      # bootstrapped our own release and raised on the missing :ref.
+      |> Keyword.put_new(:install_release, fn _run, _server, _opts -> :ok end)
       |> Keyword.update(
         :labels,
         %{@deploy_builder_label => "true"},

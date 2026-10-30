@@ -132,6 +132,26 @@ defmodule CodeMySpec.Provisioning.BuilderTest do
     end
   end
 
+  describe "a first box for an architecture" do
+    test "does not install this app's release, so it needs no :ref" do
+      owner = self()
+
+      ensure = fn _scope, _name, box_opts ->
+        send(owner, {:install, box_opts[:install_release].(fn _ -> {"", 0} end, %{}, [])})
+        {:ok, server()}
+      end
+
+      assert {:ok, _} =
+               Builder.build(
+                 scope(),
+                 "abc123",
+                 opts(architecture: :x86, ensure_box: ensure, build_fun: build_fun())
+               )
+
+      assert_received {:install, :ok}
+    end
+  end
+
   describe "a reused box and the build's network" do
     test "a box made for another network joins the build's before building" do
       owner = self()
