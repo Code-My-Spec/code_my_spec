@@ -379,6 +379,13 @@ defmodule CmsHarness.Project.ChannelClient do
   @doc "Public so a test can assert against the real interval rather than a copy."
   def read_model_refresh_ms, do: @read_model_refresh_ms
 
+  defp refresh_read_model(%{assigns: %{topic: topic}} = socket) do
+    case transport().push(socket, topic, "read_model", %{}, Channel.decision_timeout()) do
+      {:ok, ref} -> socket |> assign(:read_model_ref, ref) |> assign(:read_model_reason, :refresh)
+      {:error, _} -> socket
+    end
+  end
+
   defp schedule_read_model_refresh,
     do: Process.send_after(self(), :refresh_read_model, @read_model_refresh_ms)
 
@@ -860,6 +867,11 @@ defmodule CmsHarness.Project.ChannelClient do
     AnalysisServer.cancel(root, reason)
     {:ok, socket}
   end
+
+  # A record this read model holds moved on the server: refetched now rather
+  # than at the next refresh, which rescans or re-reports the overlay as needed.
+  def handle_message(_topic, "read_model_changed", _payload, socket),
+    do: {:ok, refresh_read_model(socket)}
 
   # The server asking for a fresh manifest. Through `request_sync/1`, the same
   # entry point the watcher uses, so a server-triggered scan and a
@@ -2052,16 +2064,9 @@ defmodule CmsHarness.Project.ChannelClient do
   def handle_info(:refresh_read_model, %{assigns: %{read_model_refused: true}} = socket),
     do: {:noreply, socket}
 
-  def handle_info(:refresh_read_model, %{assigns: %{joined: true, topic: topic}} = socket) do
+  def handle_info(:refresh_read_model, %{assigns: %{joined: true}} = socket) do
     schedule_read_model_refresh()
-
-    case transport().push(socket, topic, "read_model", %{}, Channel.decision_timeout()) do
-      {:ok, ref} ->
-        {:noreply, socket |> assign(:read_model_ref, ref) |> assign(:read_model_reason, :refresh)}
-
-      {:error, _} ->
-        {:noreply, socket}
-    end
+    {:noreply, refresh_read_model(socket)}
   end
 
   def handle_info(:refresh_read_model, socket) do

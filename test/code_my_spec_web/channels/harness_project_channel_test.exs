@@ -21,6 +21,7 @@ defmodule CodeMySpecWeb.HarnessProjectChannelTest do
   @endpoint CodeMySpecWeb.Endpoint
 
   alias CodeMySpec.Analysis.RunsRepository
+  alias CodeMySpec.Requirements.GraphInputs
   alias CodeMySpec.WorkingCopies
   alias CodeMySpecWeb.HarnessProjectChannel
   alias CodeMySpecWeb.UserSocket
@@ -487,6 +488,24 @@ defmodule CodeMySpecWeb.HarnessProjectChannelTest do
       assert is_binary(decoded["fingerprint"])
     end
 
+    test "once it reports overlays, a harness is told when its read model moved",
+         %{scope: scope, topic: topic} do
+      {:ok, _reply, channel} = join_as(scope, topic)
+
+      # An older harness never reports one, and is not told.
+      component_changed(scope)
+      refute_push "read_model_changed", _, 2_500
+
+      ref = push(channel, "overlay", %{"read_model" => "abc", "verdicts" => []})
+      assert_reply ref, :ok, _, 2_000
+
+      # A burst is one push.
+      component_changed(scope)
+      component_changed(scope)
+      assert_push "read_model_changed", _, 3_000
+      refute_push "read_model_changed", _, 2_500
+    end
+
     test "a report is stored and compared with this checkout's rows",
          %{scope: scope, topic: topic} do
       {:ok, _reply, channel} = join_as(scope, topic)
@@ -506,6 +525,17 @@ defmodule CodeMySpecWeb.HarnessProjectChannelTest do
                CodeMySpec.Repo.get(Report, scope.active_working_copy_id)
     end
   end
+
+  defp component_changed(scope),
+    do:
+      GraphInputs.event(
+        scope,
+        "Test",
+        "component_changed",
+        %{},
+        [],
+        :project_wide
+      )
 
   describe "observations" do
     setup %{scope: scope, topic: topic} do
