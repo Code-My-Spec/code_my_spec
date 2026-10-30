@@ -1,8 +1,8 @@
 defmodule CodeMySpec.TelemetryTest do
   use CodeMySpecTest.DataCase, async: true
 
-  alias CodeMySpec.ProjectsFixtures
   alias CodeMySpec.Environments
+  alias CodeMySpec.ProjectsFixtures
   alias CodeMySpec.Provisioning.TelemetryStep
   alias CodeMySpec.Telemetry
   alias CodeMySpec.UsersFixtures
@@ -35,6 +35,25 @@ defmodule CodeMySpec.TelemetryTest do
                resources,
                &(&1.kind == "telemetry_retention" and &1.identifier == "14")
              )
+    end
+
+    test "reports the selected telemetry mode", %{scope: scope} do
+      Environments.put(scope, "uat", %{ip: "203.0.113.10"})
+
+      probe = fn opts ->
+        assert opts[:telemetry_mode] == :collector_only
+        {:ok, %{mode: :collector_only}}
+      end
+
+      assert {:ok, resources} =
+               TelemetryStep.run(scope, "uat", telemetry_mode: :collector_only, run_probe: probe)
+
+      assert Enum.any?(
+               resources,
+               &(&1.kind == "telemetry_mode" and &1.identifier == "collector_only")
+             )
+
+      refute Enum.any?(resources, &(&1.kind == "telemetry_retention"))
     end
 
     test "surfaces the probe's own error", %{scope: scope} do
