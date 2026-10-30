@@ -20,7 +20,20 @@ defmodule CodeMySpec.RunGuardTest do
 
   defp start_guard(dir, opts \\ []) do
     name = :"guard_#{System.unique_integer([:positive])}"
-    opts = Keyword.merge([name: name, dir: dir, watch: @watch, poll_ms: :infinity], opts)
+    # Its own durable dir: this suite runs inside an analyzer's durable run,
+    # whose manifest would otherwise protect every process spawned here.
+    opts =
+      Keyword.merge(
+        [
+          name: name,
+          dir: dir,
+          durable_dir: Path.join(dir, "durable"),
+          watch: @watch,
+          poll_ms: :infinity
+        ],
+        opts
+      )
+
     {:ok, pid} = GenServer.start(RunGuard, opts, name: name)
     on_exit(fn -> stop_guard(pid) end)
     name

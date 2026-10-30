@@ -68,14 +68,13 @@ defmodule Mix.Tasks.Cms.Spex do
     Mix.Task.run("ecto.migrate", ["--quiet"])
     base = database()
     partition = String.replace_prefix(base, @prefix, "")
-    groups = groups()
+    shards = shards(spex_files())
 
     Mix.shell().info("[cms.spex] #{length(spex_files())} files in #{@shards} shards")
     with_admin(fn conn -> Enum.each(1..@shards, &recreate(conn, base, shard_db(base, &1))) end)
 
     results =
-      groups
-      |> Enum.with_index(1)
+      shards
       |> Task.async_stream(&run_shard(&1, partition, formatters),
         timeout: :infinity,
         ordered: true
@@ -95,7 +94,7 @@ defmodule Mix.Tasks.Cms.Spex do
     if Enum.any?(results, fn {_, status, _, _} -> status != 0 end), do: exit({:shutdown, 1})
   end
 
-  defp run_shard({files, i}, partition, formatters) do
+  defp run_shard({files, i, event_env}, partition, formatters) do
     path =
       Path.join(System.tmp_dir!(), "cms_spex_shard_#{System.unique_integer([:positive])}.jsonl")
 
@@ -105,7 +104,7 @@ defmodule Mix.Tasks.Cms.Spex do
       System.cmd("mix", ["cms.spex" | files] ++ formatters ++ ["--jsonl=#{path}"],
         env:
           [{"MIX_ENV", "test"}, {"MIX_TEST_PARTITION", "#{partition}_#{i}"}] ++
-            run_link_env(i) ++ run_event_env(i),
+            run_link_env(i) ++ event_env,
         stderr_to_stdout: true
       )
 
@@ -135,18 +134,28 @@ defmodule Mix.Tasks.Cms.Spex do
     end
   end
 
-  defp run_event_env(i) do
-    case System.get_env("CMS_RUN_EVENT_STREAM") do
-      nil ->
-        []
+  @doc """
+  Each shard that runs: its files, its number, and the event-stream env it
+  writes under when the run has a stream.
+  """
+  # The count is of the shards that run, not `@shards`: a suite of fewer files
+  # has fewer, and a recovered run waits for every one's `suite_finished`.
+  def shards(files, stream \\ System.get_env("CMS_RUN_EVENT_STREAM")) do
+    groups = groups(files)
 
-      path ->
-        [
-          {"CMS_RUN_EVENT_STREAM", "#{path}.shard-#{i}"},
-          {"CMS_RUN_SHARD", Integer.to_string(i)},
-          {"CMS_RUN_SHARDS", Integer.to_string(@shards)}
-        ]
-    end
+    groups
+    |> Enum.with_index(1)
+    |> Enum.map(fn {files, i} -> {files, i, run_event_env(stream, i, length(groups))} end)
+  end
+
+  defp run_event_env(nil, _i, _shards), do: []
+
+  defp run_event_env(path, i, shards) do
+    [
+      {"CMS_RUN_EVENT_STREAM", "#{path}.shard-#{i}"},
+      {"CMS_RUN_SHARD", Integer.to_string(i)},
+      {"CMS_RUN_SHARDS", Integer.to_string(shards)}
+    ]
   end
 
   defp read_jsonl({_, _, _, path}) do
@@ -158,8 +167,8 @@ defmodule Mix.Tasks.Cms.Spex do
   end
 
   # Round-robin over the sorted list, so one story's criteria spread across shards.
-  defp groups do
-    spex_files()
+  defp groups(files) do
+    files
     |> Enum.with_index()
     |> Enum.group_by(fn {_, i} -> rem(i, @shards) end, fn {file, _} -> file end)
     |> Enum.sort()

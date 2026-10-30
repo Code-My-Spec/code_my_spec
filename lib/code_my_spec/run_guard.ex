@@ -72,10 +72,14 @@ defmodule CodeMySpec.RunGuard do
       poll_ms: Keyword.get(opts, :poll_ms, @poll_ms),
       max_run_ms: Keyword.get(opts, :max_run_ms, @max_run_ms),
       kill_grace_ms: Keyword.get(opts, :kill_grace_ms, @kill_grace_ms),
-      dir: Keyword.get(opts, :dir, runs_dir())
+      dir: Keyword.get(opts, :dir, runs_dir()),
+      # Where durable manifests live. A guard's own tests run inside an
+      # analyzer's durable run, so the real directory would protect every
+      # process they spawn.
+      durable_dir: Keyword.get(opts, :durable_dir, DurableRun.dir())
     }
 
-    sweep(state.dir, state.watch, state.kill_grace_ms)
+    sweep(state, state.watch, state.kill_grace_ms)
     File.mkdir_p(own_dir(state))
     schedule(state)
     {:ok, state}
@@ -97,13 +101,13 @@ defmodule CodeMySpec.RunGuard do
   @impl true
   def terminate(_reason, state) do
     Enum.each(state.runs, fn {pid, run} ->
-      unless DurableRun.protected_pid?(pid) do
+      unless DurableRun.protected_pid?(pid, state.durable_dir) do
         Logger.warning("[RunGuard] shutting down: killing os_pid=#{pid} (#{run.command})")
         kill_group(pid, 0)
       end
 
       # The manifest owns a protected run after this harness exits.
-      if not group_alive?(pid) or DurableRun.protected_pid?(pid),
+      if not group_alive?(pid) or DurableRun.protected_pid?(pid, state.durable_dir),
         do: File.rm(record_path(state, pid))
     end)
 
@@ -170,7 +174,7 @@ defmodule CodeMySpec.RunGuard do
 
       {pid, run}, acc ->
         cond do
-          not MapSet.member?(present, pid) and DurableRun.protected_pid?(pid) ->
+          not MapSet.member?(present, pid) and DurableRun.protected_pid?(pid, acc.durable_dir) ->
             Logger.info("[RunGuard] os_pid=#{pid} continues under its durable manifest")
             drop(acc, pid)
 
@@ -235,31 +239,31 @@ defmodule CodeMySpec.RunGuard do
 
   # --- earlier BEAMs ---
 
-  defp sweep(dir, watch, grace) do
+  defp sweep(%{dir: dir, durable_dir: durable_dir}, watch, grace) do
     case File.ls(dir) do
       {:ok, beams} ->
         beams
         |> Enum.reject(&(&1 == System.pid()))
-        |> Enum.each(&sweep_beam(dir, &1, watch, grace))
+        |> Enum.each(&sweep_beam(dir, durable_dir, &1, watch, grace))
 
       {:error, _} ->
         :ok
     end
   end
 
-  defp sweep_beam(dir, beam, watch, grace) do
+  defp sweep_beam(dir, durable_dir, beam, watch, grace) do
     path = Path.join(dir, beam)
 
     if beam_alive?(beam) do
       :ok
     else
-      Enum.each(recorded_runs(path), &sweep_run(&1, path, beam, watch, grace))
+      Enum.each(recorded_runs(path), &sweep_run(&1, path, beam, watch, grace, durable_dir))
       File.rmdir(path)
     end
   end
 
-  defp sweep_run({pid, recorded}, path, beam, watch, grace) do
-    protected? = DurableRun.protected_pid?(pid)
+  defp sweep_run({pid, recorded}, path, beam, watch, grace, durable_dir) do
+    protected? = DurableRun.protected_pid?(pid, durable_dir)
 
     if still_watched?(pid, watch) and not protected? do
       Logger.error(
