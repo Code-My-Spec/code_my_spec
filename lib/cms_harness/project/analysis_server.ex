@@ -881,8 +881,13 @@ defmodule CmsHarness.Project.AnalysisServer do
   # independent of the analyzer's own timer -- a hung git call must not be
   # able to hold a slot indefinitely just because it runs before the part
   # the kill timer watches.
-  defp bounded_tree_state(env) do
-    task = Task.async(fn -> Analysis.tree_state(env) end)
+  defp bounded_tree_state(env), do: snapshot_tree_state(env, fn -> Analysis.tree_state(env) end)
+
+  @doc false
+  def snapshot_tree_state(env, snapshot) when is_function(snapshot, 0) do
+    # Git can fail to spawn on the host. A linked snapshot task would kill the
+    # analyzer owner before it could report that the suite never ran.
+    task = Task.Supervisor.async_nolink(Sync.task_supervisor(env.cwd), snapshot)
 
     case Task.yield(task, @git_snapshot_timeout) || Task.shutdown(task, :brutal_kill) do
       {:ok, tree} -> {:ok, tree}
@@ -952,7 +957,10 @@ defmodule CmsHarness.Project.AnalysisServer do
             {:ran, result, completed_tree}
 
           {:error, reason} ->
-            {:ran, {:error, "git snapshot before the analyzer ran: #{reason}"}, nil}
+            {:ran,
+             {:error,
+              "git snapshot before the analyzer ran: #{reason}. No analysis was run; start a fresh #{entry.source} run once git can spawn"},
+             nil}
         end
     end
   end
