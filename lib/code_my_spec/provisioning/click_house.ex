@@ -78,10 +78,13 @@ defmodule CodeMySpec.Provisioning.ClickHouse do
       with {:ok, _capacity} <- Capacity.check(run, mode),
            :ok <- HostBaseline.ensure(run),
            :ok <- Stack.install(run, credentials, services, mode) do
-        if mode == :collector_only, do: :ok, else: Exposure.publish(run, telemetry_host)
+        publish_exposure(mode, run, telemetry_host)
       end
     end)
   end
+
+  defp publish_exposure(:collector_only, _run, _telemetry_host), do: :ok
+  defp publish_exposure(_mode, run, telemetry_host), do: Exposure.publish(run, telemetry_host)
 
   defp target(scope, environment) do
     case Environments.get_deployment(scope, environment) do
