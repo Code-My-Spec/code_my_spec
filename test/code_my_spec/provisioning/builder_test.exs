@@ -876,6 +876,28 @@ defmodule CodeMySpec.Provisioning.BuilderTest do
       assert build.builder_destroyed
     end
 
+    # The default probe SSHes the box with the build's own options; called
+    # without them it raised `key :env not found`, replacing the deploy's
+    # real error (2026-10-30 prod deploy).
+    test "asks the box itself whether it is busy, with the build's options" do
+      owner = self()
+
+      run = fn [command] ->
+        send(owner, {:probed, command})
+        {"", 0}
+      end
+
+      opts =
+        [build_fun: build_fun(), run: run]
+        |> due_opts()
+        |> Keyword.delete(:busy?)
+
+      assert {:ok, build} = Builder.build(scope(), "abc123", opts)
+
+      assert_received {:probed, "docker ps -q --filter label=" <> _}
+      assert build.builder_destroyed
+    end
+
     test "keeps a busy box due for a check, and reports it" do
       opts = due_opts(build_fun: build_fun(), busy?: fn _scope, _server -> true end)
 

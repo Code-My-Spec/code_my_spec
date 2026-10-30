@@ -177,7 +177,10 @@ defmodule CodeMySpec.Provisioning.Builder do
   # A deploy-created box is checked immediately after the build and deploy
   # callback. `BurstBox.Sweep` covers an interrupted process.
   defp release_box(scope, server, opts) do
-    busy? = Keyword.get(opts, :busy?, &BurstBox.busy?/2)
+    # The probe SSHes the box, so it needs the build's SSH options.
+    busy? =
+      Keyword.get(opts, :busy?, fn scope, server -> BurstBox.busy?(scope, server, opts) end)
+
     destroy = Keyword.get(opts, :destroy, &Hetzner.delete_server/2)
     now = Keyword.get(opts, :now, &DateTime.utc_now/0)
 
