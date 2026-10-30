@@ -7,7 +7,7 @@ defmodule CodeMySpec.AnalysisFixtures do
   `start_commit`/`completed_commit`, which the promote gate reads.
   """
 
-  alias CodeMySpec.Analysis.{Run, RunsRepository}
+  alias CodeMySpec.Analysis.{History, Run, RunsRepository}
 
   @doc """
   Insert a completed full run per source — the run that answers for each.
@@ -16,6 +16,10 @@ defmodule CodeMySpec.AnalysisFixtures do
   tree at that commit and finished there, which is what the promote gate
   reads (`Run.at_commit?/2`). `start_tree_dirty:` and `completed_commit:`
   override either half.
+
+  `tree:` records the commit's git tree, and the findings the reconciler keeps
+  for a finished run (`problems:`, none by default): a pass on that tree
+  (`Analysis.passed_on_tree/3`) when nothing in them blocks.
   """
   def fresh_analysis_runs_fixture(scope, sources \\ Run.sources(), opts \\ []) do
     for source <- sources do
@@ -34,11 +38,20 @@ defmodule CodeMySpec.AnalysisFixtures do
   defp at_commit(run, nil, _opts), do: run
 
   defp at_commit(run, commit, opts) do
-    RunsRepository.record_tree(run, %{
+    run
+    |> RunsRepository.record_tree(%{
       start_commit: commit,
       start_tree_dirty: Keyword.get(opts, :start_tree_dirty, false),
+      start_tree: Keyword.get(opts, :tree),
       completed_commit: Keyword.get(opts, :completed_commit, commit)
     })
+    |> with_findings(opts)
+  end
+
+  defp with_findings(run, opts) do
+    if Keyword.has_key?(opts, :tree),
+      do: History.record!(run, [], Keyword.get(opts, :problems, [])),
+      else: run
   end
 
   @doc "Insert a run in a given state."

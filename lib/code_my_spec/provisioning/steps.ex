@@ -2031,7 +2031,7 @@ defmodule CodeMySpec.Provisioning.Steps do
          # builder refuses without `opts[:reference]`.
          {:ok, reference} <- Registry.reference(scope, tag, opts),
          opts = Keyword.put(opts, :reference, reference),
-         opts = with_deploy_execution(opts, scope, environment, reference),
+         opts = with_deploy_execution(opts, scope, environment, reference, architecture),
          {:ok, build} <- build_on_builder(scope, tag, architecture, opts) do
       {:ok,
        %{
@@ -2055,11 +2055,12 @@ defmodule CodeMySpec.Provisioning.Steps do
   # `with_builder_ssh` already set `opts[:env]`, and `Deploy`'s `trust_host/1`
   # handles host keys remotely.
   # See knowledge/provisioning/steps, "Deploy and build".
-  defp with_deploy_execution(opts, scope, environment, reference) do
+  defp with_deploy_execution(opts, scope, environment, reference, architecture) do
     host = Keyword.get(opts, :host) || environment_host(scope, environment) || domain(scope)
 
     deploy_opts =
       opts
+      |> Keyword.put(:architecture, architecture)
       |> deploy_opts(host, %{reference: reference})
       |> with_host_ip(scope, environment)
       |> with_age_key(scope, environment)
@@ -3822,28 +3823,42 @@ defmodule CodeMySpec.Provisioning.Steps do
   end
 
   defp require_script_in(scope, environment, path) do
-    if ExecutionContexts.exec_file_exists?(environment, path) do
+    if script_executable?(environment, path) do
       :ok
     else
       findings = CodeMySpec.Generators.audit(scope, router_path(scope), environment)
 
-      case {findings, ExecutionContexts.file_exists?(environment, path)} do
-        # Audit is clean and this environment cannot see the file at all (a
-        # harness-scoped environment): cannot prove it wrong. The audit
-        # already consulted the `Files` sync table.
-        {[], false} ->
+      case {findings, ExecutionContexts.file_exists?(environment, path), environment.type} do
+        # A harness cannot inspect executable bits. Its clean audit already
+        # checked the `Files` sync table, so presence is sufficient here.
+        {[], true, :harness} ->
           :ok
 
-        # Present but not executable: a real permission problem.
-        {[], true} ->
+        {[], false, _} ->
+          :ok
+
+        # Local and sprite contexts can inspect mode: this is a real permission problem.
+        {[], true, _} ->
           deploy_not_ready_error("#{path} is not present or not executable")
 
-        {findings, _} ->
+        {findings, _, _} ->
           detail = Enum.map_join(findings, "; ", &CodeMySpec.Generators.explain/1)
           deploy_not_ready_error(detail)
       end
     end
   end
+
+  # Local's generic exec_file_exists?/2 checks presence for tools such as mix.exs.
+  # Deploy scripts need the executable bit as well.
+  defp script_executable?(%{type: :local, cwd: cwd}, path) when is_binary(cwd) do
+    case File.stat(Path.join(cwd, path)) do
+      {:ok, %File.Stat{type: :regular, mode: mode}} -> Bitwise.band(mode, 0o111) != 0
+      _ -> false
+    end
+  end
+
+  defp script_executable?(environment, path),
+    do: ExecutionContexts.exec_file_exists?(environment, path)
 
   defp deploy_not_ready_error(detail) do
     {:error,

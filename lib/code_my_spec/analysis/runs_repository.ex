@@ -192,6 +192,27 @@ defmodule CodeMySpec.Analysis.RunsRepository do
     |> Repo.one()
   end
 
+  @tree_answer_fields Run.__schema__(:fields) -- [:output, :stats]
+
+  @doc """
+  Completed full runs of `source` that started clean on `tree` and finished at
+  the commit they started on, from any working copy of the project, newest
+  first. Whether one passed is the caller's rule (`Promotion.passed_on_tree/3`).
+  Without `output` or `stats`, which can run to megabytes.
+  """
+  @spec completed_on_tree(Scope.t(), String.t(), String.t()) :: [Run.t()]
+  def completed_on_tree(%Scope{active_project_id: project_id}, tree, source)
+      when is_binary(tree) do
+    Run
+    |> where([r], r.project_id == ^project_id and r.source == ^source and r.kind == :full)
+    |> where([r], r.status == :completed and r.start_tree == ^tree)
+    |> where([r], r.start_tree_dirty == false and r.start_commit == r.completed_commit)
+    |> order_by([r], desc: r.started_at, desc: r.id)
+    |> limit(20)
+    |> select([r], struct(r, ^@tree_answer_fields))
+    |> Repo.all()
+  end
+
   @doc """
   How many full runs of `source` on this working copy failed to run at
   `commit` during the attempt beginning at `since`: started there, or failed

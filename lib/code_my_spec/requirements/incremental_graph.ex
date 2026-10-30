@@ -242,6 +242,7 @@ defmodule CodeMySpec.Requirements.IncrementalGraph do
 
   @impl true
   def init({project_id, scope, owners}) do
+    Process.set_label({__MODULE__, project_id})
     SandboxAllowance.take(owners)
     # So a supervisor's `:shutdown` waits for the drain in flight: dying
     # mid-transaction takes a shared sandbox connection down with it.

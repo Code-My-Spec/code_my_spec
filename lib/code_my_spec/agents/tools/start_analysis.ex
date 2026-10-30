@@ -5,6 +5,7 @@ defmodule CodeMySpec.Agents.Tools.StartAnalysis do
   alias CodeMySpec.Agents
   alias CodeMySpec.Analysis
   alias CodeMySpec.Analysis.FleetHolds
+  alias CodeMySpec.Analysis.Run
   alias CodeMySpec.Promotion
 
   @sources ~w(spex exunit credo compiler)
@@ -24,6 +25,10 @@ defmodule CodeMySpec.Agents.Tools.StartAnalysis do
     uncommitted files, rather than a HEAD-only snapshot. Certification separately
     requires committed work and fresh full runs at that commit. Choose `spex`
     for `_spex.exs` files; the project's ExUnit filters may exclude them.
+
+    A full run of a source that already passed this copy's clean, committed tree,
+    on any copy or commit, answers at once and queues nothing; `fresh: true` runs
+    it anyway.
 
     `paths` scopes the run to specific files, the same way the PreToolUse hook's
     own `mix test test/foo_test.exs` rewrite does. Scoped runs can never satisfy
@@ -45,6 +50,12 @@ defmodule CodeMySpec.Agents.Tools.StartAnalysis do
          [
            description:
              "Scope the run to these paths (e.g. one test file), instead of the full suite. Empty runs everything. A scoped run is `:partial` and can never satisfy freshness on its own — it covers only what it names."
+         ]},
+      fresh:
+        {:meta, :boolean,
+         [
+           description:
+             "Run the full suite even when this source already passed this copy's committed tree. Untracked files are not part of the tree."
          ]}
     }
   end
@@ -57,7 +68,8 @@ defmodule CodeMySpec.Agents.Tools.StartAnalysis do
 
     requested_by = %{kind: "mcp_tool", tool: "start_analysis", agent_id: agent_id}
 
-    with :none <- shared_run(scope, source, paths, agent_id) do
+    with :none <- already_passed(scope, source, paths, Map.get(params, :fresh) == true),
+         :none <- shared_run(scope, source, paths, agent_id) do
       admit(scope, source, paths, agent_id, requested_by)
     end
   rescue
@@ -71,6 +83,21 @@ defmodule CodeMySpec.Agents.Tools.StartAnalysis do
   def call(%{source: source}, _context) do
     {:error, "#{inspect(source)} is not an analyzer. Use one of: #{Enum.join(@sources, ", ")}."}
   end
+
+  # A full run of a source that already passed this copy's clean tree, on any
+  # copy or commit, would only repeat that pass (story 1174).
+  defp already_passed(scope, source, [], false) do
+    with {:ok, tree} <- Promotion.clean_tree(scope),
+         %Run{id: run_id} <- Analysis.passed_on_tree(scope, tree, source) do
+      {:ok,
+       "#{source} already passed this tree in run #{run_id}. Nothing was queued; " <>
+         "pass fresh: true to run it again."}
+    else
+      _ -> :none
+    end
+  end
+
+  defp already_passed(_scope, _source, _paths, _fresh), do: :none
 
   # A full run already under way at this copy's commit, on a clean tree,
   # answers this request too: the agent waits on it rather than starting

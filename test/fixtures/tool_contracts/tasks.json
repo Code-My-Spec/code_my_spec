@@ -198,7 +198,7 @@
   },
   {
     "name": "start_analysis",
-    "description": "Start an analyzer run and return immediately.\n\nSources: `spex`, `exunit`, `credo`, `compiler`. Returns as soon as the run is\nopened — it does not wait, and you should not wait for it.\n\nRuns read this working copy's working tree, including untracked and\nuncommitted files, rather than a HEAD-only snapshot. Certification separately\nrequires committed work and fresh full runs at that commit. Choose `spex`\nfor `_spex.exs` files; the project's ExUnit filters may exclude them.\n\n`paths` scopes the run to specific files, the same way the PreToolUse hook's\nown `mix test test/foo_test.exs` rewrite does. Scoped runs can never satisfy\nfreshness — they cover only what they name — so use this for a focused\nvalidation, not as a substitute for the full sweep `ready_for_qa` reads.\n\nAn agent running inside our own BEAM is sent the result as a message when the\nrun lands, so the thing to do after calling this is stop. A Claude Code\nsession collects it on its next tool call instead.\n",
+    "description": "Start an analyzer run and return immediately.\n\nSources: `spex`, `exunit`, `credo`, `compiler`. Returns as soon as the run is\nopened — it does not wait, and you should not wait for it.\n\nRuns read this working copy's working tree, including untracked and\nuncommitted files, rather than a HEAD-only snapshot. Certification separately\nrequires committed work and fresh full runs at that commit. Choose `spex`\nfor `_spex.exs` files; the project's ExUnit filters may exclude them.\n\nA full run of a source that already passed this copy's clean, committed tree,\non any copy or commit, answers at once and queues nothing; `fresh: true` runs\nit anyway.\n\n`paths` scopes the run to specific files, the same way the PreToolUse hook's\nown `mix test test/foo_test.exs` rewrite does. Scoped runs can never satisfy\nfreshness — they cover only what they name — so use this for a focused\nvalidation, not as a substitute for the full sweep `ready_for_qa` reads.\n\nAn agent running inside our own BEAM is sent the result as a message when the\nrun lands, so the thing to do after calling this is stop. A Claude Code\nsession collects it on its next tool call instead.\n",
     "input_schema": {
       "properties": {
         "paths": {
@@ -211,6 +211,10 @@
         "source": {
           "description": "spex | exunit | credo | compiler",
           "type": "string"
+        },
+        "fresh": {
+          "description": "Run the full suite even when this source already passed this copy's committed tree. Untracked files are not part of the tree.",
+          "type": "boolean"
         }
       },
       "required": [

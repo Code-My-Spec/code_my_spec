@@ -15,12 +15,13 @@ defmodule CmsHarness.ARunReportsTheCommitItRanOnTest do
 
   @sha_a String.duplicate("a", 40)
   @sha_b String.duplicate("b", 40)
+  @tree String.duplicate("c", 40)
 
   defp git(head, status) do
     {:ok, env} =
       InMemoryExecutionContext.create(
         shell: fn
-          "git", ["rev-parse", "HEAD"], _opts -> head
+          "git", ["rev-parse", "HEAD", "HEAD^{tree}"], _opts -> head
           "git", ["status", "--porcelain" | _], _opts -> status
         end
       )
@@ -29,19 +30,19 @@ defmodule CmsHarness.ARunReportsTheCommitItRanOnTest do
   end
 
   describe "tree_state/1" do
-    test "a clean tree at a commit" do
-      assert Analysis.tree_state(git({@sha_a <> "\n", 0}, {"", 0})) ==
-               %{commit: @sha_a, dirty: false}
+    test "a clean tree at a commit, and its git tree" do
+      assert Analysis.tree_state(git({"#{@sha_a}\n#{@tree}\n", 0}, {"", 0})) ==
+               %{commit: @sha_a, dirty: false, tree: @tree}
     end
 
-    test "uncommitted changes read as dirty" do
-      assert Analysis.tree_state(git({@sha_a <> "\n", 0}, {" M lib/a.ex\n", 0})) ==
-               %{commit: @sha_a, dirty: true}
+    test "uncommitted changes read as dirty, with no tree to answer for" do
+      assert Analysis.tree_state(git({"#{@sha_a}\n#{@tree}\n", 0}, {" M lib/a.ex\n", 0})) ==
+               %{commit: @sha_a, dirty: true, tree: nil}
     end
 
     test "git that cannot answer says nothing rather than guessing" do
       assert Analysis.tree_state(git({"fatal: not a git repository", 128}, {"fatal", 128})) ==
-               %{commit: nil, dirty: nil}
+               %{commit: nil, dirty: nil, tree: nil}
     end
   end
 
@@ -60,7 +61,7 @@ defmodule CmsHarness.ARunReportsTheCommitItRanOnTest do
     running = %{run_id: 7, source: "exunit", tied_run_ids: [8], task: nil}
 
     AnalysisServer.handle_info(
-      {:analysis_started, 7, %{commit: @sha_a, dirty: true}},
+      {:analysis_started, 7, %{commit: @sha_a, dirty: false, tree: @tree}},
       state(root, running)
     )
 
@@ -71,7 +72,8 @@ defmodule CmsHarness.ARunReportsTheCommitItRanOnTest do
                          "run_id" => ^run_id,
                          "source" => "exunit",
                          "start_commit" => @sha_a,
-                         "start_tree_dirty" => true
+                         "start_tree_dirty" => false,
+                         "start_tree" => @tree
                        }}}
     end
   end

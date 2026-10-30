@@ -1081,6 +1081,42 @@ defmodule CodeMySpecWeb.HarnessProjectChannelTest do
       assert run.start_commit == sha
       assert run.start_tree_dirty == true
       assert run.completed_commit == nil
+      assert run.start_tree == nil, "a harness that sends no tree records none"
+    end
+
+    test "a clean start records the tree it ran on (story 1174)",
+         %{channel: channel, scope: scope} do
+      run_id = dispatch_compiler(channel)
+      tree = String.duplicate("c", 40)
+
+      ref =
+        push(channel, "analysis_started", %{
+          "run_id" => run_id,
+          "source" => "compiler",
+          "start_commit" => String.duplicate("a", 40),
+          "start_tree_dirty" => false,
+          "start_tree" => tree
+        })
+
+      assert_reply ref, :ok, _reply, 5_000
+      assert RunsRepository.get_run_in_project(scope, run_id).start_tree == tree
+    end
+
+    test "a dirty start keeps no tree, whatever the harness sent",
+         %{channel: channel, scope: scope} do
+      run_id = dispatch_compiler(channel)
+
+      ref =
+        push(channel, "analysis_started", %{
+          "run_id" => run_id,
+          "source" => "compiler",
+          "start_commit" => String.duplicate("a", 40),
+          "start_tree_dirty" => true,
+          "start_tree" => String.duplicate("c", 40)
+        })
+
+      assert_reply ref, :ok, _reply, 5_000
+      assert RunsRepository.get_run_in_project(scope, run_id).start_tree == nil
     end
 
     test "its result records the commit it finished on", %{channel: channel, scope: scope} do
