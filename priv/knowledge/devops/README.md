@@ -2,74 +2,40 @@
 
 Reference docs for infrastructure, deployment, and environment management.
 
-> **Deploy stack (as of 2026):** Kamal 2 + kamal-proxy, images built in GitHub Actions → GHCR, app secrets in AWS SSM Parameter Store, Varlock for local secrets. This replaced the older Docker-Compose + Caddy + rsync + host-env-file model — see `hetzner-docker-deploy.md` for the migration note.
+> **Deploy stack:** CodeMySpec builds an image from the project's Dockerfile on a target-architecture Hetzner burst box at deploy time, pushes it to the app server's private registry, and deploys it with Kamal 2 + kamal-proxy. See `hetzner-docker-deploy.md`.
 
 ## When to read what
 
 | Task | Read |
 |------|------|
-| Provision a Hetzner server (hcloud, firewall, snapshots) | `hetzner-docker-deploy.md` |
-| Deploy with Kamal (`scripts/deploy`, kamal-proxy, migrate-before-swap) | `hetzner-docker-deploy.md` |
-| Run prod + UAT (separate boxes, `APP_ENV`) | `hetzner-docker-deploy.md` |
-| Build & push the image (multi-arch CI → GHCR) | `ci-image-build.md` |
-| Dockerfile gotchas (envs touch, assets retry, ARM) | `ci-image-build.md` |
-| Manage local secrets (Varlock, `.env.schema`) | `secrets-ssm.md` |
-| Load prod secrets (SSM Parameter Store, `Secrets.load!/1`) | `secrets-ssm.md` |
-| Seed / rotate secrets | `secrets-ssm.md` |
+| Provision a Hetzner server or deploy with Kamal | `hetzner-docker-deploy.md` |
+| Build and publish an image on the burst box | `hetzner-docker-deploy.md` |
+| Dockerfile gotchas (envs touch, assets retry, ARM) | `hetzner-docker-deploy.md` |
+| Manage local or SSM-backed secrets | `secrets-ssm.md` |
 | Create S3 buckets or IAM users | `aws-s3-iam.md` |
-| Combined S3 + SSM IAM user for the app | `aws-s3-iam.md` |
 | Configure ExAws credentials | `aws-s3-iam.md` |
-| Add/change DNS records; dev tunnel (cloudflared); SSL modes | `cloudflare-dns-tunnels.md` |
+| Add or change DNS records; dev tunnel; SSL modes | `cloudflare-dns-tunnels.md` |
 | Serve static images from a CDN | `s3-cloudflare-image-host.md` |
 | Migrate URLs without losing SEO link equity | `url-migration-redirects.md` |
 | Transactional email (Resend + Cloudflare DNS) | `cloudflare-resend-email-setup.md` |
-| Onboard an existing app with its own Kamal history onto CodeMySpec | `onboarding-existing-kamal-app.md` |
-| Read a project's own deployed logs/traces (`query_logs`, `slow_spans`, `get_trace`, `error_summary`) | `observability.md` |
-
-## Typical infrastructure layout
-
-```
-                    Cloudflare DNS
-                   ┌──────────────────────────────┐
-                   │  myapp.com    → Prod box IP   │
-                   │  uat.myapp.com→ UAT box IP    │
-                   │  dev.myapp.com→ Tunnel        │
-                   └──────────┬───────────────────┘
-                              │
-        ┌─────────────────────┴───────────────────────┐
-        ▼                                              ▼
- ┌──────────────────────────┐              ┌──────────────────────────┐
- │ Hetzner PROD box         │              │ Hetzner UAT box          │
- │  kamal-proxy :443 (TLS)  │              │  kamal-proxy :443 (TLS)  │
- │   └── myapp app :4000    │              │   └── myapp app :4000    │
- │   └── other apps…        │              │   └── other apps…        │
- │  infra-postgres-1 (db_net)│             │  infra-postgres-1 (db_net)│
- └──────────┬───────────────┘              └──────────────────────────┘
-            │ image pull                          ▲ boot-time secret pull
-            ▼                                     │
-   GHCR ghcr.io/code-my-spec/myapp:<sha>   AWS SSM /myapp/<env>/*  +  S3 buckets
-   (built by GitHub Actions, multi-arch)   (SecureString, KMS)        myapp-<env>-files
-```
+| Onboard an existing app with Kamal history | `onboarding-existing-kamal-app.md` |
+| Read deployed logs and traces | `observability.md` |
 
 ## Deploy flow at a glance
 
+```text
+project HEAD + Dockerfile
+  -> Provisioning.Builder on an account burst box matching the app host architecture
+  -> private cms-registry on the app server, tagged with the short commit SHA
+  -> Deploy.run from the burst box -> migrate -> health check -> Kamal traffic swap
 ```
-git push ─► GitHub Actions (build multi-arch ─► GHCR :<sha>) ─► scripts/deploy
-                                                                  ├─ gh run watch (gate)
-                                                                  ├─ render AWS bootstrap creds from SSM
-                                                                  ├─ kamal app exec --version=<sha> bin/migrate
-                                                                  └─ kamal deploy --skip-push --version=<sha>
-                                                                       └─ container boot: Secrets.load!/1 pulls /myapp/<env>/* from SSM
-```
+
+The generated project does not contain a CI image-build workflow. The deploy does not wait for a workflow run or pull a CI-published GHCR image. `Provisioning.Registry` owns image references and retention; `Provisioning.Deploy` owns migration, health, and swap ordering.
 
 ## Key conventions
 
-- **Deploy only via `scripts/deploy`** — never raw `kamal deploy` (bootstrap creds must be rendered from SSM first).
-- **Image tag = commit SHA.** CI builds it; the deploy pulls it with `--skip-push --version=<sha>`. Working tree must be clean.
-- **Migrate before traffic swap** (`kamal app exec --version=<sha> /app/bin/migrate`), and keep migrations additive (two-phase destructive changes).
-- **One `MIX_ENV=prod` image; `APP_ENV` selects prod/uat** and picks the SSM subtree.
-- **Secrets:** local = Varlock (`.env.schema`, device-encrypted, committed); prod = AWS SSM `/<app>/<env>/*` (SecureString), loaded at boot. Kamal carries *only* the AWS bootstrap pair + GHCR token. Never `/opt/*.env` host files, never secrets in the repo.
-- **One IAM user per app+env** covers S3 + SSM (`kms:Decrypt via ssm`). Hetzner has no instance role — static keys only.
-- **Shared infra per box:** `kamal-proxy` (TLS/routing) and `infra-postgres-1` on a `db_net` network; multiple apps co-host.
-- **Host-level concerns** (pg_dump cron, fail2ban, SSH hardening, `render-env`/`seed-secrets` tooling) live in a shared **`devops/` monorepo**, not per-app repos.
-- Project-specific infra details (IPs, domains, bucket names) go in `.code_my_spec/devops/` or the app's `deploy/<provider>/`.
+- **Image tag = short commit SHA.** The build happens at deploy time, for the architecture of the target app server.
+- **Migrate before traffic swap.** Keep migrations additive while the previous container may still be serving.
+- **Health is independent.** The proxy's `/health` probe must work without session, auth, or database access and must not redirect.
+- **Private registry.** The builder pushes to the app server's private `cms-registry`; the app server pulls from it. Do not expose the registry on a public interface.
+- **Project-specific resources.** Read the environment's server, DNS, and secret resources for actual hostnames and credentials. The SSM/Varlock guides describe apps using that secret layout.
