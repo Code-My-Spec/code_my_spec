@@ -50,10 +50,6 @@ defmodule CodeMySpec.Requirements.ArchitectureChecker do
   @spec complete?(Scope.t(), term(), map()) :: {boolean(), map()}
   def complete?(scope, entity, ctx)
 
-  def complete?(scope, _entity, %{files: files, authored?: authored?}) do
-    proposal_verdict(scope, Map.get(files.by_path, @proposal_path), authored?)
-  end
-
   # Everything handed in, so a harness with no database answers it.
   def complete?(_scope, _entity, %{
         files_by_project: files,

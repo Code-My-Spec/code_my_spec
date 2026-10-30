@@ -32,6 +32,7 @@ defmodule CodeMySpec.Requirements.Profiles do
   alias CodeMySpec.Requirements.DevopsSetupChecker
   alias CodeMySpec.Requirements.PersonasChecker
   alias CodeMySpec.Requirements.Preloader
+  alias CodeMySpec.Stories
   alias CodeMySpec.Stories.AcceptanceCriteria.Criterion
   alias CodeMySpec.Stories.Story
   alias CodeMySpec.Users.Scope
@@ -118,17 +119,12 @@ defmodule CodeMySpec.Requirements.Profiles do
         |> scope_files_to_copy(scope)
       )
 
-    %{
-      project: scope.active_project,
-      components: Repo.all(from(c in Component, where: c.project_id == ^project_id)),
-      story_ids: Repo.all(from(s in Story, where: s.project_id == ^project_id, select: s.id)),
-      by_component_role: index_by(files, :component_id),
-      by_story_role: index_by(files, :story_id),
-      # For the project `path_exists` requirements, which ask about named
-      # paths rather than an owner's roles. Same read.
-      by_path: Map.new(files, &{&1.path, &1}),
-      all: files
-    }
+    files_profile(
+      files,
+      scope.active_project,
+      Repo.all(from(c in Component, where: c.project_id == ^project_id)),
+      Repo.all(from(s in Story, where: s.project_id == ^project_id, select: s.id))
+    )
   end
 
   # What each story points at: the component it names, and its UAT deploy.
@@ -242,9 +238,41 @@ defmodule CodeMySpec.Requirements.Profiles do
   end
 
   # Whether the architecture was authored through the tools — half of
-  # `architecture_designed`'s "a plan exists".
+  # `architecture_designed`'s "a plan exists" — and what a proposal may name.
   defp fetch(%Scope{} = scope, :architecture) do
-    %{authored?: Components.any_authored?(scope)}
+    {:ok, stories} = Stories.list_project_stories(scope)
+
+    %{
+      authored?: Components.any_authored?(scope),
+      story_numbers: Enum.map(stories, & &1.number),
+      context_names: scope |> Components.list_contexts() |> Enum.map(& &1.module_name)
+    }
+  end
+
+  @doc """
+  The `:files` profile from one checkout's files and the project's records, read
+  from nothing: a harness builds it from its own scan.
+  """
+  @spec files_profile([map()], map() | nil, [map()], [integer()]) :: t()
+  def files_profile(files, project, components, story_ids) do
+    %{
+      project: project,
+      components: components,
+      story_ids: story_ids,
+      by_component_role: index_by(files, :component_id),
+      by_story_role: index_by(files, :story_id),
+      # For the project `path_exists` requirements, which ask about named
+      # paths rather than an owner's roles. Same read.
+      by_path: Map.new(files, &{&1.path, &1}),
+      all: files
+    }
+  end
+
+  @doc "The project's live criteria by story, as `:stories` holds them."
+  @spec criteria(Scope.t()) :: %{integer() => [map()]}
+  def criteria(%Scope{active_project_id: project_id}) do
+    Repo.all(from(s in Story, where: s.project_id == ^project_id, select: s.id))
+    |> criteria_by_story()
   end
 
   # `{owner_id, role} => file`, keeping the first of any duplicates — the same

@@ -193,10 +193,14 @@ defmodule CodeMySpec.Requirements.CheckersWithoutADiskTest do
       assert reason =~ context.module_name
       refute reason =~ "orphan"
 
-      files = Profiles.load(scope, :files)
+      profile =
+        Map.put(
+          Profiles.load(scope, :architecture),
+          :files_by_project,
+          Profiles.load(scope, :files).all
+        )
 
-      assert {false, %{reason: ^reason}} =
-               ArchitectureChecker.complete?(scope, nil, %{files: files, authored?: false})
+      assert {false, %{reason: ^reason}} = ArchitectureChecker.complete?(scope, nil, profile)
     end
 
     test "stale synced story references fail both graph read paths without a disk", %{
@@ -210,10 +214,14 @@ defmodule CodeMySpec.Requirements.CheckersWithoutADiskTest do
       assert reason =~ "out of date"
       assert reason =~ "123456789"
 
-      files = Profiles.load(scope, :files)
+      profile =
+        Map.put(
+          Profiles.load(scope, :architecture),
+          :files_by_project,
+          Profiles.load(scope, :files).all
+        )
 
-      assert {false, %{reason: ^reason}} =
-               ArchitectureChecker.complete?(scope, nil, %{files: files, authored?: false})
+      assert {false, %{reason: ^reason}} = ArchitectureChecker.complete?(scope, nil, profile)
     end
 
     test "an unsynced proposal is missing, and says which path", %{scope: scope} do

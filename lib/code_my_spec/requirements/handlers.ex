@@ -257,6 +257,24 @@ defmodule CodeMySpec.Requirements.Handlers do
     end
   end
 
+  # What only a checkout's own files answer: its harness reports these.
+  @copy_names ~w(
+    implementation_file bdd_specs_exist technical_strategy code_generation
+    qa_journey_execute spex_boundary_ready architecture_designed qa_integration_plan
+  )
+
+  @doc """
+  A checkout's file verdicts, settled from profiles alone: `:files` (see
+  `Profiles.files_profile/4`), `:stories` with `amigos.criteria_by_story`, and
+  `:architecture`. Reads no database, so a harness runs it on its own scan.
+  """
+  @spec copy_verdicts(map()) :: [sweep()]
+  def copy_verdicts(profiles), do: Enum.map(@copy_names, &settle(&1, profiles, nil))
+
+  @doc "The requirement names `copy_verdicts/1` settles."
+  @spec copy_names() :: [String.t()]
+  def copy_names, do: @copy_names
+
   @doc """
   Whether everything this kind moves is stored once per project: settled at one
   checkout, it is settled at all of them.
@@ -636,18 +654,17 @@ defmodule CodeMySpec.Requirements.Handlers do
 
       {SpexBoundaryChecker, :complete?} ->
         # The profile already holds every file this checkout has.
-        SpexBoundaryChecker.complete?(scope, scope.active_project, %{
-          files_by_project: profiles.files.all
-        })
+        SpexBoundaryChecker.complete?(scope, nil, %{files_by_project: profiles.files.all})
 
       {StoriesChecker, :exist?} ->
         StoriesChecker.verdict(profiles.stories.stories != [])
 
       {ArchitectureChecker, :complete?} ->
-        ArchitectureChecker.complete?(scope, scope.active_project, %{
-          files: profiles.files,
-          authored?: profiles.architecture.authored?
-        })
+        ArchitectureChecker.complete?(
+          scope,
+          nil,
+          Map.put(profiles.architecture, :files_by_project, profiles.files.all)
+        )
 
       {module, function} ->
         apply(module, function, [scope, scope.active_project])
