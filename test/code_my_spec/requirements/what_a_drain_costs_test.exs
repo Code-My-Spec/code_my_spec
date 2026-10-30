@@ -28,6 +28,7 @@ defmodule CodeMySpec.Requirements.WhatADrainCostsTest do
   """
   use CodeMySpecSpex.Case, async: true
   import CodeMySpecSpex.StoryHelpers, only: [create_story: 2]
+  import Ecto.Query, only: [from: 2]
 
   alias CodeMySpec.Requirements.IncrementalGraph
 
@@ -235,7 +236,7 @@ defmodule CodeMySpec.Requirements.WhatADrainCostsTest do
              "issue drain grew from #{baseline_cost.queries} to #{enlarged_cost.queries} queries for twelve stamped stories"
     end
 
-    test "an issue update remains bounded across twelve vantages", ctx do
+    test "an issue update is one settle and no per-copy row, however many copies", ctx do
       scope = ctx.scope
       device = CodeMySpec.DevicesFixtures.device_fixture(scope)
 
@@ -247,7 +248,7 @@ defmodule CodeMySpec.Requirements.WhatADrainCostsTest do
           copy
         end
 
-      create_story(scope, title: "Twelve-vantage subject", description: "issue drain measurement")
+      create_story(scope, title: "Many-copy subject", description: "issue drain measurement")
       :ok = IncrementalGraph.settle(scope.active_project_id, [nil | Enum.map(copies, & &1.id)])
       drains()
 
@@ -272,8 +273,14 @@ defmodule CodeMySpec.Requirements.WhatADrainCostsTest do
 
       assert applied != []
       {cost, meta} = Enum.max_by(applied, fn {cost, _meta} -> cost.queries end)
-      assert meta.vantages == 12
+      assert meta.vantages == 1, "eleven copies were settled one by one"
       assert cost.queries < 300
+
+      # A copy's file verdicts are its overlay; nothing is written per copy.
+      assert CodeMySpec.Repo.aggregate(
+               from(n in "requirements", where: not is_nil(n.working_copy_id)),
+               :count
+             ) == 0
     end
 
     test "a drain reports how many checkouts it settled", ctx do

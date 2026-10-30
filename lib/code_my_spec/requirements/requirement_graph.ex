@@ -28,9 +28,11 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   alias CodeMySpec.Configurations.ProjectConfiguration
   alias CodeMySpec.Repo
   alias CodeMySpec.Requirements.CopyGraph
+  alias CodeMySpec.Requirements.CopyOverlay
   alias CodeMySpec.Requirements.Freshness
   alias CodeMySpec.Requirements.GraphStore
   alias CodeMySpec.Requirements.GraphWatcher
+  alias CodeMySpec.Requirements.Handlers
   alias CodeMySpec.Requirements.IncrementalGraph
   alias CodeMySpec.Requirements.Preloader
   alias CodeMySpec.Requirements.Projection
@@ -454,10 +456,9 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
     scope = scope |> normalize_vantage() |> with_project()
     {:ok, ctx} = Preloader.load(scope)
     config = CodeMySpec.Configurations.get_or_create(scope)
-    # The projector's rows, which it still writes: this audits the writer until
-    # the per-copy projection is deleted.
-    {served, served_edges} = Projection.load(scope, ctx)
+    {served, served_edges} = CopyGraph.load(scope, ctx)
     {computed, computed_edges} = compute_topology(scope, ctx, config)
+    {served, computed} = {audited(served, scope), audited(computed, scope)}
 
     served_by_key = Map.new(served, &{node_key(&1), Verification.behavior(&1)})
     computed_by_key = Map.new(computed, &{node_key(&1), Verification.behavior(&1)})
@@ -545,6 +546,17 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
         active_account_id: account.id
     }
   end
+
+  # `nil` with no default copy has no checkout's files to serve, by design
+  # ("no checkout has reported files"), so its file verdicts are not audited.
+  defp audited(nodes, %Scope{active_working_copy_id: nil} = scope) do
+    case CopyOverlay.verdicts_at(scope) do
+      :no_checkout -> Enum.reject(nodes, &(&1.name in Handlers.copy_names()))
+      _reported_or_computed -> nodes
+    end
+  end
+
+  defp audited(nodes, _scope), do: nodes
 
   defp audit_label({"component", id, name}), do: "component:#{String.slice(id, 0, 8)}/#{name}"
   defp audit_label({type, id, name}), do: "#{type}:#{id}/#{name}"

@@ -16,7 +16,6 @@ defmodule CodeMySpec.Requirements.Projection do
 
   import Ecto.Query
 
-  alias CodeMySpec.Analysis.HarnessRegistry
   alias CodeMySpec.Files.File
   alias CodeMySpec.Repo
   alias CodeMySpec.Requirements.{Edges, GraphStore, Node, Registry, Requirement, Topology}
@@ -49,46 +48,6 @@ defmodule CodeMySpec.Requirements.Projection do
   end
 
   def vantages(%Scope{}), do: [nil]
-
-  @doc """
-  The vantages worth settling, out of `nil`, the stored ones, and any a reader
-  has asked for (`requested`).
-
-  A checkout must still exist: a row's `working_copy_id` references
-  `working_copies`, so writing for a deleted checkout (named by a reader before
-  the offboard) would fail every drain after it. And it must be awake — its
-  harness connected, the main copy, or seen within a day — or requested: a
-  dormant checkout's rows are left as they were, and `IncrementalGraph` seeds it
-  whole when it wakes. Most of a large project's checkouts are old worktrees.
-  """
-  @awake_within_hours 24
-
-  @spec live_vantages(Scope.t(), Enumerable.t(), [Ecto.UUID.t() | nil]) ::
-          [Ecto.UUID.t() | nil]
-  def live_vantages(scope, candidates, requested \\ [])
-
-  def live_vantages(%Scope{active_project_id: project_id}, candidates, requested)
-      when is_binary(project_id) do
-    wanted = Enum.concat(candidates, requested)
-    copies = copies(project_id, wanted)
-    cutoff = DateTime.add(DateTime.utc_now(), -@awake_within_hours * 3600)
-
-    live? = fn id ->
-      case Map.get(copies, id) do
-        nil -> false
-        copy -> id in requested or awake?(copy, cutoff)
-      end
-    end
-
-    Enum.uniq([nil | Enum.filter(wanted, &(is_nil(&1) or live?.(&1)))])
-  end
-
-  def live_vantages(%Scope{}, _candidates, _requested), do: [nil]
-
-  defp awake?(copy, cutoff) do
-    copy.main or (copy.last_seen_at != nil and DateTime.after?(copy.last_seen_at, cutoff)) or
-      HarnessRegistry.connected?(copy.id)
-  end
 
   # The project's checkouts among `ids`, one query.
   defp copies(project_id, ids) do

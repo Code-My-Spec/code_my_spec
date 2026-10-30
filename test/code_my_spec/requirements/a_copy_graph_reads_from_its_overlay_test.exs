@@ -1,12 +1,12 @@
-defmodule CodeMySpec.Requirements.ACopyGraphReadsAsTheProjectionDoesTest do
+defmodule CodeMySpec.Requirements.ACopyGraphReadsFromItsOverlayTest do
   @moduledoc """
-  A checkout's graph read from the project's topology and record verdicts, its
-  overlay and its gates is the graph its stored rows give.
+  A checkout's graph is read from the project's topology and record verdicts,
+  its overlay and its gates; nothing is stored per checkout.
 
-  Nothing per checkout is read: membership comes from the templates, file
-  verdicts from the harness's report, the three placement gates are settled on
-  read. Where there is no report to read, file verdicts are unsatisfied and say
-  why: a checkout that has not reported, or no checkout at all.
+  Membership comes from the templates, file verdicts from the harness's report
+  when it answers the current records, else from the copy's File rows; the
+  three placement gates are settled on read. `nil` with no default copy says no
+  checkout has reported files.
   """
   use CodeMySpecTest.DataCase, async: true
 
@@ -21,10 +21,9 @@ defmodule CodeMySpec.Requirements.ACopyGraphReadsAsTheProjectionDoesTest do
   alias CodeMySpec.Files.File, as: FileRecord
   alias CodeMySpec.Paths
   alias CodeMySpec.Repo
-  alias CodeMySpec.Requirements.{CopyGraph, CopyOverlay, IncrementalGraph}
-  alias CodeMySpec.Requirements.CopyGraph.Equivalence
   alias CodeMySpec.Requirements
-  alias CodeMySpec.Requirements.{Preloader, Projection, Topology, Verification}
+  alias CodeMySpec.Requirements.{CopyGraph, CopyOverlay, IncrementalGraph}
+  alias CodeMySpec.Requirements.{Preloader, Topology, Verification}
   alias CodeMySpec.Stories.{AcceptanceCriteria, Story}
   alias CodeMySpec.WorkingCopies
 
@@ -64,19 +63,6 @@ defmodule CodeMySpec.Requirements.ACopyGraphReadsAsTheProjectionDoesTest do
     :ok = IncrementalGraph.settle(scope.active_project_id, [scope.active_working_copy_id])
 
     %{scope: scope}
-  end
-
-  test "with the copy's report, every node, verdict and edge is the stored graph's",
-       %{scope: scope} do
-    {:ok, _} = CopyOverlay.report(scope, report(scope))
-    ctx = Preloader.read_context(scope)
-
-    {stored, stored_edges} = Projection.load(scope, ctx)
-    {read, read_edges} = CopyGraph.load(scope, ctx)
-
-    assert length(stored) > 10, "the premise did not hold: #{length(stored)} stored nodes"
-    assert behaviour(read) == behaviour(stored)
-    assert edges(read_edges) == edges(stored_edges)
   end
 
   test "a copy with files and no report reads the graph its report would give",
@@ -136,29 +122,6 @@ defmodule CodeMySpec.Requirements.ACopyGraphReadsAsTheProjectionDoesTest do
 
     assert %{satisfied: false, details: %{"reason" => "no checkout has reported files"}} =
              Enum.find(nodes, &(&1.name == "technical_strategy"))
-  end
-
-  test "the cut-over check is clean at every reported copy, and names a disagreement",
-       %{scope: scope} do
-    {:ok, _} = CopyOverlay.report(scope, report(scope))
-    unscoped = %{scope | active_working_copy_id: nil}
-
-    Repo.update_all(
-      from(p in CodeMySpec.Projects.Project, where: p.id == ^scope.active_project_id),
-      set: [default_working_copy_id: scope.active_working_copy_id]
-    )
-
-    reports = Equivalence.check(unscoped)
-    assert Map.keys(reports) |> Enum.sort() == Enum.sort([nil, scope.active_working_copy_id])
-    assert Equivalence.clean?(reports), inspect(reports)
-
-    {:ok, _} = CopyOverlay.report(scope, flipped(report(scope)))
-    reports = Equivalence.check(unscoped)
-
-    refute Equivalence.clean?(reports)
-
-    assert %{disagree: 1, samples: [{{"project", _, "technical_strategy"}, _}]} =
-             reports[scope.active_working_copy_id]
   end
 
   test "a story placed at another copy reads its file verdict there", %{scope: scope} do

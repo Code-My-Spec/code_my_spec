@@ -35,7 +35,6 @@ defmodule CodeMySpec.Requirements.IncrementalGraph do
   alias CodeMySpec.Requirements.Invalidations
   alias CodeMySpec.Requirements.Preloader
   alias CodeMySpec.Requirements.Profiles
-  alias CodeMySpec.Requirements.Projection
   alias CodeMySpec.Requirements.RequirementGraph
   alias CodeMySpec.Requirements.Topology
   alias CodeMySpec.Users.Scope
@@ -260,18 +259,18 @@ defmodule CodeMySpec.Requirements.IncrementalGraph do
     {:ok,
      %{
        project_id: project_id,
-       scope: scope,
+       # The project's, not the starter's checkout: one drain settles the
+       # project; a checkout's file verdicts are its overlay.
+       scope: %{scope | active_working_copy_id: nil},
        # Who started it, for `owner_gone/2` to name when it has no connection.
        owners: owners,
        seeded: false,
-       # The starter's vantage is established in the first drain, not when
-       # something first reads it.
-       requested_vantages: MapSet.new([scope.active_working_copy_id]),
-       # Vantages this process has seen rows for (its own writes or rows found).
-       established_vantages: MapSet.new(),
-       # Per vantage: the `Freshness.topology/2` hash its membership was last
-       # established for, so a drain can ask whether the shape moved at all.
-       last_topology: %{},
+       # Whether this process has seen the project's rows (its own writes or
+       # rows found).
+       established: false,
+       # The `Freshness.topology/2` hash membership was last established for, so
+       # a drain can ask whether the shape moved at all.
+       last_topology: nil,
        # The project's: the hash its stored edges were drawn from, and whether
        # this drain could have moved it. See `draw_edges/2`.
        topology: nil,
@@ -284,16 +283,10 @@ defmodule CodeMySpec.Requirements.IncrementalGraph do
   end
 
   @impl true
-  def handle_call({:drain, requested}, _from, state) do
-    {:reply, :ok, state |> remember(requested) |> drain()}
-  end
+  def handle_call({:drain, _requested}, _from, state), do: {:reply, :ok, drain(state)}
 
-  def handle_call({:reproject, vantage}, _from, state) do
-    state = %{
-      state
-      | established_vantages: MapSet.delete(state.established_vantages, vantage),
-        requested_vantages: MapSet.put(state.requested_vantages, vantage)
-    }
+  def handle_call({:reproject, _vantage}, _from, state) do
+    state = %{state | established: false}
 
     state = state |> Map.put(:drain_kind, :reseed) |> drain() |> Map.delete(:drain_kind)
     {:reply, :ok, state}
@@ -354,18 +347,9 @@ defmodule CodeMySpec.Requirements.IncrementalGraph do
     # The dev fault `graph_recompute_fails` (`POST /dev/faults`).
     refuse_if_faulted(state.project_id)
 
-    # A dormant checkout's marks wait, unconsumed, until it wakes or a reader
-    # asks for it.
-    pending = Invalidations.pending(state.project_id)
-    named = pending |> Enum.map(& &1.working_copy_id) |> Enum.reject(&is_nil/1)
-    awake = Projection.live_vantages(state.scope, named, MapSet.to_list(state.requested_vantages))
-    pending = Enum.filter(pending, &(&1.working_copy_id in awake))
-
-    case {state.seeded, pending, unestablished(state)} do
-      # Requests already served are forgotten, or every later drain settles
-      # them again.
-      {true, [], []} -> %{state | requested_vantages: MapSet.new()}
-      {_seeded, marks, _asked} -> apply_marks(state, marks)
+    case {state.seeded and state.established, Invalidations.pending(state.project_id)} do
+      {true, []} -> state
+      {_settled, marks} -> apply_marks(state, marks)
     end
   rescue
     error in DBConnection.OwnershipError ->
@@ -420,9 +404,7 @@ defmodule CodeMySpec.Requirements.IncrementalGraph do
   defp sandbox_gone?(:noproc), do: true
   defp sandbox_gone?(_reason), do: false
 
-  # Settles each vantage the marks name — a mark records the checkout it was
-  # written from; `nil` (not about a checkout) fans out to every vantage.
-  # See knowledge/requirements_graph, "Vantages".
+  # Settles the project once for every mark, whichever checkout wrote it.
   defp apply_marks(state, marks) do
     config = Configurations.get_or_create(state.scope)
     base_scope = state.scope
@@ -448,76 +430,16 @@ defmodule CodeMySpec.Requirements.IncrementalGraph do
     account_for(marks, state.project_id)
     announce(state, marks)
 
-    # Served, so forgotten; marks keep those vantages current from here.
-    %{
-      state
-      | seeded: true,
-        shape: nil,
-        requested_vantages: MapSet.new(),
-        last_drain: DateTime.utc_now(),
-        last_error: nil
-    }
+    %{state | seeded: true, shape: nil, last_drain: DateTime.utc_now(), last_error: nil}
   end
 
   defp settle_drain(state, marks, base_scope, config) do
-    vantages = vantages(state, marks)
-    leave_behind(state, marks)
-
-    # Counted per vantage: a hit at one checkout must not cover a miss at
-    # another in `log_handled/2`.
-    {state, handled, recomputed, kinds} =
-      settle_vantages(vantages, state, marks, base_scope, config)
+    {state, handled, recomputed, kinds, _settled} =
+      settle_project({state, 0, 0, %{}, MapSet.new()}, marks, base_scope, config)
 
     state = draw_edges(%{state | scope: base_scope}, config)
 
-    {state,
-     %{
-       handled: handled,
-       recomputed: recomputed,
-       vantages: length(vantages),
-       kinds: kinds_line(kinds)
-     }}
-  end
-
-  # Each vantage settles the marks about it: those naming no checkout, its own,
-  # and at `nil` those of the checkouts whose files it reads — the default
-  # one, or every one when the project has none. A kind's project-wide
-  # requirements are settled at the first vantage that sees it.
-  defp settle_vantages(vantages, state, marks, base_scope, config) do
-    default = Preloader.files_vantage(base_scope)
-
-    {state, handled, recomputed, kinds, _settled} =
-      Enum.reduce(vantages, {state, 0, 0, %{}, MapSet.new()}, fn vantage, acc ->
-        own = Enum.filter(marks, &about?(&1, vantage, default))
-        settle_vantage(vantage, acc, own, base_scope, config)
-      end)
-
-    {state, handled, recomputed, kinds}
-  end
-
-  defp about?(%{working_copy_id: copy}, vantage, _default) when copy in [nil, vantage], do: true
-  defp about?(_mark, vantage, _default) when not is_nil(vantage), do: false
-  defp about?(%{working_copy_id: copy}, nil, default), do: is_nil(default) or copy == default
-
-  # A drain that fans out passes dormant checkouts by. Each gets one durable
-  # mark that names it and nothing else, which waits, unconsumed, until it wakes:
-  # the next drain then seeds it whole, as a full recompute would.
-  defp leave_behind(state, marks) do
-    with true <- fans_out?(marks),
-         stored = Projection.vantages(state.scope),
-         [_ | _] = dormant <- stored -- Projection.live_vantages(state.scope, stored) do
-      waiting =
-        state.project_id
-        |> Invalidations.pending()
-        |> Enum.filter(&(Invalidation.entity(&1) == :unknown))
-        |> MapSet.new(& &1.working_copy_id)
-
-      for copy <- dormant, not MapSet.member?(waiting, copy) do
-        Invalidations.record(state.project_id, "IncrementalGraph", [], nil, copy)
-      end
-    end
-
-    :ok
+    {state, %{handled: handled, recomputed: recomputed, vantages: 1, kinds: kinds_line(kinds)}}
   end
 
   defp account_for([], _project_id), do: :ok
@@ -550,69 +472,6 @@ defmodule CodeMySpec.Requirements.IncrementalGraph do
     )
 
     :ok
-  end
-
-  # The vantages to settle. Unseeded: every stored and requested vantage,
-  # since the seed asks "what is true", not "what did these marks move".
-  # Seeded: the checkouts the marks name plus requested ones; a `nil` mark fans
-  # out to all. The `nil` *vantage* (no-checkout readers) reads the default
-  # checkout's files, so it is kept only when that checkout's marks moved it.
-  # See knowledge/requirements_graph, "Vantages".
-  defp vantages(%{seeded: false} = state, _marks) do
-    requested = MapSet.to_list(state.requested_vantages)
-    Projection.live_vantages(state.scope, Projection.vantages(state.scope), requested)
-  end
-
-  defp vantages(state, marks) do
-    requested = MapSet.to_list(state.requested_vantages)
-    {project_wide, rest} = Enum.split_with(marks, &(&1 in project_wide_marks(marks)))
-    named = rest |> Enum.map(& &1.working_copy_id) |> Enum.uniq()
-
-    if Enum.any?(named, &is_nil/1) do
-      Projection.live_vantages(state.scope, Projection.vantages(state.scope), requested)
-    else
-      # `nil` reads the default checkout's files, or every checkout's when the
-      # project has none; it also settles project-wide marks, which no other
-      # vantage would see.
-      keep_nil? =
-        project_wide != [] or
-          case Preloader.files_vantage(state.scope) do
-            nil -> true
-            default -> default in named
-          end
-
-      state.scope
-      |> Projection.live_vantages(named, requested)
-      |> Enum.filter(&(keep_nil? or not is_nil(&1) or &1 in requested))
-    end
-  end
-
-  # Whether a mark names no checkout and moves something per checkout.
-  defp fans_out?(marks) do
-    wide = project_wide_marks(marks)
-    Enum.any?(marks, &(is_nil(&1.working_copy_id) and &1 not in wide))
-  end
-
-  # Marks whose kind moves only project-wide requirements, and their fallback
-  # invalidations: settled at one vantage, they need no fan-out.
-  defp project_wide_marks(marks) do
-    wide = Enum.filter(marks, &(is_nil(&1.working_copy_id) and Handlers.project_wide?(&1.kind)))
-    observations = wide |> Enum.map(& &1.observation_id) |> Enum.reject(&is_nil/1) |> MapSet.new()
-
-    fallbacks =
-      Enum.filter(marks, fn mark ->
-        is_nil(mark.working_copy_id) and mark.kind in [nil, "invalidate"] and
-          MapSet.member?(observations, mark.observation_id)
-      end)
-
-    wide ++ fallbacks
-  end
-
-  # The vantages readers asked about, considered in the next drain even when no
-  # mark names them. Not a recompute-on-read: an established vantage with
-  # nothing pending costs nothing.
-  defp remember(state, requested) do
-    %{state | requested_vantages: Enum.into(requested, state.requested_vantages)}
   end
 
   # Each event offered to its handler; anything without one handed back.
@@ -690,37 +549,31 @@ defmodule CodeMySpec.Requirements.IncrementalGraph do
     count
   end
 
-  # Applies the handled events at this vantage, then whatever is left: a seed
-  # for an unestablished vantage (whatever the marks say — the seed has none),
-  # a baseline or edge redraw when handlers covered everything, else a plan.
-  defp settle_vantage(
-         vantage,
-         {state, handled, recomputed, kinds, settled},
-         marks,
-         base_scope,
-         config
-       ) do
-    state = %{state | scope: %{base_scope | active_working_copy_id: vantage}}
+  # Applies the handled events, then whatever is left: a seed for an
+  # unestablished project (whatever the marks say — the seed has none), a
+  # baseline or edge redraw when handlers covered everything, else a plan.
+  defp settle_project({state, handled, recomputed, kinds, settled}, marks, base_scope, config) do
+    state = %{state | scope: base_scope}
     {applied, unhandled} = apply_handlers(state, marks, settled)
 
     shape_moved? =
       Enum.any?(applied, fn {mark, _c, _w} -> mark.kind in Handlers.shape_kinds() end)
 
-    # Rows are trusted; the shape is checked once per vantage per process, by
+    # Rows are trusted; the shape is checked once per process, by
     # `baseline/2` for verdict-only drains and `reproject_topology/2` when it
     # could have moved.
-    {established?, state} = established(state, vantage, config)
+    {established?, state} = established(state, config)
 
     state =
       cond do
-        # A vantage with no rows has nothing to be partial against.
+        # A project with no rows has nothing to be partial against.
         not established? -> run(:everything, state, config)
         unhandled == [] and not shape_moved? -> baseline(state, config)
         unhandled == [] -> reproject_topology(state, config)
         true -> run_plan(state, unhandled, config)
       end
 
-    state = %{state | established_vantages: MapSet.put(state.established_vantages, vantage)}
+    state = %{state | established: true}
     log_handled(state, applied)
 
     {state, handled + length(applied), recomputed + length(unhandled),
@@ -734,19 +587,19 @@ defmodule CodeMySpec.Requirements.IncrementalGraph do
     end
   end
 
-  # Whether this vantage has rows to be partial against: seen by this process,
+  # Whether the project has rows to be partial against: seen by this process,
   # or found in the table and covering every current definition (a release that
   # adds a requirement moves no observation — `GraphStore.definitions_covered?/2`).
-  defp established(state, vantage, config) do
+  defp established(state, config) do
     cond do
-      MapSet.member?(state.established_vantages, vantage) ->
+      state.established ->
         {true, state}
 
       not GraphStore.projected?(state.scope) ->
         {false, state}
 
       true ->
-        {shape, state} = shape_at(state, vantage)
+        {shape, state} = shape_at(state)
 
         covered? =
           GraphStore.definitions_covered?(
@@ -758,32 +611,14 @@ defmodule CodeMySpec.Requirements.IncrementalGraph do
     end
   end
 
-  # The project's shape, loaded once per drain: every checkout has the same
-  # components and issues, and sees the ready stories placed with it or
-  # nowhere, the rule `Preloader.topology_context/1` applies.
-  defp shape_at(state, vantage) do
-    state =
-      if state.shape,
-        do: state,
-        else: %{
-          state
-          | shape: Preloader.topology_context(%{state.scope | active_working_copy_id: nil})
-        }
-
-    {placed_at(state.shape, vantage), state}
+  # The project's shape, loaded once per drain: every ready story, wherever
+  # placed.
+  defp shape_at(%{shape: nil} = state) do
+    shape = Preloader.topology_context(state.scope)
+    {shape, %{state | shape: shape}}
   end
 
-  defp placed_at(shape, nil), do: shape
-
-  defp placed_at(shape, vantage),
-    do: %{shape | stories: Enum.filter(shape.stories, &(&1.working_copy_id in [nil, vantage]))}
-
-  # The checkouts readers asked about that nothing here has written or seen.
-  defp unestablished(state),
-    do:
-      state.requested_vantages
-      |> MapSet.difference(state.established_vantages)
-      |> MapSet.to_list()
+  defp shape_at(state), do: {state.shape, state}
 
   # Which kinds this drain handled and which it fell back on, by mark count,
   # so the cost line attributes queries to kinds.
@@ -825,7 +660,7 @@ defmodule CodeMySpec.Requirements.IncrementalGraph do
   # whatever templates the previous process had, and a release that moves a
   # prerequisite moves edges and no row. See knowledge/requirements_graph, "Edges".
   defp baseline(state, config) do
-    if Map.has_key?(state.last_topology, vantage(state)),
+    if state.last_topology,
       do: state,
       else: reproject_topology(state, config)
   end
@@ -858,7 +693,7 @@ defmodule CodeMySpec.Requirements.IncrementalGraph do
     {:ok, reaped} = GraphStore.reap_unseen(state.scope, Enum.map(ctx.stories, & &1.id))
 
     Logger.info(
-      "[IncrementalGraph] seeded #{inspect(vantage(state))} — #{length(nodes)} nodes in " <>
+      "[IncrementalGraph] seeded #{state.project_id} — #{length(nodes)} nodes in " <>
         "#{div(nodes_us, 1000)}ms, written in #{div(write_us, 1000)}ms, " <>
         "#{reaped} rows of unseen stories reaped"
     )
@@ -892,10 +727,10 @@ defmodule CodeMySpec.Requirements.IncrementalGraph do
   # entity a membership change brought here, and mark the project's edges due.
   # No baseline (`last` is nil) counts as moved. See knowledge/requirements_graph, "Edges".
   defp reproject_topology(state, config) do
-    {shape, state} = shape_at(state, vantage(state))
+    {shape, state} = shape_at(state)
     topology = Freshness.topology(shape, config)
 
-    if topology == Map.get(state.last_topology, vantage(state)) do
+    if topology == state.last_topology do
       state
     else
       # A membership change (including a story moving into this checkout) can
@@ -917,7 +752,7 @@ defmodule CodeMySpec.Requirements.IncrementalGraph do
 
   defp draw_edges(state, config) do
     scope = %{state.scope | active_working_copy_id: nil}
-    {shape, state} = shape_at(state, nil)
+    {shape, state} = shape_at(state)
     topology = Freshness.topology(shape, config)
     state = %{state | edges_due: false}
 
@@ -948,13 +783,7 @@ defmodule CodeMySpec.Requirements.IncrementalGraph do
     end
   end
 
-  # Which checkout this drain is currently settling. `Projection.vantage/1`
-  # rather than the raw field, so the unscoped reader keys the same way it
-  # reads.
-  defp vantage(state), do: Projection.vantage(state.scope)
-
-  defp remember_topology(state, topology),
-    do: %{state | last_topology: Map.put(state.last_topology, vantage(state), topology)}
+  defp remember_topology(state, topology), do: %{state | last_topology: topology}
 
   defp narrow_load(scope, {"story", story_id}), do: Preloader.load_story(scope, story_id)
 

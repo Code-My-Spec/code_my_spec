@@ -7,8 +7,9 @@ defmodule CodeMySpec.Requirements.CopyOverlay do
   records served with its read model (`records/1`). Both sides settle through
   `Handlers.copy_verdicts/1`, so the code is the same.
 
-  Shadow: the server stores each report (`report/2`) and compares it with its
-  own rows for the checkout (`check/1`); nothing reads it.
+  The server stores each report (`report/2`); readers take it when it answers
+  the current records, else compute the same verdicts from the copy's File rows
+  (`verdicts_at/1`).
   See knowledge/requirements_graph/overlay.md.
   """
 
@@ -23,13 +24,8 @@ defmodule CodeMySpec.Requirements.CopyOverlay do
   alias CodeMySpec.Requirements.CopyOverlay.Cache
   alias CodeMySpec.Requirements.CopyOverlay.Report
   alias CodeMySpec.Requirements.Handlers
-  alias CodeMySpec.Requirements.IncrementalGraph
-  alias CodeMySpec.Requirements.Node
   alias CodeMySpec.Requirements.Profiles
-  alias CodeMySpec.Requirements.Verification
   alias CodeMySpec.Users.Scope
-
-  @samples 5
 
   @doc """
   The records the file verdicts read beyond the scan, in wire form: live
@@ -183,8 +179,7 @@ defmodule CodeMySpec.Requirements.CopyOverlay do
   defp json(value), do: value |> Jason.encode!() |> Jason.decode!()
 
   @doc """
-  Store a checkout's report, replacing its last. The comparison count is
-  cleared until `check/1` runs; the run of clean reports is kept.
+  Store a checkout's report, replacing its last.
   """
   @spec report(Scope.t(), map()) :: {:ok, Report.t()} | {:error, term()}
   def report(%Scope{active_working_copy_id: copy, active_project_id: project}, payload)
@@ -199,14 +194,11 @@ defmodule CodeMySpec.Requirements.CopyOverlay do
       behind: payload["behind"],
       dirty: payload["dirty"],
       verdicts: :erlang.term_to_binary(payload["verdicts"], [:compressed]),
-      reported_at: now,
-      mismatches: nil,
-      compared_at: nil
+      reported_at: now
     })
     |> Repo.insert(
       on_conflict:
-        {:replace,
-         ~w(project_id read_model head behind dirty verdicts reported_at mismatches compared_at updated_at)a},
+        {:replace, ~w(project_id read_model head behind dirty verdicts reported_at updated_at)a},
       conflict_target: :working_copy_id
     )
   end
@@ -275,112 +267,4 @@ defmodule CodeMySpec.Requirements.CopyOverlay do
 
     {:computed, verdicts, synced_at}
   end
-
-  @doc """
-  Compare the checkout's last report with the server's own rows for it, once
-  the projector has settled, and record the result on the report.
-  """
-  @spec check(Scope.t()) :: {:ok, map()} | {:error, :no_report}
-  def check(%Scope{active_working_copy_id: copy, active_project_id: project}) do
-    :ok = IncrementalGraph.settle(project, [copy])
-
-    case Repo.get(Report, copy) do
-      nil ->
-        {:error, :no_report}
-
-      report ->
-        verdicts = :erlang.binary_to_term(report.verdicts, [:safe])
-        result = compare(verdicts, rows(copy))
-        record(report, result)
-        log(copy, result)
-        {:ok, result}
-    end
-  end
-
-  @doc """
-  How a report's verdicts agree with stored rows (`%{name, entity_type,
-  entity_id, satisfied, details}`): every row is compared with its entity's
-  exception, else its requirement's default. A requirement the report leaves
-  out disagrees at every row.
-  """
-  @spec compare([map()], [map()]) :: %{compared: non_neg_integer(), mismatches: [map()]}
-  def compare(verdicts, rows) do
-    by_name = Map.new(verdicts, &{&1["name"], &1})
-
-    mismatches =
-      for row <- rows,
-          reported = reported(Map.get(by_name, row.name), row),
-          reported != stored(row),
-          do: %{
-            name: row.name,
-            entity: {row.entity_type, row.entity_id},
-            overlay: reported,
-            server: stored(row)
-          }
-
-    %{compared: length(rows), mismatches: mismatches}
-  end
-
-  defp reported(nil, _row), do: :unreported
-  defp reported(%{"type" => type}, %{entity_type: other}) when type != other, do: :unreported
-
-  defp reported(sweep, row) do
-    {satisfied, details} =
-      case Enum.find(sweep["except"], fn [id | _] -> id == row.entity_id end) do
-        [_id, satisfied, details] -> {satisfied, details}
-        nil -> {sweep["default"], sweep["default_details"]}
-      end
-
-    Verification.stored(%{name: row.name, satisfied: satisfied, details: details})
-  end
-
-  defp stored(row),
-    do: Verification.stored(%{name: row.name, satisfied: row.satisfied, details: row.details})
-
-  # The checkout's own rows for the names a report carries, each with its owner.
-  defp rows(copy) do
-    names = Handlers.copy_names()
-
-    from(n in {"requirements", Node},
-      where: n.working_copy_id == type(^copy, Ecto.UUID) and n.name in ^names,
-      select:
-        map(n, [:name, :component_id, :story_id, :issue_id, :project_id, :satisfied, :details])
-    )
-    |> Repo.all()
-    |> Enum.map(&owned/1)
-  end
-
-  defp owned(%{component_id: id} = row) when not is_nil(id), do: owner(row, "component", id)
-  defp owned(%{story_id: id} = row) when not is_nil(id), do: owner(row, "story", id)
-  defp owned(%{issue_id: id} = row) when not is_nil(id), do: owner(row, "issue", id)
-  defp owned(row), do: owner(row, "project", row.project_id)
-
-  defp owner(row, type, id), do: Map.merge(row, %{entity_type: type, entity_id: id})
-
-  defp record(report, %{mismatches: mismatches}) do
-    count = length(mismatches)
-
-    report
-    |> Report.changeset(%{
-      mismatches: count,
-      clean_reports: if(count == 0, do: report.clean_reports + 1, else: 0),
-      compared_at: DateTime.utc_now()
-    })
-    |> Repo.update!()
-  end
-
-  defp log(copy, %{compared: compared, mismatches: []}) do
-    Logger.info("[CopyOverlay] copy #{copy}: #{compared} verdicts compared, 0 mismatches")
-  end
-
-  defp log(copy, %{compared: compared, mismatches: mismatches}) do
-    Logger.warning(
-      "[CopyOverlay] copy #{copy}: #{compared} verdicts compared, #{length(mismatches)} " <>
-        "mismatches; first #{min(@samples, length(mismatches))}: " <>
-        (mismatches |> Enum.take(@samples) |> Enum.map_join("; ", &sample/1))
-    )
-  end
-
-  defp sample(%{name: name, entity: {type, id}, overlay: overlay, server: server}),
-    do: "#{name} #{type} #{id}: overlay #{inspect(overlay)} server #{inspect(server)}"
 end

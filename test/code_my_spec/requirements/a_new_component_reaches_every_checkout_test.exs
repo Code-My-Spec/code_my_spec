@@ -26,9 +26,7 @@ defmodule CodeMySpec.Requirements.ANewComponentReachesEveryCheckoutTest do
   """
   use CodeMySpecSpex.Case, async: true
 
-  import Ecto.Query, only: [from: 2]
-
-  alias CodeMySpec.Requirements.IncrementalGraph
+  alias CodeMySpec.Requirements.{IncrementalGraph, RequirementGraph}
   alias CodeMySpecSpex.Fixtures
 
   setup :register_log_in_setup_account
@@ -43,14 +41,10 @@ defmodule CodeMySpec.Requirements.ANewComponentReachesEveryCheckoutTest do
     :ok = IncrementalGraph.settle(scope.active_project_id)
   end
 
-  defp rows_at(copy_id, component_id) do
-    from(n in "requirements",
-      where:
-        n.component_id == type(^component_id, :binary_id) and
-          n.working_copy_id == type(^copy_id, :binary_id),
-      select: count(n.id)
-    )
-    |> CodeMySpec.Repo.one()
+  # The component's nodes in the graph served at this checkout.
+  defp nodes_at(scope, component_id) do
+    {nodes, _edges} = RequirementGraph.served_graph(scope, RequirementGraph.read_context(scope))
+    Enum.count(nodes, &(&1.entity_id == component_id))
   end
 
   describe "a component created in one checkout" do
@@ -77,10 +71,10 @@ defmodule CodeMySpec.Requirements.ANewComponentReachesEveryCheckoutTest do
 
       settle(first)
 
-      assert rows_at(first.active_working_copy_id, arrived.id) > 0,
+      assert nodes_at(first, arrived.id) > 0,
              "the checkout that created it has no requirements for it"
 
-      assert rows_at(second.active_working_copy_id, arrived.id) > 0,
+      assert nodes_at(second, arrived.id) > 0,
              """
              A component was created and this checkout has no requirements for
              it at all.

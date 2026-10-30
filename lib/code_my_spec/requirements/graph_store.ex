@@ -22,7 +22,6 @@ defmodule CodeMySpec.Requirements.GraphStore do
   alias CodeMySpec.Repo
   alias CodeMySpec.Requirements.DrainCost
   alias CodeMySpec.Requirements.Node
-  alias CodeMySpec.Requirements.Projection
   alias CodeMySpec.Requirements.ProjectTopology
   alias CodeMySpec.Stories.Story
   alias CodeMySpec.Users.Scope
@@ -78,8 +77,8 @@ defmodule CodeMySpec.Requirements.GraphStore do
   project's. Readers filter it to the entities visible there.
   """
   @spec rows_at(Ecto.UUID.t() | nil) :: Ecto.Query.t()
-  def rows_at(vantage) do
-    checkout = @table |> from(select: ^@fields) |> at(vantage)
+  def rows_at(_vantage) do
+    checkout = @table |> from(select: ^@fields) |> at(nil)
     union_all(project_rows(), ^checkout)
   end
 
@@ -92,7 +91,7 @@ defmodule CodeMySpec.Requirements.GraphStore do
     do:
       if(name in @project_wide,
         do: {@project_table, :project},
-        else: {@table, Projection.vantage(scope)}
+        else: {@table, stored_at(scope)}
       )
 
   defp at(query, :project), do: query
@@ -120,7 +119,7 @@ defmodule CodeMySpec.Requirements.GraphStore do
 
     :telemetry.execute(DrainCost.projection_write(), %{count: 1}, %{project_id: project_id})
 
-    vantage = Projection.vantage(scope)
+    vantage = stored_at(scope)
 
     Repo.transaction(fn ->
       checkout = write_at(@table, vantage, covered, checkout_nodes, now)
@@ -565,7 +564,7 @@ defmodule CodeMySpec.Requirements.GraphStore do
   def projected?(%Scope{active_project_id: project_id} = scope) when is_binary(project_id) do
     event_target()
     |> where([n], n.project_id == ^project_id)
-    |> where(^copy_filter(Projection.vantage(scope)))
+    |> where(^copy_filter(stored_at(scope)))
     |> Repo.exists?()
   end
 
@@ -615,7 +614,7 @@ defmodule CodeMySpec.Requirements.GraphStore do
   # What this vantage holds: its own rows, and the project's for the entities
   # visible here — the ready stories `Preloader` would load at this vantage.
   defp held(scope, project_id) do
-    vantage = Projection.vantage(scope)
+    vantage = stored_at(scope)
     {component_ids, story_ids} = entity_ids(project_id)
     visible = visible_story_ids(project_id, vantage)
 
@@ -667,7 +666,7 @@ defmodule CodeMySpec.Requirements.GraphStore do
     {count, _} =
       @table
       |> where([n], n.story_id in subquery(unseen) or n.issue_id in subquery(unseen_issues))
-      |> at(Projection.vantage(scope))
+      |> at(stored_at(scope))
       |> Repo.delete_all()
 
     {:ok, count}
@@ -728,7 +727,7 @@ defmodule CodeMySpec.Requirements.GraphStore do
 
     event_target()
     |> scoped(project_id, component_ids, story_ids)
-    |> where(^copy_filter(Projection.vantage(scope)))
+    |> where(^copy_filter(stored_at(scope)))
     |> Repo.delete_all()
 
     :ok
@@ -764,6 +763,11 @@ defmodule CodeMySpec.Requirements.GraphStore do
 
   # `is_nil` rather than `== nil`: `= NULL` is never true, so the unscoped
   # vantage would match no row.
+  # The projector settles once per project, so its rows are stored at `nil`
+  # whoever asks; a checkout's own file verdicts are its overlay. Until these
+  # rows are deleted.
+  defp stored_at(_scope), do: nil
+
   defp copy_filter(nil), do: dynamic([n], is_nil(n.working_copy_id))
   defp copy_filter(id), do: dynamic([n], n.working_copy_id == ^id)
 
