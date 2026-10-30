@@ -46,7 +46,7 @@ defmodule CmsHarness.CopyToolsTest do
   test "a long result spills to Main's file, as an agent's does", %{root: root} do
     assert {:ok, text} = run(root, "bash", %{"command" => "seq 1 5000"})
     assert text =~ "Output too large"
-    [_, path] = Regex.run(~r/Full output saved to: (\S+)/, text)
+    [_, path] = Regex.run(~r/Full output saved to:\r?\n([^\r\n]+)/, text)
     assert File.read!(path) =~ "4999"
   end
 

@@ -61,7 +61,7 @@ defmodule CmsHarness.Agents.ALongToolResultGoesToAFileTest do
 
     notice = read(state, "big.txt")
 
-    assert [_, path] = Regex.run(~r/Full output saved to: (\S+)/, notice),
+    assert [_, path] = Regex.run(~r/Full output saved to:\r?\n([^\r\n]+)/, notice),
            "a 30k read came back without a spill notice:\n" <> String.slice(notice, 0, 300)
 
     assert String.starts_with?(path, Impl.spill_dir(id))
