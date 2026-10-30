@@ -80,6 +80,37 @@ defmodule CodeMySpec.Requirements.CopyOverlay do
     |> Enum.map(&encode/1)
   end
 
+  @doc """
+  What `verdicts/2` reads of a scan, for holding between scans: a whole scan
+  is about 6 MB, most of it what code files' validation recorded, which no
+  file verdict reads.
+  """
+  @spec retained([map()]) :: [map()]
+  def retained(observations), do: Enum.map(observations, &retain/1)
+
+  # Code files are read for their owner alone: the module they declare.
+  defp retain(%{role: role} = entry) when role in [:implementation, :test] do
+    entry
+    |> Map.take([:path, :role, :valid])
+    |> Map.put(:validation_errors, declared(entry))
+  end
+
+  # A spex, for the criterion it names.
+  defp retain(%{role: :bdd_spec} = entry) do
+    entry
+    |> Map.take([:path, :role, :valid])
+    |> Map.put(:validation_errors, kept_data(entry, "criterion"))
+  end
+
+  defp retain(entry), do: Map.take(entry, [:path, :role, :valid, :size, :validation_errors])
+
+  defp declared(entry), do: kept_data(entry, "module_name")
+
+  defp kept_data(%{validation_errors: %{"data" => %{} = data}}, key) when is_map_key(data, key),
+    do: %{"data" => Map.take(data, [key])}
+
+  defp kept_data(_entry, _key), do: nil
+
   defp as_synced(entry) do
     errors = entry |> Map.get(:validation_errors) |> json()
     entry = Map.put(entry, :validation_errors, errors)

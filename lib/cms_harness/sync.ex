@@ -112,20 +112,29 @@ defmodule CmsHarness.Sync do
   end
 
   @doc """
-  Re-report the overlay from a scan already sent, when only the records it
-  reads moved. Returns immediately.
+  Re-report the overlay from a scan already sent (`retained/1`), when only the
+  records it reads moved. Returns immediately.
   """
-  @spec start_overlay(map(), [map()], ReadModel.t()) :: :ok
-  def start_overlay(project, observations, %ReadModel{} = read_model) do
+  @spec start_overlay(map(), binary(), ReadModel.t()) :: :ok
+  def start_overlay(project, retained, %ReadModel{} = read_model) do
     env = ExecutionContext.new(:local, project.root)
 
     {:ok, _pid} =
       Task.Supervisor.start_child(task_supervisor(project.root), fn ->
+        observations = :erlang.binary_to_term(retained)
         report_overlay(env, project.root, observations, read_model)
       end)
 
     :ok
   end
+
+  @doc """
+  What `start_overlay/3` needs of a scan, held between scans: about 120 KB
+  for a 5,000-file checkout, packed, against 6 MB for the scan itself.
+  """
+  @spec retained([map()]) :: binary()
+  def retained(observations),
+    do: observations |> CopyOverlay.retained() |> :erlang.term_to_binary([:compressed])
 
   # The checkout's file verdicts and repository state, which only this machine
   # can read. Nothing from a server that serves no records.

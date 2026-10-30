@@ -2492,7 +2492,11 @@ defmodule CmsHarness.Project.ChannelClient do
 
         # Kept so the reply is read: a rejected manifest must not look accepted.
         # The scan too, so a records-only read model change re-reports the overlay.
-        {:noreply, assign(socket, observations_ref: ref, last_observations: observations)}
+        {:noreply,
+         assign(socket,
+           observations_ref: ref,
+           last_observations: Sync.retained(observations)
+         )}
 
       {:error, reason} ->
         Logger.error("[CmsHarness] could not send observations: #{inspect(reason)}")
