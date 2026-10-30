@@ -541,6 +541,27 @@ defmodule CodeMySpec.Provisioning.BurstBoxTest do
                BurstBox.install_release(run, box, release_opts(ref: "abc123", deliver: deliver))
     end
 
+    # BuildKit prints layer progress first and the cause last.
+    test "a failed build keeps the end of docker's output, where the cause is" do
+      box = server()
+      progress = String.duplicate("#5 [builder 1/21] FROM elixir:1.19.5-otp-27-slim DONE\n", 100)
+      cause = "ERROR: failed to solve: process did not complete successfully: exit code: 22"
+
+      run =
+        recorder([
+          {"true", {"", 0}},
+          {"docker build --force-rm", {progress <> cause, 1}}
+        ])
+
+      deliver = fn _ref, _dir -> :ok end
+
+      assert {:error, {:build_failed, 1, output}} =
+               BurstBox.install_release(run, box, release_opts(ref: "abc123", deliver: deliver))
+
+      assert String.ends_with?(output, cause)
+      assert String.length(output) <= 1502
+    end
+
     test "a failed extraction is reported with what docker said" do
       box = server(%{"server_type" => %{"architecture" => "arm"}})
 

@@ -306,8 +306,11 @@ defmodule CodeMySpec.Provisioning.Builder.Remote do
         " --build-arg CMS_VERSION=#{shell_quote(version)}"
 
     case run.(["cd #{dir} && docker build #{flags} -t #{reference} ."]) do
-      {_, 0} -> :ok
-      {output, status} -> {:error, {:build_failed, status, trim(output)}}
+      {_, 0} ->
+        :ok
+
+      {output, status} ->
+        {:error, {:build_failed, status, output |> trim() |> Truncate.tail(1500)}}
     end
   end
 
