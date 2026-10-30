@@ -8,9 +8,25 @@ defmodule CodeMySpec.Provisioning.RepositorySecrets do
 
   @spec put(Scope.t(), String.t(), String.t(), String.t()) ::
           {:ok, map()} | {:error, String.t()}
-  def put(%Scope{active_project: %{code_repo: repo} = project} = scope, environment, key, value)
+  def put(scope, environment, key, value)
       when is_binary(environment) and is_binary(key) and is_binary(value) do
-    with :ok <- validate(environment, key, repo),
+    with {:ok, result} <- put_many(scope, environment, [{key, value}]) do
+      {:ok, Map.put(result, :key, key)}
+    end
+  end
+
+  def put(_scope, _environment, _key, _value),
+    do: {:error, "Project repository is not configured."}
+
+  @doc """
+  Set every `{key, value}` in one commit: the file is re-encrypted once per
+  key in memory and written once.
+  """
+  @spec put_many(Scope.t(), String.t(), [{String.t(), String.t()}]) ::
+          {:ok, map()} | {:error, String.t()}
+  def put_many(%Scope{active_project: %{code_repo: repo} = project} = scope, environment, pairs)
+      when is_binary(environment) and is_list(pairs) and pairs != [] do
+    with :ok <- validate_all(environment, pairs, repo),
          {:ok, owner, name} <- location(repo),
          {:ok, private} <- private_key(scope, environment),
          branch = project.development_branch || "main",
@@ -23,8 +39,7 @@ defmodule CodeMySpec.Provisioning.RepositorySecrets do
           branch: branch,
           config: config,
           environment: environment,
-          key: key,
-          value: value,
+          pairs: pairs,
           private: private
         },
         1
@@ -44,24 +59,16 @@ defmodule CodeMySpec.Provisioning.RepositorySecrets do
     end
   end
 
-  def put(_scope, _environment, _key, _value),
+  def put_many(_scope, _environment, []), do: {:error, "No secrets to write."}
+
+  def put_many(_scope, _environment, _pairs),
     do: {:error, "Project repository is not configured."}
 
   defp write(ctx, retries) do
     path = Sops.env_file(ctx.environment)
 
     with {:ok, existing} <- current_file(ctx.scope, ctx.owner, ctx.name, path, ctx.branch),
-         {:ok, ciphertext} <-
-           Sops.set_repository_file(
-             ctx.config,
-             existing.content,
-             ctx.environment,
-             ctx.key,
-             ctx.value,
-             ctx.private
-           ) do
-      message = "Set #{ctx.key} in #{ctx.environment} secrets"
-
+         {:ok, ciphertext} <- encrypt_all(ctx, existing.content) do
       case GitHub.put_file(
              ctx.scope,
              ctx.owner,
@@ -69,11 +76,17 @@ defmodule CodeMySpec.Provisioning.RepositorySecrets do
              path,
              ctx.branch,
              ciphertext,
-             message,
+             commit_message(ctx),
              existing.sha
            ) do
         {:ok, commit} ->
-          {:ok, %{environment: ctx.environment, key: ctx.key, file: path, commit: commit}}
+          {:ok,
+           %{
+             environment: ctx.environment,
+             keys: Enum.map(ctx.pairs, &elem(&1, 0)),
+             file: path,
+             commit: commit
+           }}
 
         {:error, :stale_file} when retries > 0 ->
           write(ctx, retries - 1)
@@ -91,6 +104,23 @@ defmodule CodeMySpec.Provisioning.RepositorySecrets do
     end
   end
 
+  defp encrypt_all(ctx, content) do
+    Enum.reduce_while(ctx.pairs, {:ok, content}, fn {key, value}, {:ok, current} ->
+      ctx.config
+      |> Sops.set_repository_file(current, ctx.environment, key, value, ctx.private)
+      |> case do
+        {:ok, next} -> {:cont, {:ok, next}}
+        error -> {:halt, error}
+      end
+    end)
+  end
+
+  defp commit_message(%{pairs: [{key, _}], environment: environment}),
+    do: "Set #{key} in #{environment} secrets"
+
+  defp commit_message(%{pairs: pairs, environment: environment}),
+    do: "Set #{length(pairs)} secrets in #{environment}"
+
   defp current_file(scope, owner, name, path, branch) do
     case GitHub.get_file(scope, owner, name, path, branch) do
       {:ok, file} -> {:ok, file}
@@ -104,6 +134,15 @@ defmodule CodeMySpec.Provisioning.RepositorySecrets do
       {:ok, key} when is_binary(key) and key != "" -> {:ok, key}
       _ -> {:error, "The #{environment} age key is missing. Run secrets setup first."}
     end
+  end
+
+  defp validate_all(environment, pairs, repo) do
+    Enum.find_value(pairs, :ok, fn {key, _value} ->
+      case validate(environment, key, repo) do
+        :ok -> nil
+        error -> error
+      end
+    end)
   end
 
   defp validate(environment, key, repo) do

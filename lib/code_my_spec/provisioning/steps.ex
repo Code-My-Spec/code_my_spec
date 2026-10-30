@@ -4575,6 +4575,23 @@ defmodule CodeMySpec.Provisioning.Steps do
     end)
   end
 
+  @doc """
+  `import_dotenv/3` for a project whose secrets live in its repository: every
+  key in one commit through the GitHub API, no working copy involved.
+  """
+  @spec import_dotenv_in_repository(Scope.t(), String.t(), String.t()) ::
+          {:ok, [String.t()]} | {:error, String.t()}
+  def import_dotenv_in_repository(%Scope{} = scope, environment, dotenv) when is_binary(dotenv) do
+    with {:ok, %{keys: keys}} <-
+           CodeMySpec.Provisioning.RepositorySecrets.put_many(
+             scope,
+             environment,
+             dotenv |> Sops.parse_dotenv() |> Enum.sort()
+           ) do
+      {:ok, keys}
+    end
+  end
+
   defp put_secret_in(scope, resolved_environment, environment, key, value) do
     with {:ok, private} <- ensure_age_key(scope, resolved_environment, environment),
          :ok <- Sops.put_secret(resolved_environment, environment, key, value, private) do

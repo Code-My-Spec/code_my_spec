@@ -1400,7 +1400,23 @@ defmodule CodeMySpecWeb.ConsoleLive do
     scope = socket.assigns.current_scope
     environment = params["environment"] || hd(socket.assigns.environments)
 
-    case Steps.import_dotenv(scope, environment, params["dotenv"] || "") do
+    dotenv = params["dotenv"] || ""
+
+    result =
+      case operation_environment(scope) do
+        %{type: type} = execution_context when type != :harness ->
+          if CodeMySpec.ExecutionContexts.file_exists?(execution_context, ".sops.yaml") or
+               is_nil(scope.active_project.code_repo) do
+            Steps.import_dotenv(scope, environment, dotenv)
+          else
+            Steps.import_dotenv_in_repository(scope, environment, dotenv)
+          end
+
+        _ ->
+          Steps.import_dotenv_in_repository(scope, environment, dotenv)
+      end
+
+    case result do
       {:ok, keys} ->
         # The names, never the values.
         Activity.record(
