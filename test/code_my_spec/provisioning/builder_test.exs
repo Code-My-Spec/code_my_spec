@@ -53,6 +53,7 @@ defmodule CodeMySpec.Provisioning.BuilderTest do
   defp opts(overrides) do
     Keyword.merge(
       [
+        architecture: :arm,
         find: fn _scope, _box_name -> {:ok, server()} end,
         destroy: fn _scope, _id -> flunk("a box not due for a check must never be destroyed") end,
         now: fn -> ~U[2026-08-03 00:00:00Z] end
@@ -68,6 +69,7 @@ defmodule CodeMySpec.Provisioning.BuilderTest do
   defp due_opts(overrides) do
     Keyword.merge(
       [
+        architecture: :arm,
         find: fn _scope, _box_name -> {:ok, server(%{"created" => "2026-08-03T00:00:00Z"})} end,
         now: fn -> ~U[2026-08-03 00:58:00Z] end,
         busy?: fn _scope, _server -> false end,
@@ -249,6 +251,11 @@ defmodule CodeMySpec.Provisioning.BuilderTest do
 
       assert_received {:created, "fsn1"},
                       "a bucket region must not decide which datacenter the builder lands in"
+    end
+
+    test "requires the target architecture before choosing a builder" do
+      assert {:error, {:unknown_architecture, nil}} =
+               Builder.build(scope(), "abc123", opts(architecture: nil))
     end
 
     test "refuses an architecture with no builder rather than guessing one" do

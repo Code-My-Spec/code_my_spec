@@ -156,18 +156,29 @@ defmodule CodeMySpecWeb.Telemetry do
   defp top_processes(n) do
     Process.list()
     |> Enum.flat_map(fn pid ->
-      case Process.info(pid, [:memory, :registered_name, :initial_call]) do
+      case Process.info(pid, [:memory, :label, :registered_name, :initial_call, :dictionary]) do
         nil -> []
-        info -> [{process_name(pid, info), info[:memory]}]
+        info -> [{process_name(info), info[:memory]}]
       end
     end)
     |> top(n)
   end
 
-  defp process_name(_pid, info) do
+  @doc false
+  def process_name(info) do
+    case info[:label] do
+      label when label not in [nil, :undefined] -> inspect(label)
+      _ -> registered_or_initial_call(info)
+    end
+  end
+
+  defp registered_or_initial_call(info) do
     case info[:registered_name] do
-      name when is_atom(name) and name not in [nil, []] -> inspect(name)
-      _ -> initial_call(info[:initial_call])
+      name when is_atom(name) and name not in [nil, []] ->
+        inspect(name)
+
+      _ ->
+        initial_call(Keyword.get(info[:dictionary] || [], :"$initial_call", info[:initial_call]))
     end
   end
 

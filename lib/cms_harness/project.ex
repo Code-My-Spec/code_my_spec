@@ -15,6 +15,7 @@ defmodule CmsHarness.Project do
       CmsHarness.Channel,
       CodeMySpec.BootVersion,
       CodeMySpec.ExecutionContexts,
+      CodeMySpec.DurableRun,
       CodeMySpec.Files,
       CodeMySpec.Paths,
       # The three disk operations a promotion performs. The gate stays on the

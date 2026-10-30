@@ -2031,7 +2031,7 @@ defmodule CodeMySpec.Provisioning.Steps do
          # builder refuses without `opts[:reference]`.
          {:ok, reference} <- Registry.reference(scope, tag, opts),
          opts = Keyword.put(opts, :reference, reference),
-         opts = with_deploy_execution(opts, scope, environment, reference),
+         opts = with_deploy_execution(opts, scope, environment, reference, architecture),
          {:ok, build} <- build_on_builder(scope, tag, architecture, opts) do
       {:ok,
        %{
@@ -2055,11 +2055,12 @@ defmodule CodeMySpec.Provisioning.Steps do
   # `with_builder_ssh` already set `opts[:env]`, and `Deploy`'s `trust_host/1`
   # handles host keys remotely.
   # See knowledge/provisioning/steps, "Deploy and build".
-  defp with_deploy_execution(opts, scope, environment, reference) do
+  defp with_deploy_execution(opts, scope, environment, reference, architecture) do
     host = Keyword.get(opts, :host) || environment_host(scope, environment) || domain(scope)
 
     deploy_opts =
       opts
+      |> Keyword.put(:architecture, architecture)
       |> deploy_opts(host, %{reference: reference})
       |> with_host_ip(scope, environment)
       |> with_age_key(scope, environment)

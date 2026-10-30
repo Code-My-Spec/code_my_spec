@@ -266,14 +266,32 @@ defmodule CodeMySpec.Generators.DeployArtifactsTest do
       end
     end
 
-    defp write_and_resolve(body, assertion) do
+    test "Kamal resolves each environment for the verified target architecture" do
+      for path <- ["config/deploy.yml", "config/deploy.uat.yml"], arch <- ["amd64", "arm64"] do
+        write_and_resolve(
+          config(path, @opts),
+          fn resolved ->
+            assert resolved =~ ":builder:\n  arch: #{arch}"
+          end,
+          arch
+        )
+      end
+    end
+
+    defp write_and_resolve(body, assertion), do: write_and_resolve(body, assertion, "amd64")
+
+    defp write_and_resolve(body, assertion, arch) do
       dir = CodeMySpec.TempFile.owned_dir("test")
       path = Path.join(dir, "deploy.yml")
-      File.write!(path, body <> "\nbuilder:\n  arch: amd64\n")
+      File.write!(path, body)
 
       {output, 0} =
         System.cmd("kamal", ["config", "--config-file", path],
-          env: [{"KAMAL_REGISTRY_USERNAME", "u"}, {"KAMAL_REGISTRY_PASSWORD", "p"}],
+          env: [
+            {"KAMAL_REGISTRY_USERNAME", "u"},
+            {"KAMAL_REGISTRY_PASSWORD", "p"},
+            {"CMS_TARGET_ARCH", arch}
+          ],
           stderr_to_stdout: true
         )
 
@@ -306,15 +324,12 @@ defmodule CodeMySpec.Generators.DeployArtifactsTest do
     test "kamal itself parses the ssh block into keys_only when the env var is set" do
       dir = CodeMySpec.TempFile.owned_dir("test")
       path = Path.join(dir, "deploy.yml")
-      # Kamal validates the whole config; a fresh project's own generated
-      # `files/1` output does not include `builder:`, so one is added here
-      # purely to let `kamal config` finish resolving without raising on an
-      # unrelated, already-required field this test has nothing to say about.
-      File.write!(path, config("config/deploy.yml", @opts) <> "\nbuilder:\n  arch: amd64\n")
+      # Kamal validates the whole generated config, including builder.arch.
+      File.write!(path, config("config/deploy.yml", @opts))
 
       {output, 0} =
         System.cmd("kamal", ["config", "--config-file", path],
-          env: [{"CMS_SSH_KEY_PATH", "/tmp/example_key"}],
+          env: [{"CMS_SSH_KEY_PATH", "/tmp/example_key"}, {"CMS_TARGET_ARCH", "amd64"}],
           stderr_to_stdout: true
         )
 
@@ -326,7 +341,7 @@ defmodule CodeMySpec.Generators.DeployArtifactsTest do
     test "kamal falls back to its own default ssh behavior when the env var is unset" do
       dir = CodeMySpec.TempFile.owned_dir("test")
       path = Path.join(dir, "deploy.yml")
-      File.write!(path, config("config/deploy.yml", @opts) <> "\nbuilder:\n  arch: amd64\n")
+      File.write!(path, config("config/deploy.yml", @opts))
 
       # `nil`, not `""` — Ruby's `if` treats an empty string as truthy, and
       # `Deploy.run/3`'s own `script_env/1` never sends one either
@@ -335,7 +350,7 @@ defmodule CodeMySpec.Generators.DeployArtifactsTest do
       # answer for.
       {output, 0} =
         System.cmd("kamal", ["config", "--config-file", path],
-          env: [{"CMS_SSH_KEY_PATH", nil}],
+          env: [{"CMS_SSH_KEY_PATH", nil}, {"CMS_TARGET_ARCH", "amd64"}],
           stderr_to_stdout: true
         )
 

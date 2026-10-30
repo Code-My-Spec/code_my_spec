@@ -5,12 +5,15 @@ defmodule CmsHarness.StartHarnessScriptTest do
     dir = CodeMySpec.TempFile.dir("start-harness-script")
     File.mkdir_p!(dir)
     on_exit(fn -> File.rm_rf(dir) end)
+    home = Path.join(dir, "empty-home")
+    File.mkdir_p!(home)
     log = Path.join(dir, "commands.log")
     mix = Path.join(dir, "mix")
     git = Path.join(dir, "git")
 
     File.write!(mix, """
     #!/usr/bin/env bash
+    [[ -d $HOME/.codemyspec ]] || { echo 'missing harness state directory' >&2; exit 1; }
     printf 'mix %s [MIX_ENV=%s CMS_SERVER_URL=%s CMS_HARNESS=%s]\n' \"$*\" \"${MIX_ENV:-}\" \"${CMS_SERVER_URL:-}\" \"${CMS_HARNESS:-}\" >> \"$CMS_START_TEST_LOG\"
     """)
 
@@ -26,15 +29,18 @@ defmodule CmsHarness.StartHarnessScriptTest do
         cd: File.cwd!(),
         env: [
           {"PATH", path},
+          {"HOME", home},
           {"MIX_HOME", dir},
           {"CMS_DEPLOY_KEY", ""},
           {"CMS_SERVER_URL", ""},
+          {"CMS_HARNESS_PORT", "4014"},
           {"CMS_START_TEST_LOG", log}
         ],
         stderr_to_stdout: true
       )
 
     assert status == 0, output
+    assert File.read!(Path.join(home, ".codemyspec/harness.port")) == "4014\n"
     commands = File.read!(log)
     assert commands =~ "mix local.hex --force"
     assert commands =~ "mix local.rebar --force"

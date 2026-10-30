@@ -52,6 +52,7 @@ defmodule CmsHarness do
       CodeMySpec.BootVersion,
       CodeMySpec.Compile,
       CodeMySpec.ExecutionContexts,
+      CodeMySpec.DurableRun,
       CodeMySpec.Files,
       CodeMySpec.Generators,
       # `cms migrate` (`CmsHarness.Migrate`) — a separate one-shot boot, not

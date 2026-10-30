@@ -655,9 +655,11 @@ defmodule CmsHarness.Project.ChannelClient do
         socket =
           case reply do
             {:ok, _} ->
+              AnalysisServer.acknowledge(socket.assigns.project.root, payload["run_id"])
               update_in(socket.assigns.analysis_pending, &Map.delete(&1, payload["run_id"]))
 
             :ok ->
+              AnalysisServer.acknowledge(socket.assigns.project.root, payload["run_id"])
               update_in(socket.assigns.analysis_pending, &Map.delete(&1, payload["run_id"]))
 
             _ ->

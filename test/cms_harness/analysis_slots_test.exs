@@ -172,28 +172,21 @@ defmodule CmsHarness.AnalysisSlotsTest do
     end
   end
 
-  describe "waiting past the ceiling" do
+  describe "waiting" do
     setup do
       Application.put_env(:code_my_spec, :analysis_slots, 1)
-      Application.put_env(:code_my_spec, :analysis_slot_wait_ceiling, 50)
-
-      on_exit(fn ->
-        Application.delete_env(:code_my_spec, :analysis_slots)
-        Application.delete_env(:code_my_spec, :analysis_slot_wait_ceiling)
-      end)
+      on_exit(fn -> Application.delete_env(:code_my_spec, :analysis_slots) end)
     end
 
-    test "answers :busy once the wait ceiling elapses, rather than waiting forever" do
-      {_first, :ok} = holder()
+    test "a caller waits in line rather than being turned away" do
+      {first, :ok} = holder()
+      {waiter, ref} = holder_pending()
 
-      assert {_second, :busy} = holder()
-    end
+      refute_receive {:took, ^ref, _}, 200
+      send(first, :stop)
 
-    test "a caller answered :busy holds nothing" do
-      {_first, :ok} = holder()
-      {_second, :busy} = holder()
-
-      assert AnalysisSlots.in_use() == 1
+      assert_receive {:took, ^ref, :ok}, 1000
+      Process.exit(waiter, :kill)
     end
   end
 
