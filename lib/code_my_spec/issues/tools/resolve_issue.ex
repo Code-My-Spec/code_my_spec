@@ -70,8 +70,8 @@ defmodule CodeMySpec.Issues.Tools.ResolveIssue do
     do:
       {:error,
        "This issue is assigned to a working copy and its fix has not landed on main yet. " <>
-         "The coder who holds it lands it: get_next_requirement offers its promote_issue " <>
-         "requirement and start_task claims it. The landing resolves the issue. Resolving " <>
+         "Complete fix_issue with evaluate_task, then get_next_requirement offers the " <>
+         "promote_issue requirement and start_task claims it. The landing resolves the issue. Resolving " <>
          "it here would mark it done with the fix still unlanded."}
 
   defp may_resolve(_issue), do: :ok
