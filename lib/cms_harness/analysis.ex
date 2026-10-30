@@ -292,9 +292,11 @@ defmodule CmsHarness.Analysis do
   end
 
   defp execute("exunit", env, args) do
+    analyzer_env = AnalyzerEnv.extra_env(env, "exunit")
+
     extra_env =
-      AnalyzerEnv.extra_env(env, "exunit") ++
-        durable_stream_env(env) ++
+      analyzer_env ++
+        durable_stream_env(env, analyzer_env) ++
         if(env.metadata[:durable_run], do: [], else: RunLink.env(env.cwd, env.metadata[:run_id]))
 
     # No pre-run truncate, deliberately. See knowledge/harness, "Analysis".
@@ -383,10 +385,12 @@ defmodule CmsHarness.Analysis do
           {args ++ ["--formatter=ClientUtils.TestFormatter"], link}
       end
 
+    analyzer_env = AnalyzerEnv.extra_env(env, "spex")
+
     result =
       Spex.execute(args,
         execution_context: env,
-        extra_env: AnalyzerEnv.extra_env(env, "spex") ++ durable_stream_env(env) ++ link
+        extra_env: analyzer_env ++ durable_stream_env(env, analyzer_env) ++ link
       )
 
     if link != [], do: RunLink.exited(env.metadata[:run_id])
@@ -408,10 +412,16 @@ defmodule CmsHarness.Analysis do
     end
   end
 
-  defp durable_stream_env(%{metadata: %{durable_run: id}}) when is_integer(id),
-    do: [{"CMS_RUN_EVENT_STREAM", DurableRun.stream_path(id)}]
+  # The partition is recorded for a harness that answers the run after a
+  # restart, as `stamp_partition/3` reports it for a run answered here.
+  defp durable_stream_env(%{metadata: %{durable_run: id}}, analyzer_env) when is_integer(id) do
+    with {_key, partition} <- List.keyfind(analyzer_env, "MIX_TEST_PARTITION", 0),
+         do: DurableRun.update(id, %{"partition" => partition})
 
-  defp durable_stream_env(_env), do: []
+    [{"CMS_RUN_EVENT_STREAM", DurableRun.stream_path(id)}]
+  end
+
+  defp durable_stream_env(_env, _analyzer_env), do: []
 
   defp crashed(source, exception) do
     Logger.error("[CmsHarness] #{source} crashed: #{Exception.message(exception)}")

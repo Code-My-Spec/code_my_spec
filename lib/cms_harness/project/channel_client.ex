@@ -682,6 +682,12 @@ defmodule CmsHarness.Project.ChannelClient do
               AnalysisServer.acknowledge(socket.assigns.project.root, payload["run_id"])
               update_in(socket.assigns.analysis_pending, &Map.delete(&1, payload["run_id"]))
 
+            # Closed for good there, so never accepted: a durable run's record
+            # would otherwise be re-sent on every join and boot.
+            {:error, %{"reason" => "unknown_run"}} ->
+              AnalysisServer.acknowledge(socket.assigns.project.root, payload["run_id"])
+              update_in(socket.assigns.analysis_pending, &Map.delete(&1, payload["run_id"]))
+
             _ ->
               socket
           end
