@@ -3,8 +3,8 @@ defmodule CodeMySpecSpex.Story1062.Criterion3619Spex do
   Story 1062 — The graph recomputes as observations arrive.
   Criterion 3619 — A component's siblings are not rewritten because it changed.
 
-  Rule: an observation costs work in proportion to what it changed, not to the
-  size of the project.
+  Rule: a file changing rewrites no stored verdict. The copy's file verdicts
+  are read from its files, so the next read follows the file.
 
   ## Measured on dev, and the arithmetic is exact
 
@@ -60,12 +60,17 @@ defmodule CodeMySpecSpex.Story1062.Criterion3619Spex do
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.GraphContentFixtures, as: Content
 
+  # A copy's file verdicts: read from its files, never stored.
+  @file_verdicts ~w(implementation_file bdd_specs_exist technical_strategy code_generation
+    qa_journey_execute spex_boundary_ready architecture_designed qa_integration_plan)
+
   setup :register_log_in_setup_account
   setup :setup_active_project
 
   @moduletag timeout: 60_000
 
-  spex "One child changing is one child's worth of work", criterion: 1515 do
+  spex "A file changing rewrites no stored verdict; the copy's graph reads it on the next read",
+    criterion: 1515 do
     scenario "a context with three children, one of which loses its file" do
       given_ :context_with_three_children
 
@@ -76,16 +81,17 @@ defmodule CodeMySpecSpex.Story1062.Criterion3619Spex do
         :ok = Fixtures.backdate_requirement_freshness(context.scope)
 
         graph = read_graph(context)
-        before = stamps(graph)
+        before = stored_stamps(graph)
 
         assert before != %{}, "nothing is stored, so no pass can leave anything alone"
 
-        {:ok, context |> Map.put(:before, before) |> Map.put(:before_graph, graph)}
+        assert implementation(graph, context.child_schema.id) == true,
+               "the premise did not hold: the child's implementation file is not read as present"
+
+        {:ok, context |> Map.put(:before, before)}
       end
 
       when_ "one child's implementation file goes away", context do
-        # The child's own file, so the shape does not move — only this one
-        # component's answer.
         :ok =
           Fixtures.delete_env_file(
             context.execution_context,
@@ -95,63 +101,34 @@ defmodule CodeMySpecSpex.Story1062.Criterion3619Spex do
         :ok = Fixtures.scan_working_copy(context.scope)
         :ok = Fixtures.settle_graph(context.scope)
 
-        graph = read_graph(context)
-        {:ok, context |> Map.put(:after, stamps(graph)) |> Map.put(:after_graph, graph)}
+        {:ok, Map.put(context, :after_graph, read_graph(context))}
       end
 
-      then_ "the child whose file it is gets recomputed", context do
-        assert moved?(context, context.child_schema.id),
+      then_ "the next read shows the child's file missing", context do
+        assert implementation(context.after_graph, context.child_schema.id) == false,
                """
-               A component's implementation file went away and its verdict
-               did not move.
-
-               before: #{inspect(verdicts(context.before_graph, context.child_schema.id))}
-               after:  #{inspect(verdicts(context.after_graph, context.child_schema.id))}
-
-               Everything below is about what that pass should *not* also have
-               done. If it did nothing, the sibling being untouched is an
-               absence rather than a saving.
+               A component's implementation file went away and the graph still
+               reads it as present. The copy's file verdicts come from its
+               files on read; this one did not follow them.
                """
 
         {:ok, context}
       end
 
-      then_ "and its siblings are not", context do
-        siblings =
-          [context.child_repository, context.child_service]
-          |> Enum.filter(&moved?(context, &1.id))
-          |> Enum.map(& &1.module_name)
+      then_ "and no stored verdict was rewritten", context do
+        rewritten =
+          for {key, was} <- context.before,
+              Map.get(stored_stamps(context.after_graph), key) != was,
+              do: key
 
-        assert siblings == [],
+        assert rewritten == [],
                """
-               One child's file went away and #{length(siblings)} sibling(s) were
-               rewritten with it: #{Enum.join(siblings, ", ")}.
+               A file went away and #{length(rewritten)} stored verdict(s) were
+               rewritten: #{inspect(Enum.take(rewritten, 5))}.
 
-               `expand_component_families/2` puts the whole family in the stale
-               set, and the stale set is both "what to put in the context" and
-               "whose rows to write". The first is owed — `component_families/1`
-               misclassifies a child narrowed to itself and invents nodes. The
-               second is not: these siblings' files did not move, so their
-               answers did not.
-
-               Measured on dev at the size that matters: one child edited under
-               `CodeMySpec`, which has 101 children, and 105 components were
-               recomputed for it.
-               """
-
-        {:ok, context}
-      end
-
-      then_ "and neither is the parent context", context do
-        refute moved?(context, context.parent_context.id),
-               """
-               A child's file went away and the parent context was rewritten.
-
-               The parent's own requirements read the parent's own files and the
-               *ids* of its children — `Freshness.component/2` hashes
-               `{:children, ids(...)}`, not the children's contents. A child's
-               spec being edited changes neither, so the parent is in the family
-               for instantiation and not for recomputation.
+               A file answers only the copy's file verdicts, which are read,
+               never stored. Nothing the server stores reads a file, so a file
+               changing is no reason to write anything.
                """
 
         {:ok, context}
@@ -159,22 +136,13 @@ defmodule CodeMySpecSpex.Story1062.Criterion3619Spex do
     end
   end
 
-  defp verdicts(graph, component_id) do
-    (graph["nodes"] || [])
-    |> Enum.filter(&(to_string(&1["entity_id"]) == to_string(component_id)))
-    |> Enum.map(&{&1["name"], &1["satisfied"], &1["checked_at"]})
-  end
+  defp implementation(graph, component_id),
+    do: satisfaction_of(graph, "implementation_file", "component", component_id)
 
-  defp stamps(graph) do
-    (graph["nodes"] || [])
-    |> Map.new(&{{&1["entity_type"], to_string(&1["entity_id"]), &1["name"]}, &1["checked_at"]})
-  end
-
-  # Whether any requirement belonging to this component was restamped.
-  defp moved?(context, component_id) do
-    Enum.any?(context.before, fn {{type, id, _name} = key, was} ->
-      type == "component" and id == to_string(component_id) and
-        Map.get(context.after, key) != was
-    end)
+  # The verdicts the server stores, by when they were written.
+  defp stored_stamps(graph) do
+    for node <- graph["nodes"] || [], node["name"] not in @file_verdicts, into: %{} do
+      {{node["entity_type"], to_string(node["entity_id"]), node["name"]}, node["checked_at"]}
+    end
   end
 end

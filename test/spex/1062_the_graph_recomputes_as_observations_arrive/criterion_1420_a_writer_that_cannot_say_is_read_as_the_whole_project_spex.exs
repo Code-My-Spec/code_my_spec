@@ -3,7 +3,9 @@ defmodule CodeMySpecSpex.Story1062.Criterion3508Spex do
   Story 1062 — The graph recomputes as observations arrive.
   Criterion 3508 — A writer that cannot say is read as the whole project.
 
-  Rule: not naming a checkout fans out. It never narrows.
+  Rule: an observation that names no checkout is settled once, for the
+  project, and every checkout reads that one answer. It is never narrowed:
+  nothing is settled per checkout.
 
   ## The asymmetry this pins, and why it is not the same rule as 3518
 
@@ -52,7 +54,8 @@ defmodule CodeMySpecSpex.Story1062.Criterion3508Spex do
   setup :register_log_in_setup_account
   setup :setup_active_project
 
-  spex "An observation that names no checkout settles every checkout", criterion: 1420 do
+  spex "An observation that names no checkout is settled once for the project, and every checkout reads the result",
+    criterion: 1420 do
     scenario "an issue is filed, which is about no checkout in particular" do
       given_(:synced_context_component)
 
@@ -70,13 +73,7 @@ defmodule CodeMySpecSpex.Story1062.Criterion3508Spex do
          |> Map.put(:second_id, second_id)}
       end
 
-      given_ "both checkouts' requirements stored, and a story to file against", context do
-        first = read_settled_graph(context, context.first_id)
-        second = read_settled_graph(context, context.second_id)
-
-        assert first["nodes"] != [], "the first checkout stores nothing to settle"
-        assert second["nodes"] != [], "the second checkout stores nothing to settle"
-
+      given_ "a story every reader sees triaged", context do
         story =
           create_story(context.scope,
             title: "The story the issue is about",
@@ -84,6 +81,11 @@ defmodule CodeMySpecSpex.Story1062.Criterion3508Spex do
           )
 
         :ok = Fixtures.settle_graph(context.scope)
+
+        for reader <- readers(context) do
+          assert triaged(context, reader, story.id) == true,
+                 "the premise did not hold: #{inspect(reader)} does not read the story triaged"
+        end
 
         {:ok, context |> Map.put(:story_id, story.id) |> Map.put(:story_number, story.number)}
       end
@@ -106,52 +108,39 @@ defmodule CodeMySpecSpex.Story1062.Criterion3508Spex do
         assert match?({:ok, _}, filed), inspect(filed)
 
         :ok = Fixtures.settle_graph(context.scope)
-
-        {:ok, Map.put(context, :drain, read_graph(context)["last_drain"])}
-      end
-
-      then_ "the drain says how many checkouts it settled", context do
-        assert context.drain && is_integer(context.drain["vantages"]),
-               """
-               The drain did not report a vantage count, so whether this
-               observation fanned out cannot be established at all.
-
-               #{inspect(context.drain)}
-               """
-
         {:ok, context}
       end
 
-      then_ "and every checkout is settled rather than none", context do
-        settled = context.drain["vantages"]
+      then_ "every checkout, and a reader with no checkout, reads the issue", context do
+        for reader <- readers(context) do
+          assert triaged(context, reader, context.story_id) == false,
+                 """
+                 An issue was filed on the story and #{inspect(reader)} still reads
+                 it triaged.
 
-        assert settled >= 3,
-               """
-               An issue was filed and the drain settled #{settled} vantage(s).
-
-               Three is what this project has: the two checkouts, and the `nil`
-               row-space a reader with no checkout is answered from. An issue is
-               about none of them — it is true of the project — so all three
-               read it and all three have to be settled.
-
-               Fewer means the observation was narrowed to somewhere. That is
-               the failure that does not announce itself: the checkout that did
-               the writing is correct afterwards, so whoever filed the issue
-               sees exactly what they expect, and every other checkout goes on
-               reporting the project clean.
-
-               #{report(context.drain)}
-               """
+                 The issue is about no checkout: it is settled once, for the
+                 project, and every reader reads that one answer. A reader that
+                 still sees the old one was left out.
+                 """
+        end
 
         {:ok, context}
       end
     end
   end
 
-  defp report(drain) do
-    "#{drain["kind"]} drain — #{drain["queries"]} queries, " <>
-      "#{drain["rows_written"]} rows written, " <>
-      "#{drain["observations"]} observation(s), " <>
-      "#{drain["vantages"]} vantage(s)"
-  end
+  # The two checkouts, and a reader that names none.
+  defp readers(context), do: [context.first_id, context.second_id, nil]
+
+  defp triaged(context, nil, story_id),
+    do:
+      context
+      |> read_settled_graph()
+      |> satisfaction_of("story_issues_triaged", "story", story_id)
+
+  defp triaged(context, copy, story_id),
+    do:
+      context
+      |> read_settled_graph(copy)
+      |> satisfaction_of("story_issues_triaged", "story", story_id)
 end
