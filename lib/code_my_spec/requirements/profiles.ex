@@ -46,12 +46,48 @@ defmodule CodeMySpec.Requirements.Profiles do
           | :personas
   @type t :: map()
 
+  @shared [:stories, :links, :qa, :personas, :architecture]
+  @cache {__MODULE__, :drain}
+
   @doc """
   Load one profile. Called at most once per drain, however many requirements
-  read it.
+  read it: within `once_per_drain/1` a profile no checkout changes is loaded
+  once for every vantage the drain settles.
   """
   @spec load(Scope.t(), name()) :: t()
-  def load(%Scope{} = scope, :issues) do
+  def load(scope, name) when name in @shared do
+    case Process.get(@cache) do
+      nil ->
+        fetch(scope, name)
+
+      cache ->
+        profile = Map.get_lazy(cache, name, fn -> fetch(scope, name) end)
+        Process.put(@cache, Map.put(cache, name, profile))
+        profile
+    end
+  end
+
+  def load(scope, name), do: fetch(scope, name)
+
+  @doc """
+  Run `fun` with each profile that reads no checkout's files loaded at most once.
+
+  `:files` is one checkout's files, and `:issues` leaves out issues on stories
+  placed at another checkout, so those load at every vantage; the rest read
+  only records.
+  """
+  @spec once_per_drain((-> result)) :: result when result: term()
+  def once_per_drain(fun) do
+    Process.put(@cache, %{})
+
+    try do
+      fun.()
+    after
+      Process.delete(@cache)
+    end
+  end
+
+  defp fetch(%Scope{} = scope, :issues) do
     threshold = Configurations.fix_issues_min_severity(scope)
 
     %{
@@ -70,7 +106,7 @@ defmodule CodeMySpec.Requirements.Profiles do
   # The entity lists are for the unsatisfied side: a component missing its
   # implementation needs its own `expected_path` in details, so those are
   # enumerated rather than swept. Files are one checkout's (`scope_files_to_copy/2`).
-  def load(%Scope{active_project_id: project_id} = scope, :files) do
+  defp fetch(%Scope{active_project_id: project_id} = scope, :files) do
     files =
       Repo.all(
         from(f in FileRecord,
@@ -100,7 +136,7 @@ defmodule CodeMySpec.Requirements.Profiles do
   # `component_linked` asks whether the named component exists, `deploy`
   # whether the recorded deploy passed its health check; neither is answerable
   # from the story row alone.
-  def load(%Scope{active_project_id: project_id} = scope, :links) do
+  defp fetch(%Scope{active_project_id: project_id} = scope, :links) do
     %{
       # What an undeployed story's `deploy` is waiting on, if anything.
       uat_setup_missing: DevopsSetupChecker.missing(scope, "uat"),
@@ -137,7 +173,7 @@ defmodule CodeMySpec.Requirements.Profiles do
   # Every story, not only ready ones: a sweep touches only rows that exist, so
   # parked stories are harmless, and filtering would copy `Preloader`'s gate.
   # The collections are in `Preloader`'s shape, which `BddRulesChecker` reads.
-  def load(%Scope{active_project_id: project_id} = scope, :stories) do
+  defp fetch(%Scope{active_project_id: project_id} = scope, :stories) do
     stories = Repo.all(from(s in Story, where: s.project_id == ^project_id))
     story_ids = Enum.map(stories, & &1.id)
 
@@ -159,7 +195,7 @@ defmodule CodeMySpec.Requirements.Profiles do
   # The newest QA attempt per story, invalidations preloaded — what
   # `QaAttempts.complete?/2` fetches one story at a time. The attempt, not a
   # boolean: what counts as a pass is the Qa context's judgement.
-  def load(%Scope{active_project_id: project_id} = scope, :qa) do
+  defp fetch(%Scope{active_project_id: project_id} = scope, :qa) do
     story_ids = Repo.all(from(s in Story, where: s.project_id == ^project_id, select: s.id))
     threshold = Configurations.fix_issues_min_severity(scope)
 
@@ -198,7 +234,7 @@ defmodule CodeMySpec.Requirements.Profiles do
   #
   # Project-wide, not checkout-scoped: a persona describes the project whichever
   # tree its summary was written in.
-  def load(%Scope{} = scope, :personas) do
+  defp fetch(%Scope{} = scope, :personas) do
     %{
       personas: Personas.list_personas(scope),
       files: Files.list_project_files_with_roles(scope, PersonasChecker.persona_roles())
@@ -207,7 +243,7 @@ defmodule CodeMySpec.Requirements.Profiles do
 
   # Whether the architecture was authored through the tools — half of
   # `architecture_designed`'s "a plan exists".
-  def load(%Scope{} = scope, :architecture) do
+  defp fetch(%Scope{} = scope, :architecture) do
     %{authored?: Components.any_authored?(scope)}
   end
 

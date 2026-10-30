@@ -433,8 +433,14 @@ defmodule CodeMySpec.Requirements.GraphStore do
     now = now || NaiveDateTime.utc_now()
     {target, copy} = place(scope, name)
 
+    # The stored verdicts first, so only rows that moved are written: most
+    # exceptions carry their own details, and one `UPDATE` each was most of a
+    # drain's queries.
+    stored = stored_verdicts(target, copy, entity_type, name, Enum.map(changes, & &1.entity_id))
+
     rows =
       changes
+      |> Enum.reject(&(Map.get(stored, &1.entity_id) == {&1.satisfied, comparable(:details, &1)}))
       |> Enum.group_by(&{&1.satisfied, &1.details}, & &1.entity_id)
       |> Enum.flat_map(fn {verdict, ids} ->
         Enum.map(Enum.chunk_every(ids, @bind_budget), &{verdict, &1})
@@ -452,6 +458,22 @@ defmodule CodeMySpec.Requirements.GraphStore do
       end)
 
     {:ok, rows}
+  end
+
+  defp stored_verdicts(target, copy, entity_type, name, ids) do
+    owner = owner_field(entity_type)
+
+    ids
+    |> Enum.chunk_every(@bind_budget)
+    |> Enum.flat_map(fn chunk ->
+      target
+      |> where(^owners_filter(entity_type, chunk))
+      |> where([n], n.name == ^name)
+      |> at(copy)
+      |> select([n], {field(n, ^owner), n.satisfied, n.details})
+      |> Repo.all()
+    end)
+    |> Map.new(fn {id, satisfied, details} -> {id, {satisfied, details}} end)
   end
 
   @doc """
