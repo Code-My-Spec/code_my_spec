@@ -460,15 +460,7 @@ defmodule CmsHarness.AnalysisTest do
         suite = Task.async(fn -> Analysis.run(project, "exunit") end)
         started = Path.join(project.root, "test_started")
 
-        assert Enum.reduce_while(1..1200, false, fn _, _ ->
-                 if File.exists?(started),
-                   do: {:halt, true},
-                   else:
-                     (
-                       Process.sleep(25)
-                       {:cont, false}
-                     )
-               end),
+        assert CmsHarnessTest.AnalysisResults.await_file(started, 1200),
                "ExUnit did not start: #{inspect(Task.yield(suite, 0))}"
 
         compiler = Task.async(fn -> Analysis.run(project, "compiler", ["--force"]) end)
