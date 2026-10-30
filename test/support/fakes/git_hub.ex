@@ -25,7 +25,7 @@ defmodule CodeMySpecSpex.Fakes.GitHub do
   alias Plug.Conn
 
   @doc "Fresh account state. One per test."
-  def new(login \\ "sam"), do: %{login: login, repos: [], next_id: 1}
+  def new(login \\ "sam"), do: %{login: login, repos: [], next_id: 1, files: %{}, commits: []}
 
   # Any credential but a revoked one.
   #
@@ -55,6 +55,26 @@ defmodule CodeMySpecSpex.Fakes.GitHub do
       %{state | repos: repos, next_id: next_id}
     end)
   end
+
+  @doc "Seed a file in the fake repository without recording a commit."
+  def seed_file(agent, owner, repo, path, content) do
+    Agent.update(agent, fn state ->
+      files =
+        Map.put(state.files, {owner, repo, path}, %{
+          content: content,
+          sha: "seed-#{map_size(state.files) + 1}"
+        })
+
+      %{state | files: files}
+    end)
+  end
+
+  @doc "Read the bytes an agent would fetch from the repository."
+  def file(agent, owner, repo, path) do
+    Agent.get(agent, &Map.get(&1.files, {owner, repo, path}))
+  end
+
+  def commits(agent), do: Agent.get(agent, & &1.commits)
 
   def call(conn, agent) do
     conn = Conn.fetch_query_params(conn)
@@ -106,9 +126,59 @@ defmodule CodeMySpecSpex.Fakes.GitHub do
   end
 
   defp route("GET", "/repos/" <> path, _body, state) do
-    case Enum.find(state.repos, &(&1["full_name"] == path)) do
-      nil -> {{404, %{"message" => "Not Found"}}, state}
-      repo -> {{200, repo}, state}
+    case String.split(path, "/contents/", parts: 2) do
+      [full_name, file_path] ->
+        [owner, repo] = String.split(full_name, "/", parts: 2)
+
+        case Map.get(state.files, {owner, repo, file_path}) do
+          nil ->
+            {{404, %{"message" => "Not Found"}}, state}
+
+          file ->
+            {{200,
+              %{"type" => "file", "content" => Base.encode64(file.content), "sha" => file.sha}},
+             state}
+        end
+
+      [full_name] ->
+        case Enum.find(state.repos, &(&1["full_name"] == full_name)) do
+          nil -> {{404, %{"message" => "Not Found"}}, state}
+          repo -> {{200, repo}, state}
+        end
+    end
+  end
+
+  defp route("PUT", "/repos/" <> path, body, state) do
+    case String.split(path, "/contents/", parts: 2) do
+      [full_name, file_path] ->
+        [owner, repo] = String.split(full_name, "/", parts: 2)
+        key = {owner, repo, file_path}
+        previous = Map.get(state.files, key)
+
+        if (previous && previous.sha != body["sha"]) || (is_nil(previous) && body["sha"]) do
+          {{409, %{"message" => "SHA mismatch"}}, state}
+        else
+          index = length(state.commits) + 1
+          content = Base.decode64!(body["content"])
+          sha = "blob-#{index}"
+          files = Map.put(state.files, key, %{content: content, sha: sha})
+
+          commit = %{
+            sha: "commit-#{index}",
+            path: file_path,
+            message: body["message"],
+            branch: body["branch"],
+            content: content
+          }
+
+          status = if previous, do: 200, else: 201
+
+          {{status, %{"content" => %{"sha" => sha}, "commit" => %{"sha" => commit.sha}}},
+           %{state | files: files, commits: state.commits ++ [commit]}}
+        end
+
+      _ ->
+        {{404, %{"message" => "Not Found"}}, state}
     end
   end
 

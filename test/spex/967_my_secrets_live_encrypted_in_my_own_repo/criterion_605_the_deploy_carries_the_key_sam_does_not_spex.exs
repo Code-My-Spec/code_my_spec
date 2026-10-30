@@ -28,6 +28,7 @@ defmodule CodeMySpecSpex.Story967.Criterion7999Spex do
   setup :devops_on
   setup :fake_working_directory
   setup :fake_providers
+  setup :repo_secret_setup
 
   spex "The deploy carries the key, Sam does not", criterion: 605 do
     scenario "the key travels as deploy configuration, not as a file placed by hand" do
