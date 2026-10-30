@@ -67,7 +67,6 @@ defmodule CodeMySpec.Requirements do
   alias CodeMySpec.Requirements.RequirementGraph
   alias CodeMySpec.Requirements.StoryExecution
   alias CodeMySpec.Requirements.StoryGraph
-  alias CodeMySpec.Requirements.VantageReport
   alias CodeMySpec.Stories
   alias CodeMySpec.Users.Scope
 
@@ -201,16 +200,6 @@ defmodule CodeMySpec.Requirements do
   @spec incremental_report(Scope.t(), keyword()) :: map()
   def incremental_report(%Scope{} = scope, opts \\ []),
     do: IncrementalReport.build(scope, opts)
-
-  @doc """
-  What each checkout's graph looks like right now, side by side.
-
-  A verdict is a statement about one checkout, so the graph is one answer per
-  checkout, and a routing bug is often invisible from any single one. See
-  `Requirements.VantageReport`.
-  """
-  @spec vantage_report(Scope.t()) :: [map()]
-  def vantage_report(%Scope{} = scope), do: VantageReport.build(scope)
 
   @doc """
   Marks written and not yet applied, grouped by who wrote them.

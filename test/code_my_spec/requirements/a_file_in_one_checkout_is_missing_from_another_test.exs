@@ -25,13 +25,8 @@ defmodule CodeMySpec.Requirements.AFileInOneCheckoutIsMissingFromAnotherTest do
   cleared over about ten minutes. That is the shape of a read taken while
   another vantage was mid-settle, not of a wrong rule.
 
-  ## The step that made the difference, worth knowing
-
-  A vantage enters `Projection.vantages/1` only once something has computed for
-  it. Before `recompute/1` below, the second checkout had **no rows at all** and
-  the verdict read `nil` — which an assertion of `== false` reports as "still
-  present", and which cost an hour of chasing a reproduction that was really an
-  unprojected checkout.
+  Each checkout's file verdicts are read from its own files, so the second
+  checkout answers from what it holds, with nothing stored for it.
 
   ## Why a unit test rather than a spex
 
@@ -98,10 +93,8 @@ defmodule CodeMySpec.Requirements.AFileInOneCheckoutIsMissingFromAnotherTest do
       {:ok, _} = FileSync.sync(first)
       {:ok, _} = FileSync.sync(second)
 
-      # A vantage enters `Projection.vantages/1` only once something has computed
-      # for it, so the second checkout has to be projected before it can be
-      # wrong about anything. This is what a reader arriving at that checkout
-      # does.
+      # The project projected, as a reader arriving at the second checkout
+      # leaves it.
       CodeMySpec.Requirements.recompute(second)
       settle(second)
       settle(first)
