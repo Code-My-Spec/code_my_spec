@@ -11,7 +11,9 @@ ssh:
 servers:
   web:
     hosts:
-      - codemyspec.com
+      # The recorded server address, so a deploy ahead of a DNS cutover reaches
+      # the new box rather than whatever the name still points at.
+      - <%= ENV["CMS_DEPLOY_HOST_IP"] || "codemyspec.com" %>
     options:
       network: db_net
 

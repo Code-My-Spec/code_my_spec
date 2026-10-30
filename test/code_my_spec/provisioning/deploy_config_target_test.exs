@@ -190,6 +190,28 @@ defmodule CodeMySpec.Provisioning.DeployConfigTargetTest do
     end
   end
 
+  describe "a deploy ahead of a DNS cutover" do
+    test "refuses while the name points elsewhere, unless the caller confirms", ctx do
+      reaches_the_guard!(ctx.scope)
+      write_config(ctx.tmp, "uat.#{@domain}")
+      elsewhere = fn _name, :a, [] -> ["198.51.100.7"] end
+
+      assert {:error, refused} =
+               Steps.run(:deploy, ctx.scope, environment: "uat", dns_lookup: elsewhere)
+
+      assert refused =~ "not this server"
+
+      assert {:error, later} =
+               Steps.run(:deploy, ctx.scope,
+                 environment: "uat",
+                 dns_lookup: elsewhere,
+                 confirm_dns_after_deploy: true
+               )
+
+      refute later =~ "not this server"
+    end
+  end
+
   # `mix cms.new` now emits the host as ERB, because the alternative is a
   # committed hostname and a committed server IP — and the IP is not knowable
   # when the file is written, since the box does not exist until setup makes

@@ -282,6 +282,10 @@
         "ttl": {
           "description": "For DNS only: record TTL in seconds, at least 60. Defaults to 60.",
           "type": "integer"
+        },
+        "confirm_dns_after_deploy": {
+          "description": "For the \"deploy\" step only: deploy ahead of a cutover, onto a server the environment's host name does not resolve to yet. Kamal reaches the server by its recorded address, and the TLS certificate is issued on the first request after DNS moves. Without this, the step refuses while the name points elsewhere.",
+          "type": "boolean"
         }
       },
       "required": [

@@ -2989,7 +2989,17 @@ defmodule CodeMySpec.Provisioning.Steps do
   # Kamal connects to the named host and ACME validates that same name. Refuse
   # before committing configuration or building an image if any public name
   # still points elsewhere. The resolver can be supplied by a test.
+  # `confirm_dns_after_deploy`: a deploy ahead of a cutover, onto a server the
+  # name does not point at yet. Kamal reaches it by its recorded address
+  # (CMS_DEPLOY_HOST_IP) and kamal-proxy requests the certificate on the first
+  # request after the flip, so only ACME waits for DNS.
   defp deploy_dns_ready(scope, environment, host, opts) do
+    if Keyword.get(opts, :confirm_dns_after_deploy) == true,
+      do: :ok,
+      else: deploy_dns_ready_check(scope, environment, host, opts)
+  end
+
+  defp deploy_dns_ready_check(scope, environment, host, opts) do
     target = Environments.get_deployment(scope, environment)
     ip = target && target.ip
 

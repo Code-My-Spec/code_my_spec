@@ -90,6 +90,12 @@ defmodule CodeMySpec.Provisioning.Tools.RunProvisioningStep do
       ttl:
         {:meta, :integer,
          [description: "For DNS only: record TTL in seconds, at least 60. Defaults to 60."]},
+      confirm_dns_after_deploy:
+        {:meta, :boolean,
+         [
+           description:
+             "For the \"deploy\" step only: deploy ahead of a cutover, onto a server the environment's host name does not resolve to yet. Kamal reaches the server by its recorded address, and the TLS certificate is issued on the first request after DNS moves. Without this, the step refuses while the name points elsewhere."
+         ]},
       confirm_apex_repoint:
         {:meta, :boolean,
          [
@@ -130,6 +136,7 @@ defmodule CodeMySpec.Provisioning.Tools.RunProvisioningStep do
     |> with_telemetry_mode(params)
     |> with_inbound_probe(params)
     |> with_confirm_apex_repoint(params)
+    |> with_confirm_dns_after_deploy(params)
     |> with_dns_options(params)
     |> with_confirm_inbound_mx_repoint(params)
     |> with_force(params)
@@ -171,6 +178,13 @@ defmodule CodeMySpec.Provisioning.Tools.RunProvisioningStep do
   end
 
   defp with_dns_options(opts, _params), do: opts
+
+  defp with_confirm_dns_after_deploy(opts, params) do
+    case Map.get(params, :confirm_dns_after_deploy) do
+      true -> Keyword.put(opts, :confirm_dns_after_deploy, true)
+      _ -> opts
+    end
+  end
 
   defp with_confirm_inbound_mx_repoint(opts, params) do
     case Map.get(params, :confirm_inbound_mx_repoint) do
