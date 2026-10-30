@@ -86,13 +86,22 @@ defmodule CodeMySpec.Provisioning.DeployImportReadinessTest do
 
   defp counting_run(source_count, target_count) do
     fn [command] ->
-      cond do
-        not String.contains?(command, "json_object_agg") -> {"", 0}
-        String.contains?(command, "'legacy-pg'") -> {Jason.encode!(%{"t" => source_count}), 0}
-        true -> {Jason.encode!(%{"t" => target_count}), 0}
-      end
+      row_count_response(
+        String.contains?(command, "json_object_agg"),
+        String.contains?(command, "'legacy-pg'"),
+        source_count,
+        target_count
+      )
     end
   end
+
+  defp row_count_response(false, _from_source?, _source_count, _target_count), do: {"", 0}
+
+  defp row_count_response(true, true, source_count, _target_count),
+    do: {Jason.encode!(%{"t" => source_count}), 0}
+
+  defp row_count_response(true, false, _source_count, target_count),
+    do: {Jason.encode!(%{"t" => target_count}), 0}
 
   describe "a target database still behind its source" do
     test "refuses the deploy by name, before anything is built", ctx do

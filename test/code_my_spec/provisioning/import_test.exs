@@ -31,18 +31,22 @@ defmodule CodeMySpec.Provisioning.ImportTest do
   # are keyed off which container the query actually ran against.
   defp counting_run(source_count, target_count) do
     fn [command] ->
-      cond do
-        not String.contains?(command, "json_object_agg") ->
-          {"", 0}
-
-        String.contains?(command, "'legacy-pg'") ->
-          {Jason.encode!(%{"t" => source_count}), 0}
-
-        true ->
-          {Jason.encode!(%{"t" => target_count}), 0}
-      end
+      row_count_response(
+        String.contains?(command, "json_object_agg"),
+        String.contains?(command, "'legacy-pg'"),
+        source_count,
+        target_count
+      )
     end
   end
+
+  defp row_count_response(false, _from_source?, _source_count, _target_count), do: {"", 0}
+
+  defp row_count_response(true, true, source_count, _target_count),
+    do: {Jason.encode!(%{"t" => source_count}), 0}
+
+  defp row_count_response(true, false, _source_count, target_count),
+    do: {Jason.encode!(%{"t" => target_count}), 0}
 
   describe "verify/3 — never configured" do
     test "is satisfied with nothing to show for a project that never named a source", %{
@@ -108,12 +112,7 @@ defmodule CodeMySpec.Provisioning.ImportTest do
 
       run = fn [command] ->
         send(owner, {:ran, command})
-
-        if String.contains?(command, "json_object_agg") do
-          counting_run(3, 3).([command])
-        else
-          {"", 0}
-        end
+        row_count_response(String.contains?(command, "json_object_agg"), true, 3, 3)
       end
 
       assert {:ok, [resource]} = Steps.run(:import, scope, environments: ["uat"], run: run)

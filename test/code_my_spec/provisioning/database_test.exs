@@ -456,12 +456,21 @@ defmodule CodeMySpec.Provisioning.DatabaseTest do
     end
 
     defp count_response(command, source_count, target_count) do
-      cond do
-        not String.contains?(command, "json_object_agg") -> {"", 0}
-        String.contains?(command, "docker exec 'legacy-pg'") -> {Jason.encode!(%{"t" => source_count}), 0}
-        true -> {Jason.encode!(%{"t" => target_count}), 0}
-      end
+      row_count_response(
+        String.contains?(command, "json_object_agg"),
+        String.contains?(command, "docker exec 'legacy-pg'"),
+        source_count,
+        target_count
+      )
     end
+
+    defp row_count_response(false, _from_source?, _source_count, _target_count), do: {"", 0}
+
+    defp row_count_response(true, true, source_count, _target_count),
+      do: {Jason.encode!(%{"t" => source_count}), 0}
+
+    defp row_count_response(true, false, _source_count, target_count),
+      do: {Jason.encode!(%{"t" => target_count}), 0}
 
     test "pipes a dump from the source straight into a restore on cms-postgres" do
       assert {:ok, _} = import_from(source())
@@ -510,14 +519,18 @@ defmodule CodeMySpec.Provisioning.DatabaseTest do
     end
 
     test "a restore failure is reported rather than reassigning ownership on nothing" do
-      run = fn [command] ->
-        if String.contains?(command, "pg_restore"),
-          do: {"pg_restore: error: could not execute query", 1},
-          else: {"", 0}
-      end
-
-      assert {:error, {:database_import_failed, 1, _}} = import_from(source(), run: run)
+      assert {:error, {:database_import_failed, 1, _}} =
+               import_from(source(), run: &restore_failure_response/1)
     end
+
+    defp restore_failure_response([command]), do: restore_failure_response(command)
+
+    defp restore_failure_response(command) when is_binary(command) do
+      restore_failure_for(String.contains?(command, "pg_restore"))
+    end
+
+    defp restore_failure_for(true), do: {"pg_restore: error: could not execute query", 1}
+    defp restore_failure_for(false), do: {"", 0}
   end
 
   describe "imported?/3" do
