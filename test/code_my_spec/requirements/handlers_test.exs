@@ -28,9 +28,10 @@ defmodule CodeMySpec.Requirements.HandlersTest do
   setup :register_log_in_setup_account
   setup :setup_active_project
 
+  # What an event settles, and the copy's placement gates, settled on read.
   defp sweep(scope, name) do
     {:ok, _changes, sweeps} = Handlers.apply_event(scope, "issue_created", %{})
-    Enum.find(sweeps, &(&1.name == name))
+    Enum.find(sweeps ++ Handlers.gate_verdicts(scope), &(&1.name == name))
   end
 
   defp normalized({satisfied, details}), do: {satisfied, Requirement.normalize_details(details)}

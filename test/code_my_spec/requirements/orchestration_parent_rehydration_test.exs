@@ -5,7 +5,7 @@ defmodule CodeMySpec.Requirements.OrchestrationParentRehydrationTest do
   import CodeMySpec.UsersFixtures
 
   alias CodeMySpec.Components
-  alias CodeMySpec.Requirements.{Preloader, Projection, RequirementGraph}
+  alias CodeMySpec.Requirements.{Preloader, RequirementGraph}
 
   test "rehydration preserves child and standalone orchestration parents" do
     scope = full_scope_fixture()
@@ -35,7 +35,7 @@ defmodule CodeMySpec.Requirements.OrchestrationParentRehydrationTest do
     assert {:ok, ctx} = Preloader.load(scope)
 
     {rehydrated, _edges} =
-      Projection.load(scope, ctx)
+      RequirementGraph.served_graph(scope, ctx)
 
     compare_parent = fn id, name, node_scope ->
       computed_node =

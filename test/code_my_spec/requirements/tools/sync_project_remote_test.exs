@@ -195,12 +195,15 @@ defmodule CodeMySpec.Requirements.Tools.SyncProjectRemoteTest do
       _ = requirements_of(ctx.scope, story)
       Repo.delete_all(from(r in "requirements", where: r.story_id == ^story.id))
       Repo.delete_all(from(r in "project_requirements", where: r.story_id == ^story.id))
-      assert requirements_of(ctx.scope, story) =~ "0/0 satisfied"
+
+      # Its file verdict is the copy's overlay, never a row; its record
+      # verdicts are rows, and they are gone.
+      refute requirements_of(ctx.scope, story) =~ "three_amigos_complete"
 
       {_response, text} = run(%{ctx.scope | cwd: nil})
 
       assert text =~ "requirement graph was recomputed"
-      refute requirements_of(ctx.scope, story) =~ "0/0 satisfied"
+      assert requirements_of(ctx.scope, story) =~ "three_amigos_complete"
     end
   end
 

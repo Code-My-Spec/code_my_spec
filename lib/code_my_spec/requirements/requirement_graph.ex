@@ -19,8 +19,6 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
 
   require Logger
 
-  import Ecto.Query, only: [from: 2]
-
   # Where the entities meet: a component's terminal work feeds its story at
   # `@component_join`, and a story's QA feeds the project at `@story_join`.
   @component_join "ready_for_qa"
@@ -29,8 +27,12 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   alias CodeMySpec.Agents.RoleProfile
   alias CodeMySpec.Configurations.ProjectConfiguration
   alias CodeMySpec.Repo
+  alias CodeMySpec.Requirements.CopyGraph
+  alias CodeMySpec.Requirements.CopyOverlay
   alias CodeMySpec.Requirements.Freshness
+  alias CodeMySpec.Requirements.GraphStore
   alias CodeMySpec.Requirements.GraphWatcher
+  alias CodeMySpec.Requirements.Handlers
   alias CodeMySpec.Requirements.IncrementalGraph
   alias CodeMySpec.Requirements.Preloader
   alias CodeMySpec.Requirements.Projection
@@ -102,21 +104,17 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
     IncrementalGraph.settle(project_id, [scope.active_working_copy_id])
   end
 
-  # Why: zero rows must not read as "All requirements satisfied". Every seed
-  # writes project rows, so their absence means never projected at any vantage.
+  # Why: zero rows must not read as "All requirements satisfied". The first
+  # drain draws the project's topology, so its absence means never projected.
   # See knowledge/requirements_graph, "Writers and readers".
-  @doc "Whether any vantage of this project has ever been projected: its project rows exist."
+  @doc "Whether this project has ever been projected: its topology exists."
   @spec projected?(Scope.t()) :: boolean()
   def projected?(%Scope{active_project_id: project_id}) when is_binary(project_id),
     do: not never_projected?(project_id)
 
   def projected?(%Scope{}), do: false
 
-  defp never_projected?(project_id),
-    do:
-      not Repo.exists?(
-        from(n in CodeMySpec.Requirements.Node, where: n.project_id == ^project_id)
-      )
+  defp never_projected?(project_id), do: is_nil(GraphStore.topology(project_id))
 
   defp start_writers(scope) do
     case GraphWatcher.ensure_watching(scope) do
@@ -373,7 +371,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   """
   @spec served_graph(Scope.t(), map()) :: {[Requirement.t()], [edge()]}
   def served_graph(%Scope{} = scope, ctx),
-    do: scope |> normalize_vantage() |> Projection.load(ctx)
+    do: scope |> normalize_vantage() |> CopyGraph.load(ctx)
 
   @doc """
   `cached_graph/1` plus the actionable set, for readers that want both without
@@ -439,9 +437,9 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   # a writer that announces nothing would look like one that works. Freshness
   # is per row (`checked_at`). See knowledge/requirements_graph, "Lessons".
   defp serve_with_actionable(scope, ctx) do
-    {nodes, edges} = Projection.load(scope, ctx)
+    {nodes, edges} = CopyGraph.load(scope, ctx)
 
-    # `Preloader.read_context/1` is enough: `Projection.load/2` reads the shape
+    # `Preloader.read_context/1` is enough: `CopyGraph.load/2` reads the shape
     # and `actionable_from/3` reads `ctx.components_by_id` and `ctx.stories`.
     {{nodes, edges}, actionable_from(nodes, edges, ctx), last_checked_at(nodes)}
   end
@@ -458,8 +456,9 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
     scope = scope |> normalize_vantage() |> with_project()
     {:ok, ctx} = Preloader.load(scope)
     config = CodeMySpec.Configurations.get_or_create(scope)
-    {served, served_edges} = Projection.load(scope, ctx)
+    {served, served_edges} = CopyGraph.load(scope, ctx)
     {computed, computed_edges} = compute_topology(scope, ctx, config)
+    {served, computed} = {audited(served, scope), audited(computed, scope)}
 
     served_by_key = Map.new(served, &{node_key(&1), Verification.behavior(&1)})
     computed_by_key = Map.new(computed, &{node_key(&1), Verification.behavior(&1)})
@@ -527,11 +526,16 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   # A reader that named only the project id (the dev page) carries neither the
   # project nor its account, and both are read: the project chain from
   # `active_project`, the checkers through the account.
-  defp with_project(%Scope{active_project: %{id: _}, active_account_id: account} = scope)
-       when not is_nil(account),
-       do: scope
+  @doc """
+  The scope with its project and account loaded, as profiles and checkers
+  read them; unchanged when it carries both.
+  """
+  @spec with_project(Scope.t()) :: Scope.t()
+  def with_project(%Scope{active_project: %{id: _}, active_account_id: account} = scope)
+      when not is_nil(account),
+      do: scope
 
-  defp with_project(%Scope{active_project_id: id} = scope) do
+  def with_project(%Scope{active_project_id: id} = scope) do
     project = Repo.get!(CodeMySpec.Projects.Project, id)
     account = Repo.get!(CodeMySpec.Accounts.Account, project.account_id)
 
@@ -542,6 +546,17 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
         active_account_id: account.id
     }
   end
+
+  # `nil` with no default copy has no checkout's files to serve, by design
+  # ("no checkout has reported files"), so its file verdicts are not audited.
+  defp audited(nodes, %Scope{active_working_copy_id: nil} = scope) do
+    case CopyOverlay.verdicts_at(scope) do
+      :no_checkout -> Enum.reject(nodes, &(&1.name in Handlers.copy_names()))
+      _reported_or_computed -> nodes
+    end
+  end
+
+  defp audited(nodes, _scope), do: nodes
 
   defp audit_label({"component", id, name}), do: "component:#{String.slice(id, 0, 8)}/#{name}"
   defp audit_label({type, id, name}), do: "#{type}:#{id}/#{name}"

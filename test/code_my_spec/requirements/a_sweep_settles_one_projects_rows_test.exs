@@ -62,24 +62,24 @@ defmodule CodeMySpec.Requirements.ASweepSettlesOneProjectsRowsTest do
       project(mine)
       project(theirs)
 
-      before = verdicts(theirs, "bdd_specs_exist")
+      before = verdicts(theirs, "three_amigos_complete")
 
       assert before != [],
              "the other project has no rows to be overwritten, so this proves nothing"
 
-      # The sweep under test: my project settles every story's `bdd_specs_exist`
+      # The sweep under test: my project settles every story's `three_amigos_complete`
       # to a default, naming no exceptions — which is the shape every project
       # requirement takes and the shape a fully-defaulted population takes.
       {:ok, _written} =
         GraphStore.sweep(mine, %{
           entity_type: "story",
-          name: "bdd_specs_exist",
+          name: "three_amigos_complete",
           default: true,
           default_details: %{status: "swept by another project"},
           except: []
         })
 
-      assert verdicts(theirs, "bdd_specs_exist") == before,
+      assert verdicts(theirs, "three_amigos_complete") == before,
              """
              A sweep run for one project rewrote another project's answers.
 
@@ -91,7 +91,7 @@ defmodule CodeMySpec.Requirements.ASweepSettlesOneProjectsRowsTest do
              every reader that is not an agent resolves to.
 
              before: #{inspect(before)}
-             after:  #{inspect(verdicts(theirs, "bdd_specs_exist"))}
+             after:  #{inspect(verdicts(theirs, "three_amigos_complete"))}
              """
     end
 
@@ -104,7 +104,7 @@ defmodule CodeMySpec.Requirements.ASweepSettlesOneProjectsRowsTest do
       {:ok, _} =
         GraphStore.sweep(mine, %{
           entity_type: "story",
-          name: "bdd_specs_exist",
+          name: "three_amigos_complete",
           default: true,
           default_details: %{status: "settled by my own sweep"},
           except: []
@@ -113,12 +113,12 @@ defmodule CodeMySpec.Requirements.ASweepSettlesOneProjectsRowsTest do
       # Without this, a predicate that scoped nothing through and a predicate
       # that scoped correctly would be indistinguishable — the criterion above
       # passes for a sweep that writes no rows at all.
-      assert Enum.all?(verdicts(mine, "bdd_specs_exist"), &match?({true, _}, &1)),
+      assert Enum.all?(verdicts(mine, "three_amigos_complete"), &match?({true, _}, &1)),
              """
              My own project's rows were not settled, so the scoping predicate is
              excluding the rows it is supposed to answer.
 
-             #{inspect(verdicts(mine, "bdd_specs_exist"))}
+             #{inspect(verdicts(mine, "three_amigos_complete"))}
              """
     end
   end
@@ -144,11 +144,10 @@ defmodule CodeMySpec.Requirements.ASweepSettlesOneProjectsRowsTest do
   # rewritten with the same verdict and a different reason is still a row
   # another project answered.
   defp verdicts(%Scope{active_project_id: project_id}, name) do
-    from(n in "requirements",
+    from(n in "project_requirements",
       join: s in "stories",
       on: s.id == n.story_id,
       where: n.name == ^name and s.project_id == type(^project_id, :binary_id),
-      where: is_nil(n.working_copy_id),
       select: {type(n.satisfied, :boolean), type(n.details, :map)}
     )
     |> Repo.all()

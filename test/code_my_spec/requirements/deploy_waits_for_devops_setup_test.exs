@@ -12,7 +12,6 @@ defmodule CodeMySpec.Requirements.DeployWaitsForDevopsSetupTest do
   alias CodeMySpec.Configurations
   alias CodeMySpec.Provisioning
   alias CodeMySpec.ProvisioningPlan.StepRepository
-  alias CodeMySpec.Requirements.GraphStore
   alias CodeMySpec.Requirements.Handlers
   alias CodeMySpec.Requirements.Preloader
   alias CodeMySpec.Requirements.Requirement
@@ -129,12 +128,5 @@ defmodule CodeMySpec.Requirements.DeployWaitsForDevopsSetupTest do
     |> Enum.each(
       &StepRepository.upsert(scope, &1.key, &1.environment, %{state: :done, position: &1.position})
     )
-  end
-
-  defp stored_deploy(story) do
-    GraphStore.event_target()
-    |> where([n], n.story_id == ^story.id and n.name == "deploy")
-    |> select([n], n.details)
-    |> Repo.one()
   end
 end

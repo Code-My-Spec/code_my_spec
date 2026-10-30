@@ -67,7 +67,7 @@ defmodule CodeMySpec.Requirements.AConfigDroppedDefinitionIsReapedTest do
 
   # Wherever the rows live: per checkout, or once per project.
   defp names(scope, story_id) do
-    from(n in subquery(GraphStore.rows_at(scope.active_working_copy_id)))
+    from(n in subquery(GraphStore.project_rows()))
     |> where([n], n.story_id == ^story_id)
     |> select([n], n.name)
     |> Repo.all()

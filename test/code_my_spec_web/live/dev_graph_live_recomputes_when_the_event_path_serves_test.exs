@@ -109,15 +109,16 @@ defmodule CodeMySpecWeb.DevGraphLiveRecomputesWhenTheEventPathServesTest do
     :ok = IncrementalGraph.settle(scope.active_project_id, [nil, scope.active_working_copy_id])
     assert Requirements.served_vs_recomputed(scope).extra == 0
 
-    for copy_id <- Enum.uniq([nil, scope.active_working_copy_id]) do
-      CodeMySpec.Repo.insert!(%CodeMySpec.Requirements.Node{
-        name: "deploy",
-        description: "Extra work despite devops being off",
-        story_id: story.id,
-        working_copy_id: copy_id,
-        satisfied: false
-      })
-    end
+    # A record verdict, stored once per project.
+    %CodeMySpec.Requirements.Node{}
+    |> Ecto.put_meta(source: "project_requirements")
+    |> Ecto.Changeset.change(
+      name: "deploy",
+      description: "Extra work despite devops being off",
+      story_id: story.id,
+      satisfied: false
+    )
+    |> CodeMySpec.Repo.insert!()
 
     report = Requirements.served_vs_recomputed(scope)
     assert report.extra == 1
