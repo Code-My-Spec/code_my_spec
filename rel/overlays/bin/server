@@ -19,8 +19,15 @@ if [ -n "${SOPS_AGE_KEY:-}" ]; then
     exit 1
   fi
 
-  # `exec` so the release is PID 1 and hears the container's stop signal.
-  exec sops exec-env "$ENV_FILE" "PHX_SERVER=true ./code_my_spec start"
+  # Migrate first. Our boxes have no release_command (Fly's runs bin/migrate),
+  # and kamal can only run `bin/deploy migrate` once a container has booted,
+  # so a first deploy booted the app on an empty database and it crashed at
+  # start (BootRecovery: relation "analysis_runs" does not exist). Ecto's
+  # migration lock keeps a second container from racing this one; a failed
+  # migration stops the start.
+  # `exec` so the release replaces the shell and hears the stop signal.
+  exec sops exec-env "$ENV_FILE" \
+    "./code_my_spec eval CodeMySpec.Release.migrate && PHX_SERVER=true exec ./code_my_spec start"
 fi
 
 PHX_SERVER=true exec ./code_my_spec start
