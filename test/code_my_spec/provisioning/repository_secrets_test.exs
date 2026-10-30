@@ -4,6 +4,7 @@ defmodule CodeMySpec.Provisioning.RepositorySecretsTest do
   import CodeMySpec.IntegrationsFixtures
   import CodeMySpec.UsersFixtures
 
+  alias CodeMySpec.Environments
   alias CodeMySpec.ExecutionContexts.ExecutionContext
   alias CodeMySpec.GitHub
   alias CodeMySpec.ProjectSecrets
@@ -57,6 +58,39 @@ defmodule CodeMySpec.Provisioning.RepositorySecretsTest do
     %{puts: 3, file: ciphertext} = Agent.get(ctx.state, & &1)
     assert {:ok, values} = decrypt_content(ctx.config, ciphertext, ctx.private)
     assert values == %{"SOPS_INITIALIZED" => "true", "FIRST" => "one", "SECOND" => "two"}
+  end
+
+  test "refuses a missing key before reading or committing secrets and names the recorded server", ctx do
+    {:ok, _} = Environments.put(ctx.scope, "prod", %{server_name: "prod-box"})
+    {:ok, _} = ProjectSecrets.delete_value(ctx.scope, Steps.age_key_name("prod"))
+
+    assert {:error, message} = RepositorySecrets.put(ctx.scope, "prod", "TOKEN", "sensitive-value")
+    assert message ==
+             "This server has no key for prod's secrets; they were set up on prod-box. Put secrets there."
+
+    refute message =~ "sensitive-value"
+    assert %{puts: 0, file: nil} = Agent.get(ctx.state, & &1)
+  end
+
+  test "refuses a key whose public recipient differs from .sops.yaml", ctx do
+    {:ok, {_public, other_private}} = Sops.generate_key()
+    {:ok, _} = ProjectSecrets.put_value(ctx.scope, Steps.age_key_name("prod"), other_private)
+    {:ok, _} = Environments.put(ctx.scope, "prod", %{server_name: "prod-box"})
+
+    assert {:error, message} = RepositorySecrets.put(ctx.scope, "prod", "TOKEN", "sensitive-value")
+    assert message =~ "they were set up on prod-box. Put secrets there."
+    refute message =~ "sensitive-value"
+    refute message =~ "sops_failed"
+    assert %{puts: 0, file: nil} = Agent.get(ctx.state, & &1)
+  end
+
+  test "does not guess the origin server when it was never recorded", ctx do
+    {:ok, _} = ProjectSecrets.delete_value(ctx.scope, Steps.age_key_name("prod"))
+
+    assert {:error, message} = RepositorySecrets.put(ctx.scope, "prod", "TOKEN", "sensitive-value")
+    assert message =~ "server where they were set up is not recorded"
+    refute message =~ "sensitive-value"
+    assert %{puts: 0, file: nil} = Agent.get(ctx.state, & &1)
   end
 
   defp decrypt_content(config, ciphertext, private) do
