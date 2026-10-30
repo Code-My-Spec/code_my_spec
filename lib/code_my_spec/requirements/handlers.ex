@@ -75,10 +75,10 @@ defmodule CodeMySpec.Requirements.Handlers do
     "issue_dismissed" => [:issues],
     "issue_resolved" => [:issues],
     "issue_updated" => [:issues],
-    # Every project delegate a sync moves (`spex_boundary_ready`,
-    # `qa_integration_plan`, `personas_complete`, `architecture_designed`) has a
-    # `settle/3` clause, so nothing it moves is left to the discarded marks.
-    "files_synced" => [:files],
+    # A sync moves only persona files on the server: a copy's file verdicts
+    # are its overlay (`CopyOverlay`), read, never settled here.
+    "files_synced" => [:personas],
+    "qa_document_changed" => [:qa_documents],
     "deploy_changed" => [:links],
     # A setup step, environment or option changing moves what an undeployed
     # story's `deploy` is waiting on.
@@ -130,10 +130,9 @@ defmodule CodeMySpec.Requirements.Handlers do
   def fallback_project_wide?(_mark), do: false
 
   # Handled kinds that can move the shape the edges are drawn from (a
-  # dependency, a story relinked, file presence deciding a story's discovered
-  # dependency closure). The projector asks the shape whether to redraw edges.
-  # Component kinds go that way already through `@partial`.
-  @shape ~w(dependency_changed story_changed files_synced)
+  # dependency, a story relinked). The projector asks the shape whether to
+  # redraw edges. Component kinds go that way already through `@partial`.
+  @shape ~w(dependency_changed story_changed)
 
   @doc "The handled kinds after which the projector checks the shape."
   @spec shape_kinds() :: [String.t()]
@@ -162,14 +161,9 @@ defmodule CodeMySpec.Requirements.Handlers do
     "issues_resolved" => [:issues],
     "story_issues_triaged" => [:issues],
     "ready_for_qa" => [:stories],
-    "implementation_file" => [:files],
-    # Files for the spec paths, stories for the criteria they must cover.
-    "bdd_specs_exist" => [:files, :stories],
-    "technical_strategy" => [:files],
-    "code_generation" => [:files],
-    "qa_setup" => [:files],
-    "qa_journey_plan" => [:files],
-    "qa_journey_execute" => [:files],
+    # Stored QA documents; the clauses read the documents themselves.
+    "qa_setup" => {[:qa_documents], []},
+    "qa_journey_plan" => {[:qa_documents], []},
     "component_linked" => [:links],
     "deploy" => [:links],
     "three_amigos_complete" => [:stories],
@@ -179,15 +173,9 @@ defmodule CodeMySpec.Requirements.Handlers do
     # Cited issues can release a partial/fail without changing its certification.
     # Story changes also move the certification the attempt must answer for.
     "qa_complete" => {[:qa, :stories, :issues], [:qa, :stories]},
-    # The rollups. `qa_integration_plan` is handed the file profile it would
-    # otherwise re-read; the rest query for themselves — see
-    # `@delegate_requirements`.
-    "qa_integration_plan" => [:files],
-    "spex_boundary_ready" => [:files],
-    # Moved by files too: a persona's `summary.md` and `sources.md` are files.
-    "personas_complete" => {[:files, :personas], [:personas]},
-    # Files for proposal.md, components for whether any is authored.
-    "architecture_designed" => [:files, :architecture],
+    # The rollups, which query for themselves — see `@delegate_requirements`.
+    # The profile carries a persona's `summary.md` and `sources.md` files.
+    "personas_complete" => [:personas],
     "stories_exist" => [:stories],
     "work_dispatched" => [:stories, :issues]
   }

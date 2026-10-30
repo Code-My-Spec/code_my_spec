@@ -4,6 +4,7 @@ defmodule CodeMySpec.Qa.Documents do
   alias CodeMySpec.Documents, as: Parser
   alias CodeMySpec.Documents.Stored
   alias CodeMySpec.Repo
+  alias CodeMySpec.Requirements.GraphInputs
   alias CodeMySpec.Stories
   alias CodeMySpec.Users.Scope
 
@@ -32,7 +33,9 @@ defmodule CodeMySpec.Qa.Documents do
       }
 
       changeset = Stored.changeset(current || %Stored{}, attrs)
-      if current, do: Repo.update(changeset), else: Repo.insert(changeset)
+
+      if(current, do: Repo.update(changeset), else: Repo.insert(changeset))
+      |> announced(scope)
     end
   end
 
@@ -41,14 +44,23 @@ defmodule CodeMySpec.Qa.Documents do
   @doc "Delete a QA document by its project-scoped key."
   def delete(scope, type), do: delete(scope, type, nil)
 
-  def delete(%Scope{active_project_id: project_id}, type, story_number) do
+  def delete(%Scope{active_project_id: project_id} = scope, type, story_number) do
     with {:ok, number} <- validate_key(type, story_number) do
       case Repo.get_by(Stored, project_id: project_id, document_type: type, story_number: number) do
         nil -> {:ok, nil}
-        document -> Repo.delete(document)
+        document -> document |> Repo.delete() |> announced(scope)
       end
     end
   end
+
+  # The QA plan and journey plan settle project requirements (`qa_setup`,
+  # `qa_journey_plan`): a stored change is a graph event.
+  defp announced({:ok, _document} = result, scope) do
+    GraphInputs.event(scope, "QaDocuments", "qa_document_changed", %{}, [], :project_wide)
+    result
+  end
+
+  defp announced(error, _scope), do: error
 
   @doc "Preserve a legacy QA file exactly during the one-time import."
   def put_legacy(%Scope{active_project_id: project_id}, type, story_number, content)

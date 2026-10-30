@@ -22,7 +22,6 @@ defmodule CodeMySpec.Requirements.Profiles do
   alias CodeMySpec.Deploys.Deploy
   alias CodeMySpec.Epics
   alias CodeMySpec.Files
-  alias CodeMySpec.Files.File, as: FileRecord
   alias CodeMySpec.Issues
   alias CodeMySpec.Personas
   alias CodeMySpec.Personas.{Persona, PersonaStory}
@@ -31,7 +30,6 @@ defmodule CodeMySpec.Requirements.Profiles do
   alias CodeMySpec.Repo
   alias CodeMySpec.Requirements.DevopsSetupChecker
   alias CodeMySpec.Requirements.PersonasChecker
-  alias CodeMySpec.Requirements.Preloader
   alias CodeMySpec.Stories.AcceptanceCriteria.Criterion
   alias CodeMySpec.Stories.Story
   alias CodeMySpec.Users.Scope
@@ -39,7 +37,6 @@ defmodule CodeMySpec.Requirements.Profiles do
   @type name ::
           :dispatch
           | :issues
-          | :files
           | :links
           | :stories
           | :qa
@@ -73,9 +70,8 @@ defmodule CodeMySpec.Requirements.Profiles do
   @doc """
   Run `fun` with each profile that reads no checkout's files loaded at most once.
 
-  `:files` is one checkout's files, and `:issues` leaves out issues on stories
-  placed at another checkout, so those load at every vantage; the rest read
-  only records.
+  `:issues` leaves out issues on stories placed at another checkout, so it
+  loads for each scope; the rest read only records.
   """
   @spec once_per_drain((-> result)) :: result when result: term()
   def once_per_drain(fun) do
@@ -97,34 +93,6 @@ defmodule CodeMySpec.Requirements.Profiles do
       accepted: Issues.list_by_status_and_min_severity(scope, :accepted, threshold),
       incoming_by_story: Issues.incoming_by_story(scope)
     }
-  end
-
-  # What `implementation_file` (`:file_exists`, role `:implementation`) reads,
-  # plus the `:bdd_spec`-role files `bdd_specs_exist` reads (through
-  # `RequirementCalculator.bdd_specs_covered/3`, not this profile's own
-  # file_exists table) — from one file read plus the two entity lists.
-  #
-  # The entity lists are for the unsatisfied side: a component missing its
-  # implementation needs its own `expected_path` in details, so those are
-  # enumerated rather than swept. Files are one checkout's (`scope_files_to_copy/2`).
-  defp fetch(%Scope{active_project_id: project_id} = scope, :files) do
-    files =
-      Repo.all(
-        from(f in FileRecord,
-          where: f.project_id == ^project_id,
-          # Whole rows: checkers written against `Files.File` read fields this
-          # module does not know about (`QaIntegrationPlan` reads `size`).
-          select: f
-        )
-        |> scope_files_to_copy(scope)
-      )
-
-    files_profile(
-      files,
-      scope.active_project,
-      Repo.all(from(c in Component, where: c.project_id == ^project_id)),
-      Repo.all(from(s in Story, where: s.project_id == ^project_id, select: s.id))
-    )
   end
 
   # What `work_dispatched` reads of `:stories`, without the Three Amigos
@@ -300,15 +268,6 @@ defmodule CodeMySpec.Requirements.Profiles do
     |> Enum.reduce(%{}, fn file, acc ->
       Map.put_new(acc, {Map.get(file, owner_key), file.role}, file)
     end)
-  end
-
-  # The scope's checkout, else `Preloader.files_vantage/1` (the reading copy),
-  # never a blend: a file in another worktree must not satisfy anything here.
-  defp scope_files_to_copy(query, %Scope{active_working_copy_id: copy} = scope) do
-    case copy || Preloader.files_vantage(scope) do
-      nil -> query
-      vantage -> from(f in query, where: f.working_copy_id == type(^vantage, Ecto.UUID))
-    end
   end
 
   # `Preloader`'s four, in its shapes — rules and questions carry a project id,
