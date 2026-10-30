@@ -135,7 +135,39 @@ defmodule CodeMySpec.Provisioning.Builder do
         &Map.put(&1, @deploy_builder_label, "true")
       )
 
-    ensure.(scope, BurstBox.box_name(), box_opts)
+    with {:ok, server} <- ensure.(scope, BurstBox.box_name(), box_opts) do
+      join_networks(scope, server, opts)
+    end
+  end
+
+  # The box is the account's one, so it already exists for every build after
+  # the first, and `:network_ids` only reaches Hetzner when a box is created.
+  # A box made for uat's network then built for prod and could not reach
+  # prod's registry ("Client.Timeout exceeded" on docker login).
+  defp join_networks(scope, server, opts) do
+    attached = for net <- server["private_net"] || [], do: net["network"]
+
+    case (Keyword.get(opts, :network_ids) || []) -- attached do
+      [] ->
+        {:ok, server}
+
+      missing ->
+        attach = Keyword.get(opts, :attach_to_network, &Hetzner.attach_to_network/3)
+        find = Keyword.get(opts, :find, &Hetzner.find_server/2)
+
+        with :ok <- attach_all(scope, server["id"], missing, attach) do
+          find.(scope, server["name"])
+        end
+    end
+  end
+
+  defp attach_all(scope, server_id, network_ids, attach) do
+    Enum.reduce_while(network_ids, :ok, fn network_id, :ok ->
+      case attach.(scope, server_id, network_id) do
+        {:ok, _} -> {:cont, :ok}
+        {:error, _} = error -> {:halt, error}
+      end
+    end)
   end
 
   # A deploy-created box is checked immediately after the build and deploy

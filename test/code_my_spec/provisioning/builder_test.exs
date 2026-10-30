@@ -109,6 +109,48 @@ defmodule CodeMySpec.Provisioning.BuilderTest do
   defp still_creating_response("available"), do: {:ok, []}
   defp still_creating_response(_not_filtered), do: {:ok, [%{"id" => 777, "status" => "creating"}]}
 
+  describe "a reused box and the build's network" do
+    test "a box made for another network joins the build's before building" do
+      owner = self()
+      on_uat = server(%{"private_net" => [%{"network" => 12_602_966}]})
+
+      attach = fn _scope, id, network_id ->
+        send(owner, {:attached, id, network_id})
+        {:ok, :attached}
+      end
+
+      assert {:ok, _} =
+               Builder.build(
+                 scope(),
+                 "abc123",
+                 opts(
+                   find: fn _scope, _name -> {:ok, on_uat} end,
+                   network_ids: [12_586_313],
+                   attach_to_network: attach,
+                   build_fun: build_fun()
+                 )
+               )
+
+      assert_received {:attached, 42, 12_586_313}
+    end
+
+    test "a box already on the build's network is left as it is" do
+      on_prod = server(%{"private_net" => [%{"network" => 12_586_313}]})
+
+      assert {:ok, _} =
+               Builder.build(
+                 scope(),
+                 "abc123",
+                 opts(
+                   find: fn _scope, _name -> {:ok, on_prod} end,
+                   network_ids: [12_586_313],
+                   attach_to_network: fn _, _, _ -> flunk("already attached") end,
+                   build_fun: build_fun()
+                 )
+               )
+    end
+  end
+
   describe "build/3" do
     test "returns the image the build produced" do
       build = fn _scope, _server, _ref, arch ->
