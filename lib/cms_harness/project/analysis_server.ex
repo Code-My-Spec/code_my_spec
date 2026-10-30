@@ -593,6 +593,9 @@ defmodule CmsHarness.Project.AnalysisServer do
             manifest
           else
             case DurableRun.read_manifest(id) do
+              # Completed by `deliver/4`, which sent it, before its
+              # `:track_completed` arrived.
+              {:ok, %{"status" => "completed"} = latest} -> Map.put(latest, "sent", true)
               {:ok, latest} -> latest
               _ -> manifest
             end
@@ -648,7 +651,7 @@ defmodule CmsHarness.Project.AnalysisServer do
       payloads = recovered_payloads(manifest, result)
       manifest = DurableRun.complete(manifest, payloads)
       Enum.each(payloads, &Channel.deliver_analysis_result(root, &1))
-      manifest
+      Map.put(manifest, "sent", true)
     end
   end
 
@@ -917,12 +920,7 @@ defmodule CmsHarness.Project.AnalysisServer do
           {:ok, start_tree} ->
             send(parent, {:analysis_started, entry.run_id, start_tree})
 
-            # The current formatter does not emit a recoverable event stream.
-            # Keep the existing live reporting and process cleanup until the
-            # stream is explicitly enabled for this harness.
-            durable? =
-              entry.source in ["exunit", "spex"] and
-                System.get_env("CMS_RUN_EVENT_STREAM") not in [nil, ""]
+            durable? = durable?(project.root, entry)
 
             if durable? do
               DurableRun.begin_run(
@@ -956,6 +954,22 @@ defmodule CmsHarness.Project.AnalysisServer do
         end
     end
   end
+
+  # A run outlives this harness only when the project's formatter writes the
+  # event stream the next harness re-attaches to; an older one keeps the
+  # guarded launch, which ends the run with its owner.
+  defp durable?(root, %{source: source} = entry) when source in ["exunit", "spex"] do
+    with false <- DurableRun.streams?(root) do
+      Logger.info(
+        "[CmsHarness] #{source} run #{entry.run_id} for #{root} will not survive a harness " <>
+          "restart: its client_utils writes no event stream (needs 0.3.2 or later)"
+      )
+
+      false
+    end
+  end
+
+  defp durable?(_root, _entry), do: false
 
   defp answers_for(entry), do: [entry.run_id | Map.get(entry, :tied_run_ids, [])]
 

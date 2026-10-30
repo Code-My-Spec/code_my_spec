@@ -101,6 +101,30 @@ defmodule CmsHarness.ChannelClientTransportTest do
              "the server may never close"
   end
 
+  # The server never accepts a result for a run it closed for good; kept, a
+  # durable run's record is re-sent on every join and every boot.
+  test "a result refused as unknown_run is dropped and its run acknowledged" do
+    root = "/tmp/unknown-run-#{System.unique_integer([:positive])}"
+    {:ok, _} = Registry.register(CmsHarness.Registry, {:analysis, root}, nil)
+    payload = %{"run_id" => 42, "source" => "exunit", "status" => "ok"}
+    ref = make_ref()
+
+    socket =
+      socket(%{
+        project: %{id: "p1", root: root},
+        analysis_refs: %{ref => payload},
+        analysis_pending: %{42 => payload}
+      })
+
+    {{:ok, out}, _log} =
+      with_log(fn ->
+        ChannelClient.handle_reply(ref, {:error, %{"reason" => "unknown_run"}}, socket)
+      end)
+
+    assert out.assigns.analysis_pending == %{}
+    assert_receive {:"$gen_cast", {:acknowledge, 42}}
+  end
+
   test "a server's word that the read model moved re-requests it at once" do
     assert {:ok, out} =
              ChannelClient.handle_message(

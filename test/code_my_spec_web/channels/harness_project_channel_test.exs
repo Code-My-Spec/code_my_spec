@@ -1350,6 +1350,57 @@ defmodule CodeMySpecWeb.HarnessProjectChannelTest do
                "or the result it is about to send is refused as unknown_run"
     end
 
+    # Issue 128c1b27: a harness restart closes its socket, so `terminate/2`
+    # closes the run as stranded. The run itself outlived the harness, and the
+    # next one adopts it from disk, claims it, and sends its result.
+    test "are answered by the harness that adopts them after a disconnect closed them", %{
+      scope: scope,
+      topic: topic
+    } do
+      {:ok, %{working_copy_id: id}, channel} = join_with(scope, topic, nil)
+      served = %{scope | active_working_copy_id: id}
+
+      push(channel, "analysis_run", %{"source" => "exunit", "args" => []})
+      assert_push "run_analysis", %{"runs" => [%{"run_id" => run_id}]}, 5_000
+
+      down = Process.monitor(channel.channel_pid)
+      close(channel)
+      assert_receive {:DOWN, ^down, :process, _, _}, 2_000
+
+      assert %{status: :failed, orphaned: true} =
+               RunsRepository.get_run_in_project(served, run_id)
+
+      assert {:ok, _, channel} = rejoin_claiming(scope, topic, id, [run_id])
+
+      ref =
+        push(channel, "analysis_result", %{
+          "run_id" => run_id,
+          "source" => "exunit",
+          "status" => "ok",
+          "result" => %{
+            "source" => "exunit",
+            "exit_status" => 2,
+            "execution_status" => "failure",
+            "output" => "",
+            "stats" => %{"tests" => 3, "failures" => 1},
+            "diagnostics" => [
+              %{
+                "name" => "fails",
+                "test" => "fails",
+                "file" => "test/tiny_test.exs",
+                "line" => 7,
+                "message" => "Assertion with == failed"
+              }
+            ]
+          }
+        })
+
+      assert_reply ref, :ok, %{"run_id" => ^run_id}, 5_000
+
+      assert %{status: :completed, orphaned: false, exit_status: 2} =
+               RunsRepository.get_run_in_project(served, run_id)
+    end
+
     # cc578c21, then story 1142: a requested run its harness took is not run
     # again behind the asker's back; the next join settles it, and nothing is
     # dispatched for it.
@@ -1387,6 +1438,20 @@ defmodule CodeMySpecWeb.HarnessProjectChannelTest do
         "harness_id" => working_copy_id,
         "active_runs" => run_ids
       })
+    end
+
+    # The departed channel's lease is released as it goes down, so a rejoin
+    # can be refused for a moment.
+    defp rejoin_claiming(scope, topic, working_copy_id, run_ids, attempts \\ 40)
+
+    defp rejoin_claiming(scope, topic, working_copy_id, run_ids, 1),
+      do: join_claiming(scope, topic, working_copy_id, run_ids)
+
+    defp rejoin_claiming(scope, topic, working_copy_id, run_ids, attempts) do
+      with {:error, _refused} <- join_claiming(scope, topic, working_copy_id, run_ids) do
+        Process.sleep(50)
+        rejoin_claiming(scope, topic, working_copy_id, run_ids, attempts - 1)
+      end
     end
 
     defp open_run_ids(scope) do

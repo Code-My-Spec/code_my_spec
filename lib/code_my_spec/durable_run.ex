@@ -16,12 +16,28 @@ defmodule CodeMySpec.DurableRun do
   def stream_path(id) when is_integer(id), do: Path.join(dir(), "#{id}.jsonl")
   def output_path(id) when is_integer(id), do: Path.join(dir(), "#{id}.output")
   def exit_path(id) when is_integer(id), do: Path.join(dir(), "#{id}.exit")
+  def offsets_path(id) when is_integer(id), do: Path.join(dir(), "#{id}.offsets")
+
+  @event_stream "client_utils/lib/client_utils/test_formatter/event_stream.ex"
+  @event_stream_beam "client_utils/ebin/Elixir.ClientUtils.TestFormatter.EventStream.beam"
+
+  @doc """
+  Whether the project at `root` runs a formatter that writes the event stream
+  (client_utils 0.3.2+): in its fetched deps, or, for a path dep, in the
+  analyzer's build of it.
+  """
+  @spec streams?(String.t()) :: boolean()
+  def streams?(root) do
+    File.exists?(Path.join([root, "deps", @event_stream])) or
+      File.exists?(Path.join([root, "_build/analyzer/test/lib", @event_stream_beam]))
+  end
 
   def begin_run(id, root, source, args, commit, tied_run_ids \\ []) when is_integer(id) do
     File.mkdir_p!(dir())
     File.write!(stream_path(id), "")
     File.write!(output_path(id), "")
     File.rm(exit_path(id))
+    File.rm(offsets_path(id))
 
     manifest = %{
       "run_id" => id,
@@ -50,10 +66,28 @@ defmodule CodeMySpec.DurableRun do
     end
   end
 
+  # The read cursor is its own file: the poller advancing it must not write
+  # back a manifest read before the launch attached its pid.
   def read_manifest(id) do
     with {:ok, data} <- File.read(manifest_path(id)),
          {:ok, %{} = manifest} <- Jason.decode(data) do
-      {:ok, manifest}
+      {:ok, Map.merge(manifest, read_offsets(id))}
+    end
+  end
+
+  defp read_offsets(id) do
+    with {:ok, data} <- File.read(offsets_path(id)),
+         {:ok, %{} = offsets} <- Jason.decode(data) do
+      %{"offsets" => offsets}
+    else
+      _ -> %{}
+    end
+  end
+
+  @doc "Merge `fields` into the manifest on disk, for the process launching the run."
+  def update(id, fields) when is_integer(id) and is_map(fields) do
+    with {:ok, manifest} <- read_manifest(id) do
+      manifest |> Map.merge(fields) |> write_manifest()
     end
   end
 
@@ -237,9 +271,8 @@ defmodule CodeMySpec.DurableRun do
   end
 
   def advance(manifest, offsets) when is_map(offsets) do
-    manifest = Map.put(manifest, "offsets", offsets)
-    write_manifest(manifest)
-    manifest
+    write_atomically(offsets_path(manifest["run_id"]), Jason.encode!(offsets))
+    Map.put(manifest, "offsets", offsets)
   end
 
   def advance(manifest, offset) when is_integer(offset) do
@@ -340,6 +373,12 @@ defmodule CodeMySpec.DurableRun do
               ),
             else: raw
 
+        # The database the run used, as the live path reports it.
+        raw =
+          if is_binary(manifest["partition"]),
+            do: Map.put(raw, "partition", manifest["partition"]),
+            else: raw
+
         {:ok, raw}
     end
   end
@@ -387,13 +426,20 @@ defmodule CodeMySpec.DurableRun do
     Enum.each(Path.wildcard(stream_path(id) <> ".shard-*"), &File.rm/1)
     File.rm(output_path(id))
     File.rm(exit_path(id))
+    File.rm(offsets_path(id))
     :ok
   end
 
   defp write_manifest(manifest) do
-    path = manifest_path(manifest["run_id"])
+    write_atomically(
+      manifest_path(manifest["run_id"]),
+      manifest |> Map.delete("offsets") |> Jason.encode!()
+    )
+  end
+
+  defp write_atomically(path, contents) do
     tmp = path <> ".#{System.unique_integer([:positive])}.tmp"
-    File.write!(tmp, Jason.encode!(manifest))
+    File.write!(tmp, contents)
     File.rename!(tmp, path)
     :ok
   end

@@ -226,8 +226,7 @@ defmodule CodeMySpec.DurableRunTest do
     )
 
     File.write!(DurableRun.exit_path(id), "0")
-    {:ok, manifest} = DurableRun.read_manifest(id)
-    DurableRun.advance(Map.put(manifest, "status", "running"), %{})
+    :ok = DurableRun.update(id, %{"status" => "running"})
 
     {:ok, state} = CmsHarness.Project.AnalysisServer.init(%{root: root})
     assert {:noreply, next} = CmsHarness.Project.AnalysisServer.handle_info(:poll_recovery, state)
