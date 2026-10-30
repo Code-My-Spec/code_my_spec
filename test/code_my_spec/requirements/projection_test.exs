@@ -20,7 +20,7 @@ defmodule CodeMySpec.Requirements.ProjectionTest do
   import CodeMySpec.UsersFixtures
 
   alias CodeMySpec.Requirements
-  alias CodeMySpec.Requirements.{Preloader, Projection, RequirementGraph}
+  alias CodeMySpec.Requirements.{GraphStore, Preloader, Projection, RequirementGraph}
   alias CodeMySpec.Stories
 
   setup do
@@ -213,20 +213,20 @@ defmodule CodeMySpec.Requirements.ProjectionTest do
     test "a verdict changed in a row is what the reader gets", %{scope: scope} do
       publish(scope)
 
-      vantage = Projection.vantage(scope)
-
+      # A record verdict: stored once per project. File verdicts are the copy's
+      # overlay, not rows.
       row =
         Repo.one!(
-          from n in CodeMySpec.Requirements.Node,
-            where: n.project_id == ^scope.active_project_id and n.working_copy_id == ^vantage,
+          from n in GraphStore.project_rows(),
+            where: n.project_id == ^scope.active_project_id,
             limit: 1
         )
 
       flipped = not row.satisfied
 
-      row
-      |> Ecto.Changeset.change(satisfied: flipped)
-      |> Repo.update!()
+      Repo.update_all(from(n in "project_requirements", where: n.id == ^row.id),
+        set: [satisfied: flipped]
+      )
 
       # Unsettled: a writer draining here would correct the row this test edited.
       {{nodes, _edges}, _computed_at} = RequirementGraph.cached_graph(scope, settle: false)

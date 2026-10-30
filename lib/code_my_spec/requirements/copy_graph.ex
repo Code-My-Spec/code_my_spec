@@ -9,8 +9,9 @@ defmodule CodeMySpec.Requirements.CopyGraph do
   verdicts, `CopyOverlay`), or its three placement gates, settled on read
   (`Handlers.gate_verdicts/1`). Edges are the project's among those nodes.
 
-  Not yet served: it is built beside `Projection.load/2` and compared with it
-  until the switch. See knowledge/requirements_graph/overlay.md.
+  Served: every reader reads it. The per-copy projection is still written
+  until its deletion, so the switch reverts with no data change.
+  See knowledge/requirements_graph/overlay.md.
   """
 
   import Ecto.Query, only: [from: 2]
@@ -31,13 +32,32 @@ defmodule CodeMySpec.Requirements.CopyGraph do
 
   @doc "The graph at the scope's vantage, as `{nodes, edges}`, like `Projection.load/2`."
   @spec load(Scope.t(), map()) :: {[Requirement.t()], [map()]}
-  def load(%Scope{active_project_id: project_id} = scope, ctx) do
+  def load(%Scope{} = scope, ctx) do
+    # A project never projected, or a checkout it does not have, reads as no
+    # graph rather than half of one.
+    if projected_at?(scope), do: read(scope, ctx), else: {[], []}
+  end
+
+  defp projected_at?(%Scope{active_project_id: project_id, active_working_copy_id: nil}),
+    do: not is_nil(GraphStore.topology(project_id))
+
+  defp projected_at?(%Scope{active_project_id: project_id, active_working_copy_id: copy} = scope),
+    do:
+      projected_at?(%{scope | active_working_copy_id: nil}) and
+        Repo.exists?(
+          from(w in CodeMySpec.WorkingCopies.WorkingCopy,
+            where: w.id == ^copy and w.project_id == ^project_id
+          )
+        )
+
+  defp read(%Scope{active_project_id: project_id} = scope, ctx) do
+    scope = RequirementGraph.with_project(scope)
     config = Configurations.get_or_create(scope)
     defined = RequirementGraph.defined_nodes(ctx, config, project_id)
     copy_names = Handlers.copy_names()
     gate_names = Handlers.gate_names()
 
-    {overlay, checked_at} = overlay(project_id, Projection.vantage(scope))
+    {overlay, checked_at} = overlay(scope)
     gates = scope |> Handlers.gate_verdicts() |> Map.new(&{&1.name, sweep(&1)})
 
     reported =
@@ -52,15 +72,101 @@ defmodule CodeMySpec.Requirements.CopyGraph do
     {nodes, Projection.edges_for(project_id, nodes)}
   end
 
-  # The copy's file verdicts by name, or one answer for every node when there
-  # is no report to read.
-  defp overlay(project_id, vantage) do
-    case CopyOverlay.at(project_id, vantage) do
-      {:reported, verdicts, at} ->
-        {Map.new(verdicts, &{&1["name"], wire_sweep(&1)}), DateTime.to_naive(at)}
+  @doc """
+  The details of a file verdict or placement gate `name` on the first of
+  `entity_ids` it names, at the scope's vantage, without loading the graph.
+  `nil` for any other name: those are rows (`NodeRepository`).
+  """
+  @spec details(Scope.t(), String.t(), [String.t()]) :: map() | nil | :not_reported
+  def details(scope, name, entity_ids) do
+    scope = RequirementGraph.with_project(scope)
 
-      :awaiting ->
-        {{:none, @awaiting}, nil}
+    cond do
+      name in Handlers.copy_names() ->
+        {overlay, _checked_at} = overlay(scope)
+        swept_details(overlay, name, entity_ids)
+
+      name in Handlers.gate_names() ->
+        gates = scope |> Handlers.gate_verdicts() |> Map.new(&{&1.name, sweep(&1)})
+        swept_details(gates, name, entity_ids)
+
+      true ->
+        :not_reported
+    end
+  end
+
+  defp swept_details(sweeps, name, entity_ids) do
+    identities = Enum.map(entity_ids, &%{name: name, entity_id: &1})
+
+    found =
+      case sweeps do
+        {:none, _reason} -> nil
+        sweeps -> excepted(Map.get(sweeps, name), identities)
+      end
+
+    {_satisfied, details} = found || verdict(sweeps, %{name: name, entity_id: nil})
+    details
+  end
+
+  # An exception names its entity by id, which a caller hands as a string.
+  defp excepted(nil, _identities), do: nil
+
+  defp excepted({_default, _details, except}, identities) do
+    Enum.find_value(except, fn {id, verdict} ->
+      if Enum.any?(identities, &(to_string(id) == to_string(&1.entity_id))), do: verdict
+    end)
+  end
+
+  @doc """
+  The nodes `names` of `stories` placed at other copies, each read at its own
+  placement copy: for a reader whose role sees every story wherever it is
+  placed (product). Record verdicts are the project's; a story's file verdict
+  is its placement copy's. Edges are those among the nodes read.
+
+  Every story must carry its `working_copy_id`.
+  """
+  @spec placed(Scope.t(), [map()], [String.t()]) :: {[Requirement.t()], [map()]}
+  def placed(_scope, [], _names), do: {[], []}
+
+  def placed(%Scope{active_project_id: project_id} = scope, stories, names) do
+    scope = RequirementGraph.with_project(scope)
+    copy_names = Handlers.copy_names()
+
+    reported =
+      for {copy, here} <- Enum.group_by(stories, & &1.working_copy_id),
+          {overlay, checked_at} = overlay(%{scope | active_working_copy_id: copy}),
+          story <- here,
+          name <- names,
+          name in copy_names do
+        identity = %{
+          entity_type: "story",
+          entity_id: story.id,
+          name: name,
+          owner_component_type: nil,
+          node_scope: nil
+        }
+
+        {satisfied, details} = verdict(overlay, identity)
+        row(identity, satisfied, details, checked_at)
+      end
+
+    story_ids = Enum.map(stories, & &1.id)
+
+    records =
+      from(n in GraphStore.project_rows(), where: n.story_id in ^story_ids and n.name in ^names)
+      |> Repo.all()
+
+    ctx = %{stories: stories, components: [], components_by_id: %{}}
+    nodes = Projection.rehydrate_all(records ++ reported, ctx)
+    {nodes, Projection.edges_for(project_id, nodes)}
+  end
+
+  # The copy's file verdicts by name, reported or computed from its files, or
+  # one answer for every node when there is neither.
+  defp overlay(scope) do
+    case CopyOverlay.verdicts_at(scope) do
+      {_source, verdicts, at} ->
+        {Map.new(verdicts, &{&1["name"], wire_sweep(&1)}), at}
 
       :no_checkout ->
         {{:none, @no_checkout}, nil}

@@ -1973,10 +1973,17 @@ defmodule CodeMySpecSpex.Fixtures do
   restart alone measures a trust. Oracle tooling, like `watch_graph/1`.
   """
   @spec forget_projection(Scope.t()) :: :ok
-  def forget_projection(%Scope{} = scope) do
+  def forget_projection(%Scope{active_project_id: project_id} = scope) do
     scope
     |> Projection.vantages()
     |> Enum.each(&GraphStore.clear(%{scope | active_working_copy_id: &1}))
+
+    # The topology too: a project is projected once it has one.
+    Repo.delete_all(
+      from(t in CodeMySpec.Requirements.ProjectTopology, where: t.project_id == ^project_id)
+    )
+
+    :ok
   end
 
   @doc """

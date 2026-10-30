@@ -2,7 +2,7 @@ defmodule CodeMySpec.Requirements.StoryGraph do
   @moduledoc "A story's component architecture first, then its published requirements."
 
   alias CodeMySpec.{Components, Issues, Requirements, Stories}
-  alias CodeMySpec.Requirements.{Projection, RequirementGraph, Topology}
+  alias CodeMySpec.Requirements.{CopyGraph, Projection, RequirementGraph, Topology}
   alias CodeMySpec.Users.Scope
 
   def read(scope, story_id) do
@@ -44,7 +44,7 @@ defmodule CodeMySpec.Requirements.StoryGraph do
 
         vantage = %{scope | active_working_copy_id: Projection.vantage(scope)}
         :ok = RequirementGraph.settle(vantage)
-        {nodes, _edges} = Projection.load(vantage, slice)
+        {nodes, _edges} = CopyGraph.load(vantage, slice)
         owned = Enum.filter(nodes, &root?(&1, story.id, component_ids))
 
         {:ok, {Enum.count(owned, & &1.satisfied), length(owned)}}

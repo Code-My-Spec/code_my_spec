@@ -32,7 +32,6 @@ defmodule CodeMySpec.Requirements.Profiles do
   alias CodeMySpec.Requirements.DevopsSetupChecker
   alias CodeMySpec.Requirements.PersonasChecker
   alias CodeMySpec.Requirements.Preloader
-  alias CodeMySpec.Stories
   alias CodeMySpec.Stories.AcceptanceCriteria.Criterion
   alias CodeMySpec.Stories.Story
   alias CodeMySpec.Users.Scope
@@ -249,12 +248,19 @@ defmodule CodeMySpec.Requirements.Profiles do
 
   # Whether the architecture was authored through the tools — half of
   # `architecture_designed`'s "a plan exists" — and what a proposal may name.
-  defp fetch(%Scope{} = scope, :architecture) do
-    {:ok, stories} = Stories.list_project_stories(scope)
+  defp fetch(%Scope{active_project_id: project_id} = scope, :architecture) do
+    # `Stories.list_project_stories/1`'s stories (live ones), numbers only.
+    numbers =
+      Repo.all(
+        from(s in Story,
+          where: s.project_id == ^project_id and is_nil(s.retired_at),
+          select: s.number
+        )
+      )
 
     %{
       authored?: Components.any_authored?(scope),
-      story_numbers: Enum.map(stories, & &1.number),
+      story_numbers: numbers,
       context_names: scope |> Components.list_contexts() |> Enum.map(& &1.module_name)
     }
   end

@@ -42,11 +42,9 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   alias CodeMySpec.Conversations
   alias CodeMySpec.Conversations.Drafts
   alias CodeMySpec.Devices
-  alias CodeMySpec.Files
   alias CodeMySpec.Files.File, as: FileRecord
   alias CodeMySpec.Files.FileSync
   alias CodeMySpec.Files.ReconcileRegistry
-  alias CodeMySpec.Files.Scanner
   alias CodeMySpec.Hooks.NotificationHook
   alias CodeMySpec.Hooks.PostToolUse
   alias CodeMySpec.Hooks.PreToolUse
@@ -345,11 +343,8 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   """
   @impl true
   def handle_in("read_model", _payload, socket) do
-    scope = socket.assigns.scope
-    read_model = %{Files.read_model(scope) | overlay_records: CopyOverlay.records(scope)}
-    payload = serialize_read_model(read_model)
-
-    {:reply, {:ok, Map.put(payload, "fingerprint", fingerprint(payload))}, socket}
+    {_read_model, payload} = CopyOverlay.served_read_model(socket.assigns.scope)
+    {:reply, {:ok, payload}, socket}
   end
 
   # A checkout's file verdicts and repository state (`CopyOverlay`). Shadow:
@@ -2165,24 +2160,6 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
 
   defp parse_mtime(_), do: nil
 
-  # Nothing here may be a struct: `story_ids` crosses as a list, and a
-  # component as the fields the harness scanner reads for ownership and
-  # proposal validation.
-  defp serialize_read_model(%Scanner.ReadModel{} = read_model) do
-    %{
-      "component_by_module" => read_model.component_by_module,
-      "component_by_id" => Map.new(read_model.component_by_id, &serialize_component/1),
-      "story_ids" => MapSet.to_list(read_model.story_ids),
-      "story_ids_by_number" => read_model.story_ids_by_number,
-      "story_by_spec_path" => read_model.story_by_spec_path,
-      "strict" => read_model.strict?,
-      "overlay_records" => read_model.overlay_records
-    }
-  end
-
-  defp fingerprint(payload),
-    do: payload |> :erlang.term_to_binary() |> :erlang.md5() |> Base.encode16(case: :lower)
-
   # How long a burst of record writes is gathered into one read-model push.
   # Config so a test can gather over milliseconds.
   defp read_model_coalesce_ms,
@@ -2215,11 +2192,6 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   end
 
   defp check_overlay_when_quiet(socket), do: socket
-
-  defp serialize_component({id, component}) do
-    {id,
-     %{"module_name" => Map.get(component, :module_name), "type" => Map.get(component, :type)}}
-  end
 
   # A harness may only hold a project its credential reaches: a deploy key
   # names exactly one project, and a user reaches the projects in accounts they
