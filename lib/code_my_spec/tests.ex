@@ -147,6 +147,18 @@ defmodule CodeMySpec.Tests do
     end)
   end
 
+  @doc """
+  A test run from a results file the formatter already wrote: how the harness
+  answers a run that finished after it restarted (`CodeMySpec.DurableRun`).
+  """
+  @spec results(String.t(), map()) :: {:ok, term()} | {:error, term()}
+  def results(json_string, metadata) do
+    parse_test_results(
+      json_string,
+      Map.merge(%{file_path: "unknown", command: "mix test", ran_at: DateTime.utc_now()}, metadata)
+    )
+  end
+
   defp parse_test_results(json_string, metadata) do
     case Jason.decode(json_string) do
       {:ok, data} ->
