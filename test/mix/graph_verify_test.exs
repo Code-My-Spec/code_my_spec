@@ -22,7 +22,8 @@ defmodule Mix.Tasks.Cms.GraphVerifyTest do
     scope = full_scope_fixture()
     Requirements.recompute(scope)
 
-    CodeMySpec.Repo.delete_all(CodeMySpec.Requirements.Node)
+    # The stored record verdicts: a copy's file verdicts are read, not stored.
+    CodeMySpec.Repo.delete_all("project_requirements")
 
     output =
       capture_io(fn -> assert catch_exit(GraphVerify.run(arguments(scope))) == {:shutdown, 1} end)
@@ -30,7 +31,7 @@ defmodule Mix.Tasks.Cms.GraphVerifyTest do
     report = Jason.decode!(output)
     refute report["agrees"]
     assert report["missing"] > 0
-    assert CodeMySpec.Repo.aggregate(CodeMySpec.Requirements.Node, :count) == 0
+    assert CodeMySpec.Repo.aggregate("project_requirements", :count) == 0
   end
 
   test "a checkout from another project is rejected" do
