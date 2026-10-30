@@ -101,6 +101,30 @@ defmodule CodeMySpec.Provisioning.BurstBox.SweepTest do
       refute_received {:destroyed, 2}
     end
 
+    test "reaps an idle deploy box left by an interrupted build before the billing window" do
+      box =
+        burst_server(%{
+          "labels" => %{Sweep.role_label() => "true", Builder.deploy_builder_label() => "true"}
+        })
+
+      owner = self()
+
+      destroy = fn _, id ->
+        send(owner, {:destroyed, id})
+        {:ok, %{}}
+      end
+
+      assert [:deleted] =
+               sweep_now(scope(),
+                 list: fn _ -> {:ok, [box]} end,
+                 now: fn -> ~U[2026-08-03 12:10:00Z] end,
+                 busy?: fn _, _ -> false end,
+                 destroy: destroy
+               )
+
+      assert_received {:destroyed, 7}
+    end
+
     test "never checks app servers even if they carry a burst label" do
       servers = [
         burst_server(%{"id" => 1, "name" => "fuellytics"}),
