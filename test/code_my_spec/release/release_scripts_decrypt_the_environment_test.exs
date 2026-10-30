@@ -25,7 +25,8 @@ defmodule CodeMySpec.Release.ReleaseScriptsDecryptTheEnvironmentTest do
     end
 
     stub(Path.join(bin, "code_my_spec"), ~s(echo "release PHX_SERVER=${PHX_SERVER:-} $*"))
-    stub(Path.join(dir, "sops"), ~s(echo "sops $*"))
+    # Like the real one: decrypts, then runs its command through the shell.
+    stub(Path.join(dir, "sops"), ~s(echo "sops $1 $2"; exec /bin/sh -c "$3"))
     %{dir: dir, bin: bin}
   end
 
@@ -34,10 +35,30 @@ defmodule CodeMySpec.Release.ReleaseScriptsDecryptTheEnvironmentTest do
     env = [{"SOPS_AGE_KEY", "AGE-SECRET-KEY-test"}, {"APP_ENV", "uat"}]
 
     assert run(ctx, "server", env) ==
-             "sops exec-env ../envs/uat.enc.env PHX_SERVER=true ./code_my_spec start"
+             "sops exec-env ../envs/uat.enc.env\n" <>
+               "release PHX_SERVER= eval CodeMySpec.Release.migrate\n" <>
+               "release PHX_SERVER=true start"
 
     assert run(ctx, "migrate", env) ==
-             "sops exec-env ../envs/uat.enc.env ./code_my_spec eval CodeMySpec.Release.migrate"
+             "sops exec-env ../envs/uat.enc.env\nrelease PHX_SERVER= eval CodeMySpec.Release.migrate"
+  end
+
+  # A first deploy to our own box boots the app before kamal can migrate, and
+  # the app reads its tables at start (2026-10-30 prod bootstrap).
+  test "on our own boxes, the server migrates before it starts and not at all if that fails",
+       ctx do
+    File.write!(Path.join(ctx.dir, "envs/prod.enc.env"), "ciphertext")
+    env = [{"SOPS_AGE_KEY", "AGE-SECRET-KEY-test"}, {"APP_ENV", "prod"}]
+
+    stub(
+      Path.join(ctx.bin, "code_my_spec"),
+      ~s(case "$1" in eval\) echo "migration failed"; exit 1;; *\) echo "started";; esac)
+    )
+
+    {output, status} = run_raw(ctx, "server", env)
+    assert status != 0
+    assert output =~ "migration failed"
+    refute output =~ "started"
   end
 
   test "with no age key, they start on the environment they were given", ctx do
