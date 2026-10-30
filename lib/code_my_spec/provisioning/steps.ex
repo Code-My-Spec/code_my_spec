@@ -836,6 +836,23 @@ defmodule CodeMySpec.Provisioning.Steps do
     end
   end
 
+  @doc """
+  Restore an uploaded pg_dump into `environment`'s tenant database — the
+  upload-file counterpart to `:import`'s container-to-container copy
+  (`Database.import_from/4`, b6daceee). A cutover's target is typically
+  migrated ahead of the restore, so it already has schema: pass
+  `confirm_non_empty: true` once that is expected, or this refuses and
+  names what rows are already there.
+  """
+  @spec restore_database_dump(Scope.t(), String.t(), String.t(), keyword()) ::
+          {:ok, map()} | {:error, term()}
+  def restore_database_dump(%Scope{} = scope, environment, dump_path, opts \\ []) do
+    case on_import_box(scope, environment, opts) do
+      {:ok, box_opts} -> Database.restore_dump(scope, environment, dump_path, box_opts)
+      {:error, reason} -> {:error, format(reason)}
+    end
+  end
+
   # Adopts the box's own network (by id off its `private_net`, never by a
   # guessed name), creating one for its zone only when it has none.
   # `__adopted__` marks the found branch: teardown deletes anything unmarked.

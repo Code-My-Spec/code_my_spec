@@ -19,6 +19,11 @@ defmodule CodeMySpec.Provisioning.Database do
     dumps and restores a legacy database on the same box, reassigns
     ownership, and compares row counts; `imported?/3` is the same compare
     with nothing run, for `verify/3` and for a repeat caller to skip the work.
+  - **A cutover restores an uploaded dump, not a live source.** `restore_dump/4`
+    is `import_from/4`'s counterpart for a dump file already on the box:
+    it refuses a target that already holds rows unless the caller confirms,
+    takes a pre-restore dump first, and checks row counts against the dump
+    itself rather than the target's prior state.
 
   See knowledge/provisioning, "Database".
   """
@@ -317,6 +322,131 @@ defmodule CodeMySpec.Provisioning.Database do
       else
         {:error, {:database_import_row_counts_mismatched, source_counts, target_counts}}
       end
+    end
+  end
+
+  # Written on the host, not inside the container: `dump_before_restore/4`
+  # and the upload both land here, and `restore_file/3`'s `<` redirection
+  # reads it the same way regardless of which wrote it.
+  @pre_restore_dir "/var/backups/cms-postgres"
+
+  @doc """
+  Restore an uploaded pg_dump -Fc file into `environment`'s tenant database
+  — the upload-file counterpart to `import_from/4`'s container-to-container
+  copy (b6daceee). Unlike that always-empty adopted tenant, this target may
+  already have schema from a migration that ran ahead of it, so
+  `opts[:confirm_non_empty]` is required once any table already holds a
+  row; the refusal names exactly what is there rather than guessing. A
+  pre-restore dump of the target is taken once past that gate, win or lose,
+  so a bad restore is recoverable from it. `rows` is compared against the
+  dump itself — learned by restoring it once into a disposable database,
+  never by trusting a count the dump's own header claims — not against the
+  target's state before this ran.
+  """
+  @spec restore_dump(Scope.t(), String.t(), String.t(), keyword()) ::
+          {:ok, %{pre_restore_dump: String.t(), rows: map()}} | {:error, term()}
+  def restore_dump(%Scope{} = scope, environment, dump_path, opts) do
+    run = Keyword.fetch!(opts, :run)
+
+    with {:ok, credential} <- serve_credential(scope, environment, opts),
+         target = %{database: credential.database, username: credential.username},
+         {:ok, existing} <-
+           table_row_counts(run, @container, @admin_username, target.database),
+         :ok <- refuse_unless_confirmed(existing, opts),
+         {:ok, pre_restore_dump} <- dump_before_restore(run, target, environment, opts),
+         {:ok, expected} <- dump_row_counts(run, dump_path, target.database),
+         :ok <- restore_file(run, dump_path, target.database),
+         :ok <- reassign_ownership(run, target),
+         {:ok, actual} <-
+           table_row_counts(run, @container, @admin_username, target.database) do
+      if actual == expected do
+        {:ok, %{pre_restore_dump: pre_restore_dump, rows: actual}}
+      else
+        {:error, {:database_restore_row_counts_mismatched, expected, actual}}
+      end
+    end
+  end
+
+  defp refuse_unless_confirmed(existing, opts) do
+    present = for {table, count} <- existing, count > 0, into: %{}, do: {table, count}
+
+    cond do
+      map_size(present) == 0 -> :ok
+      Keyword.get(opts, :confirm_non_empty, false) -> :ok
+      true -> {:error, {:database_restore_target_not_empty, present}}
+    end
+  end
+
+  defp dump_before_restore(run, target, environment, opts) do
+    dir = Keyword.get(opts, :pre_restore_dir, @pre_restore_dir)
+    now = Keyword.get(opts, :now, &DateTime.utc_now/0).()
+    stamp = now |> DateTime.to_iso8601() |> String.replace(~r/[^0-9TZ]/, "")
+    path = "#{dir}/#{environment}-#{stamp}.dump"
+
+    command =
+      "mkdir -p #{shell_escape(dir)} && docker exec #{@container} pg_dump -Fc " <>
+        "-U #{shell_escape(@admin_username)} -d #{shell_escape(target.database)} > " <>
+        shell_escape(path)
+
+    case run.([command]) do
+      {_output, 0} -> {:ok, path}
+      {output, status} -> {:error, {:database_pre_restore_dump_failed, status, String.trim(output)}}
+    end
+  end
+
+  # A disposable database nothing else ever connects to, dropped once its
+  # count is read. Never the live scratch database `bin/backup restore`
+  # uses — that one proves backups, this one proves a specific upload, and
+  # a restore caught mid-cutover must not collide with either.
+  defp dump_row_counts(run, dump_path, target_database) do
+    scratch = "#{target_database}_dump_check"
+
+    with :ok <- create_scratch_database(run, scratch),
+         :ok <- restore_file(run, dump_path, scratch),
+         {:ok, counts} <- table_row_counts(run, @container, @admin_username, scratch),
+         :ok <- drop_scratch_database(run, scratch) do
+      {:ok, counts}
+    end
+  end
+
+  defp create_scratch_database(run, database) do
+    sql = "CREATE DATABASE #{database}"
+
+    command =
+      "docker exec #{@container} psql -v ON_ERROR_STOP=1 -U #{shell_escape(@admin_username)} " <>
+        "-c #{shell_escape(sql)} > /dev/null"
+
+    case run.([command]) do
+      {_output, 0} -> :ok
+      {output, status} -> {:error, {:database_scratch_create_failed, status, String.trim(output)}}
+    end
+  end
+
+  defp drop_scratch_database(run, database) do
+    sql = "DROP DATABASE IF EXISTS #{database}"
+
+    command =
+      "docker exec #{@container} psql -v ON_ERROR_STOP=1 -U #{shell_escape(@admin_username)} " <>
+        "-c #{shell_escape(sql)} > /dev/null"
+
+    case run.([command]) do
+      {_output, 0} -> :ok
+      {output, status} -> {:error, {:database_scratch_drop_failed, status, String.trim(output)}}
+    end
+  end
+
+  # `-i`: pg_restore reads from stdin, which the shell connects to
+  # `dump_path` via `<` — a file already on the box, never piped from
+  # another process the way `dump_and_restore/3`'s container source is.
+  defp restore_file(run, dump_path, database) do
+    command =
+      "docker exec -i #{@container} pg_restore --no-owner --no-acl " <>
+        "-U #{shell_escape(@admin_username)} -d #{shell_escape(database)} < " <>
+        shell_escape(dump_path)
+
+    case run.([command]) do
+      {_output, 0} -> :ok
+      {output, status} -> {:error, {:database_restore_failed, status, String.trim(output)}}
     end
   end
 
