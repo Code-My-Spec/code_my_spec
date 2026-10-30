@@ -363,7 +363,17 @@ defmodule CodeMySpec.Provisioning.BuilderTest do
       run = fn [_cmd] -> {"", 0} end
 
       assert {:error, {:source_delivery_failed, :no_reachable_source, _}, _resources} =
-               Builder.build(scope, "abc123", opts(run: run, reference: "reg/app:abc123"))
+               Builder.build(
+                 scope,
+                 "abc123",
+                 opts(
+                   run: run,
+                   reference: "reg/app:abc123",
+                   version_lookup: fn ref ->
+                     {:ok, ref <> String.duplicate("0", 40 - byte_size(ref)), []}
+                   end
+                 )
+               )
     end
   end
 
@@ -492,23 +502,17 @@ defmodule CodeMySpec.Provisioning.BuilderTest do
       assert_received :destroyed
     end
 
-    # The bug the live test (story 877/992 follow-on) actually found:
-    # `destroy_temp_server` used to run unconditionally after this `with`
-    # chain, including on a poll that merely gave up — so a real snapshot
-    # that was still mid-write got destroyed along with its own source,
-    # losing the whole (expensive) bootstrap with nothing to show for it.
-    # Giving up now means leaving the source alone and naming it in the
-    # error — never guessing by deleting the one thing that could still
-    # turn into a usable image.
-    test "gives up without destroying the source if the image is never confirmed ready" do
+    test "destroys the source when the image is never confirmed ready" do
+      owner = self()
       list_images = &list_images_creating_forever/2
       create = fn _scope, _name, _create_opts -> {:ok, server()} end
       run = fn [_command] -> {"", 0} end
       install_release = fn _run, _server, _opts -> :ok end
       create_image = fn _scope, 42, _image_opts -> {:ok, %{"image" => %{"id" => 777}}} end
 
-      destroy = fn _scope, _id ->
-        flunk("the source must not be destroyed while the snapshot's outcome is unconfirmed")
+      destroy = fn _scope, 42 ->
+        send(owner, :destroyed)
+        {:ok, %{}}
       end
 
       assert {:error, {:image_not_confirmed, 777, 42}} =
@@ -522,10 +526,11 @@ defmodule CodeMySpec.Provisioning.BuilderTest do
                  image_poll_attempts: 2,
                  image_poll_interval_ms: 0
                )
+
+      assert_received :destroyed
     end
 
-    # Harness's distinction (3): a timeout and a confirmed loss are not the
-    # same thing, and only one of them still has something worth protecting.
+    # Preserve the distinct error when Hetzner confirms the image vanished.
     test "destroys the source and says the image vanished, rather than merely not-ready, when it is actually gone" do
       owner = self()
       list_images = fn _scope, _opts -> {:ok, []} end
@@ -634,6 +639,52 @@ defmodule CodeMySpec.Provisioning.BuilderTest do
                  install_release: install_release,
                  destroy: destroy
                )
+
+      assert_received :destroyed
+    end
+
+    test "a raised bootstrap error still destroys the temp server and propagates" do
+      owner = self()
+      create = fn _scope, _name, _opts -> {:ok, server()} end
+      run = fn [_command] -> {"", 0} end
+
+      destroy = fn _scope, 42 ->
+        send(owner, :destroyed)
+        {:ok, %{}}
+      end
+
+      assert_raise RuntimeError, "release crashed", fn ->
+        Builder.ensure_burst_box_image(scope(), :x86,
+          list_images: fn _scope, _opts -> {:ok, []} end,
+          create: create,
+          run: run,
+          install_release: fn _run, _server, _opts -> raise "release crashed" end,
+          destroy: destroy
+        )
+      end
+
+      assert_received :destroyed
+    end
+
+    test "a thrown bootstrap error still destroys the temp server and propagates" do
+      owner = self()
+      create = fn _scope, _name, _opts -> {:ok, server()} end
+      run = fn [_command] -> {"", 0} end
+
+      destroy = fn _scope, 42 ->
+        send(owner, :destroyed)
+        {:ok, %{}}
+      end
+
+      assert catch_throw(
+               Builder.ensure_burst_box_image(scope(), :x86,
+                 list_images: fn _scope, _opts -> {:ok, []} end,
+                 create: create,
+                 run: run,
+                 install_release: fn _run, _server, _opts -> throw(:release_crashed) end,
+                 destroy: destroy
+               )
+             ) == :release_crashed
 
       assert_received :destroyed
     end
@@ -822,6 +873,28 @@ defmodule CodeMySpec.Provisioning.BuilderTest do
       assert {:ok, build} = Builder.build(scope(), "abc123", due_opts(build_fun: build_fun()))
 
       assert_received {:destroyed, 42}
+      assert build.builder_destroyed
+    end
+
+    # The default probe SSHes the box with the build's own options; called
+    # without them it raised `key :env not found`, replacing the deploy's
+    # real error (2026-10-30 prod deploy).
+    test "asks the box itself whether it is busy, with the build's options" do
+      owner = self()
+
+      run = fn [command] ->
+        send(owner, {:probed, command})
+        {"", 0}
+      end
+
+      opts =
+        [build_fun: build_fun(), run: run]
+        |> due_opts()
+        |> Keyword.delete(:busy?)
+
+      assert {:ok, build} = Builder.build(scope(), "abc123", opts)
+
+      assert_received {:probed, "docker ps -q --filter label=" <> _}
       assert build.builder_destroyed
     end
 

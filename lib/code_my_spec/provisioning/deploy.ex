@@ -518,7 +518,7 @@ defmodule CodeMySpec.Provisioning.Deploy do
   # "host,ip" target net-ssh builds.
   # See knowledge/provisioning, "Kamal host keys".
   defp diagnose_net_ssh_lookup(opts) do
-    case Keyword.get(opts, :host) do
+    case ssh_target(opts) do
       host when is_binary(host) and host != "" ->
         "ruby -e #{shell_quote(net_ssh_probe_script(host, "net_ssh_probe"))}; "
 
@@ -530,7 +530,7 @@ defmodule CodeMySpec.Provisioning.Deploy do
   # Diagnostic: a bare `Net::SSH.start` with the delivered key, bypassing
   # kamal and SSHKit.
   defp diagnose_real_ssh_connection(opts) do
-    case {Keyword.get(opts, :host), Keyword.get(opts, :ssh_key_path)} do
+    case {ssh_target(opts), Keyword.get(opts, :ssh_key_path)} do
       {host, path} when is_binary(host) and host != "" and is_binary(path) ->
         "ruby -e #{shell_quote(net_ssh_real_probe_script(host, path))}; "
 
@@ -555,7 +555,7 @@ defmodule CodeMySpec.Provisioning.Deploy do
   # `which kamal` and the lockfile's net-ssh — a project Gemfile or binstub
   # can change which net-ssh runs.
   defp diagnose_net_ssh_lookup_in_project_dir(opts) do
-    case Keyword.get(opts, :host) do
+    case ssh_target(opts) do
       host when is_binary(host) and host != "" ->
         "which kamal; gem list net-ssh 2>&1; " <>
           "[ -f Gemfile.lock ] && grep -A1 '    net-ssh' Gemfile.lock; " <>
@@ -600,7 +600,7 @@ defmodule CodeMySpec.Provisioning.Deploy do
   # stale entries), and retries the scan until the file is non-empty.
   # See knowledge/provisioning, "Kamal host keys".
   defp trust_host(opts) do
-    case Keyword.get(opts, :host) do
+    case ssh_target(opts) do
       host when is_binary(host) and host != "" ->
         quoted = shell_quote(host)
 
@@ -622,7 +622,7 @@ defmodule CodeMySpec.Provisioning.Deploy do
   @safe_host_key_algorithms "ssh-rsa,rsa-sha2-512,rsa-sha2-256"
 
   defp restrict_host_key_algorithms(opts) do
-    case Keyword.get(opts, :host) do
+    case ssh_target(opts) do
       host when is_binary(host) and host != "" ->
         "rm -f ~/.ssh/config; " <>
           "printf '%s\\n' #{shell_quote("Host " <> host)} " <>
@@ -630,6 +630,17 @@ defmodule CodeMySpec.Provisioning.Deploy do
 
       _ ->
         ""
+    end
+  end
+
+  # What kamal's ssh connects to: the box's IP when setup knows it
+  # (`config/deploy.yml` reads `CMS_DEPLOY_HOST_IP`), else the host name.
+  # Before a cutover the name still points at the old host, so trusting or
+  # probing it scans the wrong machine.
+  defp ssh_target(opts) do
+    case Keyword.get(opts, :host_ip) do
+      ip when is_binary(ip) and ip != "" -> ip
+      _ -> Keyword.get(opts, :host)
     end
   end
 

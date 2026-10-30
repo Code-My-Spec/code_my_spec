@@ -656,6 +656,33 @@ defmodule CodeMySpec.Provisioning.DeployTest do
              "expected known_hosts wiped, then the host key seeded, before the script runs"
     end
 
+    # Ahead of a cutover the name still resolves to the old host; kamal
+    # connects by `CMS_DEPLOY_HOST_IP`, so that is what gets trusted.
+    test "trusts and probes the server's address when setup knows it", %{env: env} do
+      test_pid = self()
+
+      run = fn [command] ->
+        send(test_pid, {:ran, command})
+        {"", 0}
+      end
+
+      Deploy.run(env, "prod",
+        deploy_script: "bin/deploy",
+        host: "app.example.com",
+        host_ip: "203.0.113.7",
+        run: run,
+        remote_dir: "/build",
+        probe: healthy()
+      )
+
+      assert_receive {:ran, migrate_command}
+
+      assert migrate_command =~ "ssh-keyscan -t rsa -T 10 -H '203.0.113.7'"
+      assert migrate_command =~ "Host 203.0.113.7"
+      refute migrate_command =~ "ssh-keyscan -t rsa -T 10 -H 'app.example.com'"
+      refute migrate_command =~ ~s(host="app.example.com")
+    end
+
     # Root cause confirmed by reading SSHKit's own known_hosts reader
     # (`sshkit/backends/netssh/known_hosts.rb`): unlike net-ssh's own
     # `KnownHosts.search_for`, which collects every key type stored for a

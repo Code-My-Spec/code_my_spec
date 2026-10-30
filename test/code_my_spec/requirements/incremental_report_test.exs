@@ -34,26 +34,29 @@ defmodule CodeMySpec.Requirements.IncrementalReportTest do
       |> DateTime.to_naive()
 
     ids =
-      from(n in Node,
+      from(n in {"project_requirements", Node},
         where: n.project_id == type(^scope.active_project_id, :binary_id),
         limit: ^count,
         select: n.id
       )
       |> Repo.all()
 
-    Repo.update_all(from(n in Node, where: n.id in ^ids), set: [checked_at: at])
+    Repo.update_all(from(n in {"project_requirements", Node}, where: n.id in ^ids),
+      set: [checked_at: at]
+    )
+
     length(ids)
   end
 
   test "a pass that touched a few rows reads as a few rows", %{scope: scope} do
     Requirements.recompute(scope)
 
-    total = Repo.aggregate(from(n in Node), :count)
-    assert total > 3, "need more rows than the pass under test touches"
+    total = Repo.aggregate(from(n in {"project_requirements", Node}), :count)
+    assert total > 2, "need more rows than the pass under test touches"
 
-    # Everything belongs to one old pass, then three rows move.
+    # Everything belongs to one old pass, then one row moves.
     backdate(scope, total, 600)
-    moved = backdate(scope, 3, 0)
+    moved = backdate(scope, 1, 0)
 
     report = Requirements.incremental_report(scope)
     newest = List.first(report.passes)
@@ -76,7 +79,7 @@ defmodule CodeMySpec.Requirements.IncrementalReportTest do
   test "a full rebuild reads as a full rebuild", %{scope: scope} do
     Requirements.recompute(scope)
 
-    total = Repo.aggregate(from(n in Node), :count)
+    total = Repo.aggregate(from(n in {"project_requirements", Node}), :count)
     backdate(scope, total, 0)
 
     report = Requirements.incremental_report(scope)
@@ -98,13 +101,19 @@ defmodule CodeMySpec.Requirements.IncrementalReportTest do
     Requirements.recompute(scope)
 
     before_stamps =
-      from(n in Node, select: n.checked_at) |> Repo.all() |> Enum.uniq() |> Enum.sort()
+      from(n in {"project_requirements", Node}, select: n.checked_at)
+      |> Repo.all()
+      |> Enum.uniq()
+      |> Enum.sort()
 
     Requirements.incremental_report(scope)
     Requirements.incremental_report(scope)
 
     after_stamps =
-      from(n in Node, select: n.checked_at) |> Repo.all() |> Enum.uniq() |> Enum.sort()
+      from(n in {"project_requirements", Node}, select: n.checked_at)
+      |> Repo.all()
+      |> Enum.uniq()
+      |> Enum.sort()
 
     assert before_stamps == after_stamps,
            """

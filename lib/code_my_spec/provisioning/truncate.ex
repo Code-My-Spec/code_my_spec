@@ -45,4 +45,18 @@ defmodule CodeMySpec.Provisioning.Truncate do
       "#{String.slice(text, 0, half)}\n…\n#{String.slice(text, -half, half)}"
     end
   end
+
+  @doc """
+  The last `budget` characters of `text`, after a marker if any were cut.
+
+  For the one family whose cause is always at the end: `docker build`
+  (BuildKit) prints every layer's progress first and closes with the failing
+  step's output and its `failed to solve` summary. Head-and-tail spent half
+  its budget on layer progress, and a reader that keeps only the head saw
+  nothing but `FROM` lines (2026-10-30 prod deploy).
+  """
+  @spec tail(String.t(), pos_integer()) :: String.t()
+  def tail(text, budget) when is_binary(text) and budget > 0 do
+    if String.length(text) <= budget, do: text, else: "…\n" <> String.slice(text, -budget, budget)
+  end
 end

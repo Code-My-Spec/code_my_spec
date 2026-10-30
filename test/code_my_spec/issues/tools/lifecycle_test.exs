@@ -137,6 +137,7 @@ defmodule CodeMySpec.Issues.Tools.LifecycleTest do
       assert match?({:error, _}, response)
       # e516e0f0: promote_issue is a requirement, not a tool; the message
       # names the tools that claim it.
+      assert response_text(response) =~ "evaluate_task"
       assert response_text(response) =~ "get_next_requirement"
       assert response_text(response) =~ "start_task"
       refute response_text(response) =~ "Promote it with"

@@ -2066,7 +2066,7 @@ defmodule CodeMySpec.Provisioning.Steps do
          # builder refuses without `opts[:reference]`.
          {:ok, reference} <- Registry.reference(scope, tag, opts),
          opts = Keyword.put(opts, :reference, reference),
-         opts = with_deploy_execution(opts, scope, environment, reference, architecture),
+         {:ok, opts} <- with_deploy_execution(opts, scope, environment, reference, architecture),
          {:ok, build} <- build_on_builder(scope, tag, architecture, opts) do
       {:ok,
        %{
@@ -2102,9 +2102,33 @@ defmodule CodeMySpec.Provisioning.Steps do
       |> with_registry_credential_for_deploy(scope)
       |> Keyword.put(:environment_previously_deployed, previously_deployed?(scope, environment))
 
-    Keyword.put(opts, :then, fn run, dir ->
-      Deploy.run(env(scope), environment, Keyword.merge(deploy_opts, run: run, remote_dir: dir))
-    end)
+    with :ok <- deploy_target_known(deploy_opts, host, environment) do
+      {:ok,
+       Keyword.put(opts, :then, fn run, dir ->
+         Deploy.run(
+           env(scope),
+           environment,
+           Keyword.merge(deploy_opts, run: run, remote_dir: dir)
+         )
+       end)}
+    end
+  end
+
+  # Ahead of a cutover the host name still resolves to the old host, so
+  # kamal falling back to it would reach the wrong machine (and hang there).
+  defp deploy_target_known(deploy_opts, host, environment) do
+    case {Keyword.get(deploy_opts, :confirm_dns_after_deploy), Keyword.get(deploy_opts, :host_ip)} do
+      {true, ip} when is_binary(ip) and ip != "" ->
+        :ok
+
+      {true, _} ->
+        {:error,
+         "cannot deploy #{environment} ahead of its DNS: no address was found for its server, " <>
+           "and #{host} still points elsewhere"}
+
+      _ ->
+        :ok
+    end
   end
 
   # Tells `Deploy.run/3` whether a failing health check protects something
@@ -2316,8 +2340,13 @@ defmodule CodeMySpec.Provisioning.Steps do
 
   # The box this environment's traffic lands on; not knowable when the deploy
   # config was generated.
+  # The recorded address first (what the DNS readiness check reads), then the
+  # provider's, looked up by server name.
   defp with_host_ip(opts, scope, environment) do
-    case environment_ip(scope, %{name: environment}, opts) do
+    recorded = Environments.get_deployment(scope, environment)
+    target = %{name: environment, ip: recorded && recorded.ip}
+
+    case environment_ip(scope, target, opts) do
       ip when is_binary(ip) and ip != "" -> Keyword.put(opts, :host_ip, ip)
       _ -> opts
     end

@@ -407,7 +407,6 @@ defmodule CodeMySpec.Files.FileSync do
   # machine is often wrong.
   defp announce_graph_change(scope, changed_paths, upserted, removed) do
     obs = GraphInputs.observation_id()
-    entities = sync_entities(scope, changed_paths, removed)
 
     Logger.info(
       "[FileSync] announcing a graph change for #{working_copy(scope)} — " <>
@@ -416,38 +415,21 @@ defmodule CodeMySpec.Files.FileSync do
     )
 
     # Recorded here rather than through `GraphInputs.announce/4`, so the log
-    # line above and the mark share one observation id. The `files_synced` event
-    # settles `file_exists`/`file_valid` from one read via the `:files` profile;
-    # the marks are the fallback for anything without a handler.
+    # line above and the mark share one observation id. The event settles what
+    # persona files move and wakes this copy's agents; a copy's file verdicts
+    # are read from its overlay, so it names no entity to recompute.
     Invalidations.record_event(
       scope.active_project_id,
       "FileSync",
       "files_synced",
       %{},
-      entities,
+      [],
       obs,
       scope.active_working_copy_id
     )
 
     GraphInputs.changed(scope, obs)
   end
-
-  # Which entities these paths belong to, or nothing when we cannot say.
-  # `Files.owners_of_paths/2` resolves through rows, and a removal deleted the
-  # rows that would name its owners — so any removal names nothing, which
-  # records `:unknown` and recomputes everything. Narrowing it means capturing
-  # owners before the delete.
-  defp sync_entities(_scope, _changed, removed) when removed > 0, do: []
-
-  defp sync_entities(scope, changed, _removed) do
-    Files.owners_of_paths(scope, Enum.map(changed, &path_of/1))
-  end
-
-  # `finish_sync/4` hands paths, `reconcile/2` entry maps. Ownership is read
-  # from the just-written rows either way, never from whichever fields an entry
-  # carries.
-  defp path_of(path) when is_binary(path), do: path
-  defp path_of(%{path: path}), do: path
 
   # Every reconcile logs its duration, not only slow ones, so a trend is visible;
   # a timeout otherwise surfaces only as a closed channel and a rejoin loop.

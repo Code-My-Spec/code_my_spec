@@ -1636,7 +1636,6 @@ defmodule CodeMySpecWeb.AgentConversationLiveTest do
       scope: scope,
       project: project
     } do
-      alias CodeMySpec.Requirements.Node
       require Ecto.Query
 
       project_scope = %{scope | active_project_id: project.id, active_project: project}
@@ -1659,7 +1658,8 @@ defmodule CodeMySpecWeb.AgentConversationLiveTest do
 
       before = {done, total}
 
-      Node
+      # The story's record verdicts, stored once per project, move.
+      "project_requirements"
       |> Ecto.Query.where([n], n.story_id == ^story.id and not n.satisfied)
       |> Repo.update_all(set: [satisfied: true])
 

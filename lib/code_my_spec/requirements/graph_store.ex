@@ -14,7 +14,7 @@ defmodule CodeMySpec.Requirements.GraphStore do
   projector when a vantage's rows cannot be trusted and must be seeded.
   """
 
-  import Ecto.Query, only: [from: 2, where: 2, where: 3, dynamic: 2, select: 3, union_all: 2]
+  import Ecto.Query, only: [from: 2, where: 2, where: 3, dynamic: 2, select: 3]
 
   require Logger
 
@@ -22,7 +22,6 @@ defmodule CodeMySpec.Requirements.GraphStore do
   alias CodeMySpec.Repo
   alias CodeMySpec.Requirements.DrainCost
   alias CodeMySpec.Requirements.Node
-  alias CodeMySpec.Requirements.Projection
   alias CodeMySpec.Requirements.ProjectTopology
   alias CodeMySpec.Stories.Story
   alias CodeMySpec.Users.Scope
@@ -31,7 +30,6 @@ defmodule CodeMySpec.Requirements.GraphStore do
   # Declared before any user: a module attribute read above its definition is `nil`.
   @bind_budget 60_000
 
-  @table {"requirements", Node}
   @project_table {"project_requirements", Node}
 
   # Verdicts that read only the project's records, or every checkout's files
@@ -65,38 +63,13 @@ defmodule CodeMySpec.Requirements.GraphStore do
     :updated_at
   ]
 
-  @doc "The table the graph's per-checkout nodes are written to and read from."
-  @spec event_target() :: {String.t(), module()}
-  def event_target, do: @table
-
   @doc "The requirement names stored once per project rather than per checkout."
   @spec project_wide_names() :: [String.t()]
   def project_wide_names, do: @project_wide
 
-  @doc """
-  Every row a reader at `vantage` sees, as `Node`s: the checkout's own and the
-  project's. Readers filter it to the entities visible there.
-  """
-  @spec rows_at(Ecto.UUID.t() | nil) :: Ecto.Query.t()
-  def rows_at(vantage) do
-    checkout = @table |> from(select: ^@fields) |> at(vantage)
-    union_all(project_rows(), ^checkout)
-  end
-
   @doc "The rows stored once per project, as `Node`s."
   @spec project_rows() :: Ecto.Query.t()
   def project_rows, do: from(@project_table, select: ^@fields)
-
-  # Where a requirement's rows live: per checkout, or once per project.
-  defp place(scope, name),
-    do:
-      if(name in @project_wide,
-        do: {@project_table, :project},
-        else: {@table, Projection.vantage(scope)}
-      )
-
-  defp at(query, :project), do: query
-  defp at(query, copy), do: where(query, ^copy_filter(copy))
 
   @type entity :: {String.t(), term()}
 
@@ -114,50 +87,20 @@ defmodule CodeMySpec.Requirements.GraphStore do
   """
   @spec write(Scope.t(), Enumerable.t(), [map()]) ::
           {:ok, %{inserted: non_neg_integer(), reaped: non_neg_integer()}}
-  def write(%Scope{active_project_id: project_id} = scope, covered, nodes) do
+  def write(%Scope{active_project_id: project_id}, covered, nodes) do
     now = NaiveDateTime.utc_now()
-    {project_nodes, checkout_nodes} = Enum.split_with(nodes, &(&1.name in @project_wide))
+    # A copy's file verdicts are its overlay and its placement gates are settled
+    # on read: only record verdicts are stored.
+    project_nodes = Enum.filter(nodes, &(&1.name in @project_wide))
 
     :telemetry.execute(DrainCost.projection_write(), %{count: 1}, %{project_id: project_id})
 
-    vantage = Projection.vantage(scope)
-
-    Repo.transaction(fn ->
-      checkout = write_at(@table, vantage, covered, checkout_nodes, now)
-
-      project =
-        write_at(@project_table, :project, seen_here(covered, vantage), project_nodes, now)
-
-      %{inserted: checkout.inserted + project.inserted, reaped: checkout.reaped + project.reaped}
-    end)
-  end
-
-  # A computation reaps the project's rows only for what it sees. A story placed
-  # at another checkout produces nothing here, which reaps its rows at this
-  # checkout and must not reap the ones every checkout shares.
-  defp seen_here(covered, nil), do: covered
-
-  defp seen_here(covered, vantage) do
-    story_ids = for {"story", id} <- covered, do: id
-
-    elsewhere =
-      Repo.all(
-        from(s in Story,
-          where: s.id in ^story_ids and s.ready_for_dev == true,
-          where: not is_nil(s.working_copy_id) and s.working_copy_id != ^vantage,
-          select: s.id
-        )
-      )
-
-    Enum.reject(covered, fn
-      {"story", id} -> id in elsewhere
-      _entity -> false
-    end)
+    Repo.transaction(fn -> write_at(@project_table, covered, project_nodes, now) end)
   end
 
   # Read before the upsert, so a row it inserts is not counted as already there.
-  defp write_at(target, copy, covered, nodes, now) do
-    existing = existing_rows(target, covered, copy)
+  defp write_at(target, covered, nodes, now) do
+    existing = existing_rows(target, covered)
     before = existing |> Enum.map(& &1.id) |> MapSet.new()
     before_by_key = Map.new(existing, &{{&1.entity_type, &1.owner_id, &1.name}, &1})
 
@@ -165,7 +108,7 @@ defmodule CodeMySpec.Requirements.GraphStore do
       nodes
       |> Enum.group_by(& &1.entity_type)
       |> Enum.flat_map(fn {entity_type, group} ->
-        upsert_group(target, entity_type, group, before_by_key, copy, now)
+        upsert_group(target, entity_type, group, before_by_key, now)
       end)
       |> MapSet.new()
 
@@ -199,10 +142,10 @@ defmodule CodeMySpec.Requirements.GraphStore do
 
   # Rows this vantage already holds are compared here and rewritten by id; new
   # ones are inserted. Returns the ids written, so departed rows are a subtraction.
-  defp upsert_group(target, entity_type, nodes, before_by_key, copy, now) do
+  defp upsert_group(target, entity_type, nodes, before_by_key, now) do
     {fresh, changed} =
       Enum.reduce(nodes, {[], []}, fn node, {fresh, changed} ->
-        row = row(node, entity_type, node.entity_id, copy, now)
+        row = row(node, entity_type, node.entity_id, now)
 
         case Map.get(before_by_key, {entity_type, node.entity_id, node.name}) do
           nil -> {[row | fresh], changed}
@@ -251,7 +194,7 @@ defmodule CodeMySpec.Requirements.GraphStore do
   # Every row the covered owners hold here, with its (owner, name) key — the
   # only rows a write may reap. Carries the key because an unchanged row is
   # absent from RETURNING (see `on_conflict/1`).
-  defp existing_rows(target, covered, copy) do
+  defp existing_rows(target, covered) do
     story_ids = for {"story", id} <- covered, do: id
 
     issue_ids =
@@ -263,7 +206,6 @@ defmodule CodeMySpec.Requirements.GraphStore do
           from(i in CodeMySpec.Issues.Issue, where: i.story_id in ^story_ids, select: i.id)
         ) or type(json_extract_path(n.details, ["story_id"]), :integer) in ^story_ids
       )
-      |> at(copy)
       |> select([n], n.issue_id)
       |> Repo.all()
 
@@ -276,7 +218,6 @@ defmodule CodeMySpec.Requirements.GraphStore do
       |> Enum.flat_map(fn ids ->
         target
         |> where(^owners_filter(entity_type, ids))
-        |> at(copy)
         |> select_existing(entity_type)
         |> Repo.all()
       end)
@@ -326,13 +267,10 @@ defmodule CodeMySpec.Requirements.GraphStore do
   misses.
   """
   @spec put_verdict(Scope.t(), map()) :: {:ok, non_neg_integer()}
-  def put_verdict(%Scope{} = scope, change) do
-    {target, copy} = place(scope, change.name)
-
+  def put_verdict(%Scope{}, change) do
     {count, _} =
-      target
+      @project_table
       |> where(^owner_filter(change.entity_type, change.entity_id))
-      |> at(copy)
       |> where([n], n.name == ^change.name)
       |> Repo.update_all(
         set: [
@@ -384,12 +322,10 @@ defmodule CodeMySpec.Requirements.GraphStore do
   # projects' rows. See knowledge/requirements_graph, "Lessons".
   defp settle_default(scope, entity_type, name, spec, ids, now) do
     owner = owner_field(entity_type)
-    {target, copy} = place(scope, name)
 
     {rows, _} =
-      target
+      @project_table
       |> where([n], n.name == ^name and not is_nil(field(n, ^owner)))
-      |> at(copy)
       |> where(^project_filter(entity_type, scope.active_project_id))
       |> where([n], field(n, ^owner) not in ^ids)
       |> where(^verdict_differs(spec.default, spec.default_details))
@@ -456,14 +392,13 @@ defmodule CodeMySpec.Requirements.GraphStore do
 
   def put_verdicts(%Scope{}, _entity_type, _name, [], _now), do: {:ok, 0}
 
-  def put_verdicts(%Scope{} = scope, entity_type, name, changes, now) do
+  def put_verdicts(%Scope{}, entity_type, name, changes, now) do
     now = now || NaiveDateTime.utc_now()
-    {target, copy} = place(scope, name)
 
     # The stored verdicts first, so only rows that moved are written: most
     # exceptions carry their own details, and one `UPDATE` each was most of a
     # drain's queries.
-    stored = stored_verdicts(target, copy, entity_type, name, Enum.map(changes, & &1.entity_id))
+    stored = stored_verdicts(entity_type, name, Enum.map(changes, & &1.entity_id))
 
     rows =
       changes
@@ -474,10 +409,9 @@ defmodule CodeMySpec.Requirements.GraphStore do
       end)
       |> Enum.reduce(0, fn {{satisfied, details}, ids}, written ->
         {count, _} =
-          target
+          @project_table
           |> where(^owners_filter(entity_type, ids))
           |> where([n], n.name == ^name)
-          |> at(copy)
           |> where(^verdict_differs(satisfied, details))
           |> Repo.update_all(verdict_set(satisfied, details, now))
 
@@ -487,16 +421,15 @@ defmodule CodeMySpec.Requirements.GraphStore do
     {:ok, rows}
   end
 
-  defp stored_verdicts(target, copy, entity_type, name, ids) do
+  defp stored_verdicts(entity_type, name, ids) do
     owner = owner_field(entity_type)
 
     ids
     |> Enum.chunk_every(@bind_budget)
     |> Enum.flat_map(fn chunk ->
-      target
+      @project_table
       |> where(^owners_filter(entity_type, chunk))
       |> where([n], n.name == ^name)
-      |> at(copy)
       |> select([n], {field(n, ^owner), n.satisfied, n.details})
       |> Repo.all()
     end)
@@ -555,17 +488,13 @@ defmodule CodeMySpec.Requirements.GraphStore do
   end
 
   @doc """
-  Whether this vantage has been projected at all.
-
-  Asked of the project's own rows, which every seed writes. A settle asks this
-  before trusting the marks: a checkout someone just read, with no mark naming
-  it, would otherwise never be written. One indexed query.
+  Whether this project has been projected at all: its own rows, which every
+  seed writes. One indexed query.
   """
   @spec projected?(Scope.t()) :: boolean()
-  def projected?(%Scope{active_project_id: project_id} = scope) when is_binary(project_id) do
-    event_target()
+  def projected?(%Scope{active_project_id: project_id}) when is_binary(project_id) do
+    @project_table
     |> where([n], n.project_id == ^project_id)
-    |> where(^copy_filter(Projection.vantage(scope)))
     |> Repo.exists?()
   end
 
@@ -585,9 +514,10 @@ defmodule CodeMySpec.Requirements.GraphStore do
   reason given there.
   """
   @spec definitions_covered?(Scope.t(), map()) :: boolean()
-  def definitions_covered?(%Scope{active_project_id: project_id} = scope, defined)
+  def definitions_covered?(%Scope{active_project_id: project_id}, defined)
       when is_binary(project_id) do
-    held = held(scope, project_id) |> Enum.uniq()
+    held = project_id |> held() |> Enum.uniq()
+    defined = stored_only(defined)
 
     story_held =
       for {nil, story, nil, _t, _s, name} <- held, not is_nil(story), into: MapSet.new(), do: name
@@ -608,70 +538,45 @@ defmodule CodeMySpec.Requirements.GraphStore do
   def definitions_covered?(%Scope{}, _defined), do: true
 
   @doc "Entities whose persisted node membership differs from the current template."
-  def incomplete_entities(%Scope{active_project_id: project_id} = scope, expected) do
-    scope |> held(project_id) |> mismatched_entities(expected)
+  def incomplete_entities(%Scope{active_project_id: project_id}, expected) do
+    project_id |> held() |> mismatched_entities(stored_names(expected))
   end
 
-  # What this vantage holds: its own rows, and the project's for the entities
-  # visible here — the ready stories `Preloader` would load at this vantage.
-  defp held(scope, project_id) do
-    vantage = Projection.vantage(scope)
-    {component_ids, story_ids} = entity_ids(project_id)
-    visible = visible_story_ids(project_id, vantage)
+  # The project's rows for its components and ready stories.
+  defp held(project_id) do
+    {component_ids, _story_ids} = entity_ids(project_id)
 
-    [{@table, vantage, story_ids}, {@project_table, :project, visible}]
-    |> Enum.flat_map(fn {target, copy, stories} ->
-      target
-      |> scoped(project_id, component_ids, stories)
-      |> at(copy)
-      |> select(
-        [n],
-        {n.component_id, n.story_id, n.issue_id, n.owner_component_type, n.node_scope, n.name}
+    ready =
+      Repo.all(
+        from(s in Story,
+          where: s.project_id == ^project_id and s.ready_for_dev == true,
+          select: s.id
+        )
       )
-      |> Repo.all()
-    end)
-  end
 
-  defp visible_story_ids(project_id, vantage) do
-    Story
-    |> where([s], s.project_id == ^project_id and s.ready_for_dev == true)
-    |> placed_here(vantage)
-    |> select([s], s.id)
+    @project_table
+    |> scoped(project_id, component_ids, ready)
+    |> select(
+      [n],
+      {n.component_id, n.story_id, n.issue_id, n.owner_component_type, n.node_scope, n.name}
+    )
     |> Repo.all()
   end
 
-  defp placed_here(query, nil), do: query
-
-  defp placed_here(query, vantage),
-    do: where(query, [s], is_nil(s.working_copy_id) or s.working_copy_id == ^vantage)
-
-  @doc """
-  Delete this vantage's rows owned by stories it does not see — placed at
-  another checkout, or no longer ready — and their issues' rows.
-
-  A seed covers only the stories it sees, so it never reaped these, and
-  coverage counts them as entities the vantage should not hold: every arrival
-  reseeded the vantage. Per checkout only; the project's rows are shared.
-  """
-  @spec reap_unseen(Scope.t(), [term()]) :: {:ok, non_neg_integer()}
-  def reap_unseen(%Scope{active_project_id: project_id} = scope, seen_story_ids) do
-    unseen =
-      from(s in Story,
-        where: s.project_id == ^project_id and s.id not in ^seen_story_ids,
-        select: s.id
-      )
-
-    unseen_issues =
-      from(i in CodeMySpec.Issues.Issue, where: i.story_id in subquery(unseen), select: i.id)
-
-    {count, _} =
-      @table
-      |> where([n], n.story_id in subquery(unseen) or n.issue_id in subquery(unseen_issues))
-      |> at(Projection.vantage(scope))
-      |> Repo.delete_all()
-
-    {:ok, count}
+  # What the templates define, narrowed to what is stored: record verdicts.
+  defp stored_only(defined) do
+    defined
+    |> Map.new(fn
+      {:component, by_type} -> {:component, Map.new(by_type, fn {t, n} -> {t, stored(n)} end)}
+      {:entities, entities} -> {:entities, stored_names(entities)}
+      {key, names} -> {key, stored(names)}
+    end)
   end
+
+  defp stored_names(nil), do: nil
+  defp stored_names(entities), do: Map.new(entities, fn {key, names} -> {key, stored(names)} end)
+
+  defp stored(names), do: MapSet.intersection(MapSet.new(names), MapSet.new(@project_wide))
 
   defp entity_coverage?(_held, nil), do: true
   defp entity_coverage?(held, expected), do: MapSet.size(mismatched_entities(held, expected)) == 0
@@ -721,14 +626,13 @@ defmodule CodeMySpec.Requirements.GraphStore do
   defp covered?(held, expected),
     do: MapSet.size(held) == 0 or MapSet.equal?(held, expected)
 
-  @doc "Forget the rows projection for this vantage, so it rebuilds from scratch."
+  @doc "Forget the project's rows, so it rebuilds from scratch."
   @spec clear(Scope.t()) :: :ok
-  def clear(%Scope{active_project_id: project_id} = scope) when is_binary(project_id) do
+  def clear(%Scope{active_project_id: project_id}) when is_binary(project_id) do
     {component_ids, story_ids} = entity_ids(project_id)
 
-    event_target()
+    @project_table
     |> scoped(project_id, component_ids, story_ids)
-    |> where(^copy_filter(Projection.vantage(scope)))
     |> Repo.delete_all()
 
     :ok
@@ -762,15 +666,7 @@ defmodule CodeMySpec.Requirements.GraphStore do
   defp owner_filter("story", id), do: dynamic([n], n.story_id == ^id)
   defp owner_filter("project", id), do: dynamic([n], n.project_id == ^id)
 
-  # `is_nil` rather than `== nil`: `= NULL` is never true, so the unscoped
-  # vantage would match no row.
-  defp copy_filter(nil), do: dynamic([n], is_nil(n.working_copy_id))
-  defp copy_filter(id), do: dynamic([n], n.working_copy_id == ^id)
-
-  defp row(node, entity_type, entity_id, :project, now),
-    do: node |> row(entity_type, entity_id, nil, now) |> Map.delete(:working_copy_id)
-
-  defp row(node, entity_type, entity_id, working_copy_id, now) do
+  defp row(node, entity_type, entity_id, now) do
     %{
       name: node.name,
       description: node.description || node.name,
@@ -781,8 +677,7 @@ defmodule CodeMySpec.Requirements.GraphStore do
       owner_component_type: Map.get(node, :owner_component_type),
       node_scope: node |> Map.get(:node_scope) |> scope_string(),
       inserted_at: now,
-      updated_at: now,
-      working_copy_id: working_copy_id
+      updated_at: now
     }
     |> Map.put(owner_field(entity_type), entity_id)
   end

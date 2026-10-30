@@ -37,6 +37,21 @@ defmodule CmsHarnessTest.AnalysisResults do
     {:cont, false}
   end
 
+  @doc "Wait up to 30 seconds for an analyzer fixture to write its checkpoint file."
+  @spec await_file(String.t(), pos_integer()) :: boolean()
+  def await_file(path, attempts) do
+    Enum.reduce_while(1..attempts, false, fn _, _ ->
+      file_step(File.exists?(path))
+    end)
+  end
+
+  defp file_step(true), do: {:halt, true}
+
+  defp file_step(false) do
+    Process.sleep(25)
+    {:cont, false}
+  end
+
   @doc """
   Block until `run_id`'s result arrives, draining unrelated ones so they
   cannot be mistaken for the answer.

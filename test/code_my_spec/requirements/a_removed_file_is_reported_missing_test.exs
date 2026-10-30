@@ -41,11 +41,9 @@ defmodule CodeMySpec.Requirements.ARemovedFileIsReportedMissingTest do
   """
   use CodeMySpecSpex.Case, async: true
 
-  import Ecto.Query, only: [from: 2]
-
   alias CodeMySpec.ExecutionContexts
   alias CodeMySpec.Files.FileSync
-  alias CodeMySpec.Requirements.{IncrementalGraph, Projection}
+  alias CodeMySpec.Requirements.{IncrementalGraph, RequirementGraph}
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -61,29 +59,14 @@ defmodule CodeMySpec.Requirements.ARemovedFileIsReportedMissingTest do
     :ok = IncrementalGraph.settle(scope.active_project_id)
   end
 
-  # What the event path says about this component's implementation file, at this
-  # checkout. Read from the graph rows rather than the endpoint because the
-  # endpoint serves the pass's answer, and the pass is not what is under test.
+  # What the served graph says about this component's implementation file at
+  # this checkout: the copy's own file verdict.
   defp served_verdict(scope, component_id) do
-    base =
-      from(n in "requirements",
-        where:
-          n.component_id == type(^component_id, :binary_id) and
-            n.name == "implementation_file",
-        select: type(n.satisfied, :boolean)
-      )
+    {nodes, _edges} = RequirementGraph.served_graph(scope, RequirementGraph.read_context(scope))
 
-    scope
-    |> Projection.vantage()
-    |> scoped_to_copy(base)
-    |> CodeMySpec.Repo.one()
+    node = Enum.find(nodes, &(&1.entity_id == component_id and &1.name == "implementation_file"))
+    node && node.satisfied
   end
-
-  defp scoped_to_copy(nil, query),
-    do: from(n in query, where: is_nil(n.working_copy_id))
-
-  defp scoped_to_copy(copy, query),
-    do: from(n in query, where: n.working_copy_id == type(^copy, :binary_id))
 
   describe "a file that was there and is not any more" do
     test "stops being reported as present", %{scope: scope, execution_context: env} do

@@ -46,7 +46,7 @@ defmodule CmsHarness.Agents.Spill do
   defp notice(text, length, path) do
     omitted = length - @preview_chars - @tail_chars
 
-    "Output too large (#{length} chars). Full output saved to: #{path}\n" <>
+    "Output too large (#{length} chars). Full output saved to:\n#{path}\n" <>
       "Read that file in parts (sed -n, grep) for anything not shown here.\n\n" <>
       "First #{@preview_chars} chars:\n" <>
       String.slice(text, 0, @preview_chars) <>

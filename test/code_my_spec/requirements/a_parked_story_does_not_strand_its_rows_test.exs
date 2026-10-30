@@ -123,6 +123,8 @@ defmodule CodeMySpec.Requirements.AParkedStoryDoesNotStrandItsRowsTest do
   end
 
   defp rows_for(story_id) do
-    Node |> where([n], n.story_id == ^story_id) |> Repo.aggregate(:count)
+    {"project_requirements", Node}
+    |> where([n], n.story_id == ^story_id)
+    |> Repo.aggregate(:count)
   end
 end

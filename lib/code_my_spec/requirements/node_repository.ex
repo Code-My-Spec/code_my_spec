@@ -26,7 +26,7 @@ defmodule CodeMySpec.Requirements.NodeRepository do
   import Ecto.Query
 
   alias CodeMySpec.Repo
-  alias CodeMySpec.Requirements.{GraphStore, Projection}
+  alias CodeMySpec.Requirements.{CopyGraph, GraphStore}
   alias CodeMySpec.Users.Scope
 
   @doc """
@@ -51,10 +51,18 @@ defmodule CodeMySpec.Requirements.NodeRepository do
 
   def requirement_details(%Scope{}, _name, []), do: nil
 
-  def requirement_details(%Scope{active_project_id: project_id} = scope, name, entity_ids) do
+  def requirement_details(%Scope{} = scope, name, entity_ids) do
     wanted = Enum.map(entity_ids, &to_string/1)
 
-    from(n in subquery(GraphStore.rows_at(Projection.vantage(scope))),
+    # File verdicts and placement gates are the copy's overlay, not rows.
+    case CopyGraph.details(scope, to_string(name), wanted) do
+      :not_reported -> recorded_details(scope, name, wanted)
+      details -> details
+    end
+  end
+
+  defp recorded_details(%Scope{active_project_id: project_id}, name, wanted) do
+    from(n in subquery(GraphStore.project_rows()),
       where: n.name == ^to_string(name),
       where:
         n.project_id == ^project_id or

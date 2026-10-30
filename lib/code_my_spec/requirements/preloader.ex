@@ -293,7 +293,7 @@ defmodule CodeMySpec.Requirements.Preloader do
   (`RoleProfile.story_vantage/1` is `:project` — product).
   `load/2` leaves these out on purpose: a copy is offered its own stories and
   the unassigned ones. Their verdicts live at their placement copy's vantage,
-  which `Projection.placed/2` reads. Empty for a scope naming no checkout, which
+  which `CopyGraph.placed/3` reads. Empty for a scope naming no checkout, which
   already reads every story.
   """
   @spec placed_elsewhere(Scope.t()) :: [Story.t()]

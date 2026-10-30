@@ -14,7 +14,9 @@ defmodule CodeMySpec.WorkingCopiesActiveStoryTest do
 
   alias CodeMySpec.Agents
   alias CodeMySpec.Agents.AgentsRepository
+  alias CodeMySpec.Files.File, as: FileRecord
   alias CodeMySpec.Repo
+  alias CodeMySpec.Stories.AcceptanceCriteria
   alias CodeMySpec.Stories.Story
   alias CodeMySpec.WorkingCopies
 
@@ -43,15 +45,21 @@ defmodule CodeMySpec.WorkingCopiesActiveStoryTest do
   defp choose(scope, story_id),
     do: Agents.assign_team(scope, scope.active_working_copy_id, story_id)
 
-  # Every requirement of the story satisfied at the copy: its own rows, and the
-  # ones stored once per project.
+  # Every requirement of the story satisfied at the copy: its record verdicts,
+  # stored once per project, and its file verdict, read from the copy's files —
+  # a spex naming each criterion.
   defp satisfy_story(story, scope) do
-    Repo.update_all(
-      from(n in CodeMySpec.Requirements.Node,
-        where: n.story_id == ^story.id and n.working_copy_id == ^scope.active_working_copy_id
-      ),
-      set: [satisfied: true]
-    )
+    for criterion <- AcceptanceCriteria.list_story_criteria(scope, story.id) do
+      Repo.insert!(%FileRecord{
+        project_id: scope.active_project_id,
+        working_copy_id: scope.active_working_copy_id,
+        path: "test/spex/#{story.number}_done/criterion_#{criterion.number}_spex.exs",
+        role: :bdd_spec,
+        valid: true,
+        validation_errors: %{"data" => %{"criterion" => criterion.number}},
+        criterion_number: criterion.number
+      })
+    end
 
     Repo.update_all(
       from(n in {"project_requirements", CodeMySpec.Requirements.Node},

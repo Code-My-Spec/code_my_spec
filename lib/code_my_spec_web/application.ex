@@ -80,6 +80,8 @@ defmodule CodeMySpecWeb.Application do
         CodeMySpec.Faults,
         # The last graph drain's cost per project, for the graph endpoint.
         CodeMySpec.Requirements.DrainCost,
+        # File verdicts computed for copies whose harness has no current report.
+        CodeMySpec.Requirements.CopyOverlay.Cache,
         # Intake conversations, one process per plan, so the flow outlives any
         # LiveView.
         # See knowledge/web, "Intake workspace".

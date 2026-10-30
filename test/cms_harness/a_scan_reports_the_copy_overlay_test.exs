@@ -50,7 +50,7 @@ defmodule CmsHarness.AScanReportsTheCopyOverlayTest do
       _env, "git", ["rev-parse", "HEAD"], _opts -> {"abc123\n", 0}
       _env, "git", ["rev-parse", "--abbrev-ref", "origin/HEAD"], _opts -> {"origin/main\n", 0}
       _env, "git", ["rev-list", "--count", "HEAD..origin/main"], _opts -> {"4\n", 0}
-      _env, "git", ["status" | _], _opts -> {" M lib/a.ex\n", 0}
+      _env, "git", ["--no-optional-locks", "status" | _], _opts -> {" M lib/a.ex\n", 0}
       _env, _command, _args, _opts -> {"", 1}
     end)
 

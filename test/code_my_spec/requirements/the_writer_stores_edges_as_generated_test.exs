@@ -16,7 +16,6 @@ defmodule CodeMySpec.Requirements.TheWriterStoresEdgesAsGeneratedTest do
   alias CodeMySpec.Requirements.Edges
   alias CodeMySpec.Requirements.IncrementalGraph
   alias CodeMySpec.Requirements.Preloader
-  alias CodeMySpec.Requirements.Projection
   alias CodeMySpec.Requirements.RequirementGraph
   alias CodeMySpec.Requirements.Topology
   alias CodeMySpec.Stories
@@ -77,7 +76,7 @@ defmodule CodeMySpec.Requirements.TheWriterStoresEdgesAsGeneratedTest do
     :ok = IncrementalGraph.settle(scope.active_project_id)
   end
 
-  defp stored(scope), do: Projection.load(scope, Preloader.topology_context(scope))
+  defp stored(scope), do: RequirementGraph.served_graph(scope, Preloader.topology_context(scope))
 
   defp generated(scope, nodes) do
     config = Configurations.get_or_create(scope)

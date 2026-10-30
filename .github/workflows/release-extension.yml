@@ -45,7 +45,7 @@ jobs:
           # The release is built natively per runner, so there is no
           # cross-compile here either.
           - name: Linux x64
-            runner: ubuntu-latest
+            runner: ubuntu-24.04
             asset: cms-linux-x64.tar.gz
           - name: Linux ARM64
             runner: ubuntu-24.04-arm
@@ -86,8 +86,8 @@ jobs:
           path: |
             deps
             _build
-          key: ${{ runner.os }}-mix-${{ env.MIX_ENV }}-${{ hashFiles('mix.lock') }}
-          restore-keys: ${{ runner.os }}-mix-${{ env.MIX_ENV }}-
+          key: ${{ matrix.runner }}-${{ runner.arch }}-beam-${{ env.OTP_VERSION }}-${{ env.ELIXIR_VERSION }}-mix-${{ env.MIX_ENV }}-${{ hashFiles('mix.lock') }}
+          restore-keys: ${{ matrix.runner }}-${{ runner.arch }}-beam-${{ env.OTP_VERSION }}-${{ env.ELIXIR_VERSION }}-mix-${{ env.MIX_ENV }}-
 
       - name: Install dependencies
         run: mix deps.get
@@ -130,7 +130,7 @@ jobs:
         run: |
           rm -rf _build/harness release/
           mix compile --warnings-as-errors
-          if [ "$RUNNER_OS" = "Windows" ]; then
+          if [ "$RUNNER_OS" = "Windows" ] && [ -d _build/harness/lib/ortex/priv/native ]; then
             native="_build/harness/lib/ortex/priv/native"
             test -d "$native"
             cp "$ORT_LIB_LOCATION"/onnxruntime*.dll "$native/"
@@ -139,6 +139,29 @@ jobs:
           mix release cms_harness
           cp _build/harness/cms_harness-*.tar.gz "${{ matrix.asset }}"
           ls -la "${{ matrix.asset }}"
+
+      # Exercise the router compiled into the release, not the test build.
+      # v2.0.701 shipped without this route even though the plugin posted to it.
+      - name: Check packaged init route
+        if: runner.os != 'Windows'
+        env:
+          CMS_HARNESS_PORT: '0'
+        run: |
+          _build/harness/rel/cms_harness/bin/cms_harness eval '
+            case Phoenix.Router.route_info(CmsHarness.Web.Router, "POST", "/api/skills/init", "localhost") do
+              %{plug: CmsHarness.Web.InitController, plug_opts: :start} ->
+                IO.puts("Packaged /api/skills/init reaches InitController.start")
+              other ->
+                raise "Packaged /api/skills/init is unavailable: #{inspect(other)}"
+            end
+          '
+
+      # Test the actual ERTS/NIFs and endpoint on the oldest supported cloud base.
+      - name: Smoke-test Linux x64 on Ubuntu 24.04
+        if: matrix.asset == 'cms-linux-x64.tar.gz'
+        run: |
+          docker build -t cms-harness-smoke -f scripts/release/Dockerfile.harness-smoke scripts/release
+          docker run --rm --network none --mount type=bind,source="$PWD/${{ matrix.asset }}",target=/artifact.tar.gz,readonly cms-harness-smoke /artifact.tar.gz
 
       - name: Upload release tarball
         uses: actions/upload-artifact@v4

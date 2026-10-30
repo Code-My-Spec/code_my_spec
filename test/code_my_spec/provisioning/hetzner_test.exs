@@ -212,6 +212,25 @@ defmodule CodeMySpec.Provisioning.HetznerTest do
       assert body["error"]["message"] =~ "deprecated"
     end
 
+    test "explains a full primary IP quota and how to free it", ctx do
+      stub(fn conn ->
+        json(conn, 403, %{
+          "error" => %{
+            "code" => "resource_limit_exceeded",
+            "message" => "Primary IP limit exceeded",
+            "details" => %{"limits" => [%{"name" => "primary_ip_limit"}]}
+          }
+        })
+      end)
+
+      assert {:error, {:resource_limit_exceeded, message}} =
+               Hetzner.create_server(ctx.scope, "box", ssh_key_ids: [1])
+
+      assert message =~ "primary IP limit"
+      assert message =~ "Existing servers"
+      assert message =~ "delete an unused server"
+    end
+
     # A pinned type is the caller saying which box it wants — the builder does
     # exactly this. `create_in/4` re-applies the override to the retry, so
     # falling back would resend the identical request and report the second

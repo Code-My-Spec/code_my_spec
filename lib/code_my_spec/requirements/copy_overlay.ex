@@ -7,8 +7,9 @@ defmodule CodeMySpec.Requirements.CopyOverlay do
   records served with its read model (`records/1`). Both sides settle through
   `Handlers.copy_verdicts/1`, so the code is the same.
 
-  Shadow: the server stores each report (`report/2`) and compares it with its
-  own rows for the checkout (`check/1`); nothing reads it.
+  The server stores each report (`report/2`); readers take it when it answers
+  the current records, else compute the same verdicts from the copy's File rows
+  (`verdicts_at/1`).
   See knowledge/requirements_graph/overlay.md.
   """
 
@@ -16,18 +17,16 @@ defmodule CodeMySpec.Requirements.CopyOverlay do
 
   require Logger
 
+  alias CodeMySpec.Files
   alias CodeMySpec.Files.Scanner
   alias CodeMySpec.Files.Scanner.ReadModel
   alias CodeMySpec.Repo
+  alias CodeMySpec.Requirements.CopyOverlay.Cache
   alias CodeMySpec.Requirements.CopyOverlay.Report
   alias CodeMySpec.Requirements.Handlers
-  alias CodeMySpec.Requirements.IncrementalGraph
-  alias CodeMySpec.Requirements.Node
   alias CodeMySpec.Requirements.Profiles
-  alias CodeMySpec.Requirements.Verification
   alias CodeMySpec.Users.Scope
-
-  @samples 5
+  alias CodeMySpec.WorkingCopies
 
   @doc """
   The records the file verdicts read beyond the scan, in wire form: live
@@ -47,6 +46,40 @@ defmodule CodeMySpec.Requirements.CopyOverlay do
       "story_numbers" => architecture.story_numbers,
       "context_names" => architecture.context_names
     }
+  end
+
+  @doc """
+  The read model a harness is served, as the struct and as its wire payload
+  with the payload's `"fingerprint"`. The fingerprint is how a report says
+  which records it answers, and how a reader tells a stale report.
+
+  Nothing in the payload may be a struct: `story_ids` crosses as a list, and a
+  component as the fields the harness scanner reads for ownership and
+  proposal validation.
+  """
+  @spec served_read_model(Scope.t()) :: {ReadModel.t(), map()}
+  def served_read_model(%Scope{} = scope) do
+    read_model = %{Files.read_model(scope) | overlay_records: records(scope)}
+
+    payload = %{
+      "component_by_module" => read_model.component_by_module,
+      "component_by_id" => Map.new(read_model.component_by_id, &served_component/1),
+      "story_ids" => MapSet.to_list(read_model.story_ids),
+      "story_ids_by_number" => read_model.story_ids_by_number,
+      "story_by_spec_path" => read_model.story_by_spec_path,
+      "strict" => read_model.strict?,
+      "overlay_records" => read_model.overlay_records
+    }
+
+    fingerprint =
+      payload |> :erlang.term_to_binary() |> :erlang.md5() |> Base.encode16(case: :lower)
+
+    {%{read_model | fingerprint: fingerprint}, Map.put(payload, "fingerprint", fingerprint)}
+  end
+
+  defp served_component({id, component}) do
+    {id,
+     %{"module_name" => Map.get(component, :module_name), "type" => Map.get(component, :type)}}
   end
 
   @doc """
@@ -147,8 +180,7 @@ defmodule CodeMySpec.Requirements.CopyOverlay do
   defp json(value), do: value |> Jason.encode!() |> Jason.decode!()
 
   @doc """
-  Store a checkout's report, replacing its last. The comparison count is
-  cleared until `check/1` runs; the run of clean reports is kept.
+  Store a checkout's report, replacing its last.
   """
   @spec report(Scope.t(), map()) :: {:ok, Report.t()} | {:error, term()}
   def report(%Scope{active_working_copy_id: copy, active_project_id: project}, payload)
@@ -163,14 +195,11 @@ defmodule CodeMySpec.Requirements.CopyOverlay do
       behind: payload["behind"],
       dirty: payload["dirty"],
       verdicts: :erlang.term_to_binary(payload["verdicts"], [:compressed]),
-      reported_at: now,
-      mismatches: nil,
-      compared_at: nil
+      reported_at: now
     })
     |> Repo.insert(
       on_conflict:
-        {:replace,
-         ~w(project_id read_model head behind dirty verdicts reported_at mismatches compared_at updated_at)a},
+        {:replace, ~w(project_id read_model head behind dirty verdicts reported_at updated_at)a},
       conflict_target: :working_copy_id
     )
   end
@@ -178,139 +207,60 @@ defmodule CodeMySpec.Requirements.CopyOverlay do
   def report(_scope, _payload), do: {:error, :no_copy}
 
   @doc """
-  The overlay a reader at `vantage` sees: its copy's last report, or for `nil`
-  the project's default copy's. `:awaiting` when that copy has not reported,
-  `:no_checkout` when `nil` has no default copy to read.
+  The file verdicts a reader at the scope's vantage sees: its copy's, or for
+  `nil` the copy the project reads from (`WorkingCopies.reading_copy_id/1`).
+
+  The harness's report when it answers the records as they are now (its
+  `read_model` fingerprint is current). Otherwise computed here, by the same
+  code, from the copy's File rows: a harness too old to report, one not yet
+  restarted, or none at all still reads a complete graph from its last
+  manifest; a copy with no File rows reads as an empty checkout, as its rows
+  did. Computed verdicts are kept per copy until the records or the copy's
+  files move. `:no_checkout` for `nil` when no copy speaks for the project.
   """
-  @spec at(Ecto.UUID.t(), Ecto.UUID.t() | nil) ::
-          {:reported, [map()], DateTime.t()} | :awaiting | :no_checkout
-  def at(project_id, nil) do
-    case Repo.one(
-           from(p in CodeMySpec.Projects.Project,
-             where: p.id == ^project_id,
-             select: p.default_working_copy_id
-           )
-         ) do
+  @spec verdicts_at(Scope.t()) ::
+          {:reported | :computed, [map()], NaiveDateTime.t() | nil} | :no_checkout
+  def verdicts_at(%Scope{active_working_copy_id: nil} = scope) do
+    case WorkingCopies.reading_copy_id(scope) do
       nil -> :no_checkout
-      copy -> at(project_id, copy)
+      copy -> verdicts_at(%{scope | active_working_copy_id: copy})
     end
   end
 
-  def at(_project_id, copy) do
-    case Repo.get(Report, copy) do
-      nil ->
-        :awaiting
-
-      report ->
-        {:reported, :erlang.binary_to_term(report.verdicts, [:safe]), report.reported_at}
-    end
-  end
-
-  @doc """
-  Compare the checkout's last report with the server's own rows for it, once
-  the projector has settled, and record the result on the report.
-  """
-  @spec check(Scope.t()) :: {:ok, map()} | {:error, :no_report}
-  def check(%Scope{active_working_copy_id: copy, active_project_id: project}) do
-    :ok = IncrementalGraph.settle(project, [copy])
+  def verdicts_at(%Scope{active_working_copy_id: copy} = scope) do
+    {read_model, _payload} = served_read_model(scope)
 
     case Repo.get(Report, copy) do
-      nil ->
-        {:error, :no_report}
+      %Report{read_model: fingerprint} = report when fingerprint == read_model.fingerprint ->
+        {:reported, :erlang.binary_to_term(report.verdicts, [:safe]),
+         DateTime.to_naive(report.reported_at)}
 
-      report ->
-        verdicts = :erlang.binary_to_term(report.verdicts, [:safe])
-        result = compare(verdicts, rows(copy))
-        record(report, result)
-        log(copy, result)
-        {:ok, result}
+      _none_or_stale ->
+        computed(copy, read_model)
     end
   end
 
-  @doc """
-  How a report's verdicts agree with stored rows (`%{name, entity_type,
-  entity_id, satisfied, details}`): every row is compared with its entity's
-  exception, else its requirement's default. A requirement the report leaves
-  out disagrees at every row.
-  """
-  @spec compare([map()], [map()]) :: %{compared: non_neg_integer(), mismatches: [map()]}
-  def compare(verdicts, rows) do
-    by_name = Map.new(verdicts, &{&1["name"], &1})
+  # What the copy's last manifest left, as the harness would have scanned it.
+  defp computed(copy, read_model) do
+    {synced_at, _count} =
+      files =
+      Repo.one(
+        from(f in CodeMySpec.Files.File,
+          where: f.working_copy_id == ^copy,
+          select: {max(f.updated_at), count(f.id)}
+        )
+      )
 
-    mismatches =
-      for row <- rows,
-          reported = reported(Map.get(by_name, row.name), row),
-          reported != stored(row),
-          do: %{
-            name: row.name,
-            entity: {row.entity_type, row.entity_id},
-            overlay: reported,
-            server: stored(row)
-          }
+    verdicts =
+      Cache.fetch(copy, {read_model.fingerprint, files}, fn ->
+        from(f in CodeMySpec.Files.File,
+          where: f.working_copy_id == ^copy,
+          select: map(f, [:path, :role, :valid, :validation_errors, :size])
+        )
+        |> Repo.all()
+        |> verdicts(read_model)
+      end)
 
-    %{compared: length(rows), mismatches: mismatches}
+    {:computed, verdicts, synced_at}
   end
-
-  defp reported(nil, _row), do: :unreported
-  defp reported(%{"type" => type}, %{entity_type: other}) when type != other, do: :unreported
-
-  defp reported(sweep, row) do
-    {satisfied, details} =
-      case Enum.find(sweep["except"], fn [id | _] -> id == row.entity_id end) do
-        [_id, satisfied, details] -> {satisfied, details}
-        nil -> {sweep["default"], sweep["default_details"]}
-      end
-
-    Verification.stored(%{name: row.name, satisfied: satisfied, details: details})
-  end
-
-  defp stored(row),
-    do: Verification.stored(%{name: row.name, satisfied: row.satisfied, details: row.details})
-
-  # The checkout's own rows for the names a report carries, each with its owner.
-  defp rows(copy) do
-    names = Handlers.copy_names()
-
-    from(n in {"requirements", Node},
-      where: n.working_copy_id == type(^copy, Ecto.UUID) and n.name in ^names,
-      select:
-        map(n, [:name, :component_id, :story_id, :issue_id, :project_id, :satisfied, :details])
-    )
-    |> Repo.all()
-    |> Enum.map(&owned/1)
-  end
-
-  defp owned(%{component_id: id} = row) when not is_nil(id), do: owner(row, "component", id)
-  defp owned(%{story_id: id} = row) when not is_nil(id), do: owner(row, "story", id)
-  defp owned(%{issue_id: id} = row) when not is_nil(id), do: owner(row, "issue", id)
-  defp owned(row), do: owner(row, "project", row.project_id)
-
-  defp owner(row, type, id), do: Map.merge(row, %{entity_type: type, entity_id: id})
-
-  defp record(report, %{mismatches: mismatches}) do
-    count = length(mismatches)
-
-    report
-    |> Report.changeset(%{
-      mismatches: count,
-      clean_reports: if(count == 0, do: report.clean_reports + 1, else: 0),
-      compared_at: DateTime.utc_now()
-    })
-    |> Repo.update!()
-  end
-
-  defp log(copy, %{compared: compared, mismatches: []}) do
-    Logger.info("[CopyOverlay] copy #{copy}: #{compared} verdicts compared, 0 mismatches")
-  end
-
-  defp log(copy, %{compared: compared, mismatches: mismatches}) do
-    Logger.warning(
-      "[CopyOverlay] copy #{copy}: #{compared} verdicts compared, #{length(mismatches)} " <>
-        "mismatches; first #{min(@samples, length(mismatches))}: " <>
-        (mismatches |> Enum.take(@samples) |> Enum.map_join("; ", &sample/1))
-    )
-  end
-
-  defp sample(%{name: name, entity: {type, id}, overlay: overlay, server: server}),
-    do: "#{name} #{type} #{id}: overlay #{inspect(overlay)} server #{inspect(server)}"
 end

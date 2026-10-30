@@ -629,9 +629,14 @@ defmodule CodeMySpecSpex.Case do
     Application.put_env(
       :code_my_spec,
       :provisioning_step_opts,
-      Keyword.put(previous_step_opts, :dns_lookup, fn name, :a, _opts ->
-        Fakes.Resolver.addresses(cloudflare, name)
-      end)
+      Keyword.merge(previous_step_opts,
+        dns_lookup: fn name, :a, _opts ->
+          Fakes.Resolver.addresses(cloudflare, name)
+        end,
+        version_lookup: fn ref ->
+          {:ok, ref <> String.duplicate("0", 40 - byte_size(ref)), []}
+        end
+      )
     )
 
     on_exit(fn ->

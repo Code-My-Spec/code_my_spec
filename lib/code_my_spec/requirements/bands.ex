@@ -5,18 +5,14 @@ defmodule CodeMySpec.Requirements.Bands do
 
   Which side of the join a gate is on comes from the project template and
   `RequirementGraph.story_join/0`, so it is fixed per requirement name — no
-  graph is loaded to find it. The counts are grouped queries over the stored
-  rows at the scope's vantage, cheap enough to read wherever the timeline is
-  drawn.
+  graph is loaded to find it. The counts are over the graph served at the
+  scope's vantage (`RequirementGraph.served_graph/2`).
   """
 
   import Ecto.Query
 
-  alias CodeMySpec.Components.Component
   alias CodeMySpec.Issues.Issue
   alias CodeMySpec.Repo
-  alias CodeMySpec.Requirements.GraphStore
-  alias CodeMySpec.Requirements.Projection
   alias CodeMySpec.Requirements.RequirementDefinitionData
   alias CodeMySpec.Requirements.RequirementGraph
   alias CodeMySpec.Stories.Story
@@ -85,50 +81,36 @@ defmodule CodeMySpec.Requirements.Bands do
   """
   @spec read(Scope.t()) :: t()
   def read(%Scope{active_project_id: project_id} = scope) when is_binary(project_id) do
-    vantage = Projection.vantage(scope)
-    {in_progress, done} = stories(project_id, vantage)
+    ctx = RequirementGraph.read_context(scope)
+    {nodes, _edges} = RequirementGraph.served_graph(scope, ctx)
+    by_type = Enum.group_by(nodes, & &1.entity_type)
+    {in_progress, done} = stories(Map.get(by_type, "story", []), ctx, project_id)
 
     %{
-      satisfied: satisfied_gates(project_id, vantage),
+      satisfied: satisfied_gates(Map.get(by_type, "project", [])),
       late_names: late_project_names(),
       stories: in_progress,
       story_counts: Map.put(story_counts(project_id), :done, done),
-      components: component_counts(project_id, vantage),
+      components: component_counts(Map.get(by_type, "component", []), ctx),
       issues: issue_counts(project_id)
     }
   end
 
-  defp rows_at(vantage), do: from(r in subquery(GraphStore.rows_at(vantage)))
-
-  # A checkout sees its own stories and the unplaced ones; `nil` sees every one.
-  defp placed_here(query, nil), do: query
-
-  defp placed_here(query, vantage),
-    do: where(query, [_r, s], is_nil(s.working_copy_id) or s.working_copy_id == ^vantage)
-
-  defp satisfied_gates(project_id, vantage) do
-    vantage
-    |> rows_at()
-    |> where([r], r.project_id == ^project_id and r.satisfied)
-    |> where([r], is_nil(r.story_id) and is_nil(r.component_id) and is_nil(r.issue_id))
-    |> select([r], r.name)
-    |> Repo.all()
-    |> MapSet.new()
-  end
+  defp satisfied_gates(project_nodes),
+    do: for(%{satisfied: true, name: name} <- project_nodes, into: MapSet.new(), do: name)
 
   # A story is done when every one of its requirements is satisfied at this
   # vantage, promoted or not; anything else is in progress and on the chart.
-  # Returns the in-progress stories and the count of done ones.
-  defp stories(project_id, vantage) do
+  # Returns the in-progress stories and the count of done ones. The read
+  # context holds the ready stories this vantage sees; retired ones are off the
+  # chart.
+  defp stories(story_nodes, ctx, project_id) do
+    live = for story <- ctx.stories, is_nil(story.retired_at), into: %{}, do: {story.id, story}
+
     rows =
-      vantage
-      |> rows_at()
-      |> join(:inner, [r], s in Story, on: s.id == r.story_id)
-      |> where([_r, s], s.project_id == ^project_id)
-      |> where([_r, s], s.ready_for_dev and is_nil(s.retired_at))
-      |> placed_here(vantage)
-      |> select([r, s], {{r.story_id, s.number, s.title, s.working_copy_id}, r.name, r.satisfied})
-      |> Repo.all()
+      for %{entity_id: id, name: name, satisfied: satisfied} <- story_nodes,
+          story = live[id],
+          do: {{id, story.number, story.title, story.working_copy_id}, name, satisfied}
 
     {done, in_progress} =
       rows
@@ -212,23 +194,19 @@ defmodule CodeMySpec.Requirements.Bands do
 
   # Planned components (`:authored`) done or not — every requirement satisfied
   # — and the ones found on disk that nobody planned (`:discovered`).
-  defp component_counts(project_id, vantage) do
-    per_component =
-      vantage
-      |> rows_at()
-      |> join(:inner, [r], c in Component, on: c.id == r.component_id)
-      |> where([_r, c], c.project_id == ^project_id)
-      |> group_by([_r, c], [c.id, c.provenance])
-      |> select([r, c], %{provenance: c.provenance, open: count(r.id) |> filter(not r.satisfied)})
+  defp component_counts(component_nodes, ctx) do
+    provenance =
+      component_nodes
+      |> Enum.group_by(& &1.entity_id)
+      |> Enum.map(fn {id, nodes} ->
+        {ctx.components_by_id[id].provenance, Enum.all?(nodes, & &1.satisfied)}
+      end)
 
-    from(x in subquery(per_component),
-      select: %{
-        done: count() |> filter(x.provenance == :authored and x.open == 0),
-        not_done: count() |> filter(x.provenance == :authored and x.open > 0),
-        unspecified: count() |> filter(x.provenance == :discovered)
-      }
-    )
-    |> Repo.one()
+    %{
+      done: Enum.count(provenance, &(&1 == {:authored, true})),
+      not_done: Enum.count(provenance, &(&1 == {:authored, false})),
+      unspecified: Enum.count(provenance, &match?({:discovered, _}, &1))
+    }
   end
 
   defp issue_counts(project_id) do

@@ -241,8 +241,8 @@ defmodule CodeMySpec.ExecutionContexts.Local do
     {clean_terminal_output(output), exit_code}
   end
 
-  # Until the child formatter can publish a durable stream, an analyzer must
-  # not keep running after an abrupt harness exit. This watcher is an OS process
+  # A run without a durable event stream (`DurableRun.streams?/1`) must not
+  # keep running after an abrupt harness exit. This watcher is an OS process
   # in the port's process group, so it survives a killed BEAM long enough to
   # terminate that group. The birth time prevents a reused owner PID from
   # keeping an orphan alive.

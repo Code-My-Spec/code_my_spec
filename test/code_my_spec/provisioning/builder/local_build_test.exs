@@ -67,6 +67,7 @@ defmodule CodeMySpec.Provisioning.Builder.LocalBuildTest do
         run: Remote.local_runner(cd: ctx.tmp),
         deliver: Remote.local_deliver(cd: ctx.source),
         build_dir: Path.join(ctx.tmp, "build"),
+        version_cd: ctx.source,
         # Nothing to push to — a registry is the one piece this cannot stand in
         # for locally, and pushing to a real one would make this a network test.
         push: false
@@ -169,6 +170,7 @@ defmodule CodeMySpec.Provisioning.Builder.LocalBuildTest do
                run: Remote.local_runner(cd: ctx.tmp),
                deliver: Remote.local_deliver(cd: ctx.source),
                build_dir: Path.join(ctx.tmp, "build"),
+               version_cd: ctx.source,
                push: false
              )
 

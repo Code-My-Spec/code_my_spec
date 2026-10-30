@@ -42,11 +42,9 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   alias CodeMySpec.Conversations
   alias CodeMySpec.Conversations.Drafts
   alias CodeMySpec.Devices
-  alias CodeMySpec.Files
   alias CodeMySpec.Files.File, as: FileRecord
   alias CodeMySpec.Files.FileSync
   alias CodeMySpec.Files.ReconcileRegistry
-  alias CodeMySpec.Files.Scanner
   alias CodeMySpec.Hooks.NotificationHook
   alias CodeMySpec.Hooks.PostToolUse
   alias CodeMySpec.Hooks.PreToolUse
@@ -133,7 +131,6 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
        |> assign(:reconciling_manifest, nil)
        |> assign(:reconcile_retries, 0)
        |> assign(:pending_manifest, nil)
-       |> assign(:overlay_unchecked, false)
        |> assign(:read_model_due, false)}
     else
       # A changeset is a map too, so it must be matched ahead of the generic
@@ -345,26 +342,16 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   """
   @impl true
   def handle_in("read_model", _payload, socket) do
-    scope = socket.assigns.scope
-    read_model = %{Files.read_model(scope) | overlay_records: CopyOverlay.records(scope)}
-    payload = serialize_read_model(read_model)
-
-    {:reply, {:ok, Map.put(payload, "fingerprint", fingerprint(payload))}, socket}
+    {_read_model, payload} = CopyOverlay.served_read_model(socket.assigns.scope)
+    {:reply, {:ok, payload}, socket}
   end
 
-  # A checkout's file verdicts and repository state (`CopyOverlay`). Shadow:
-  # stored, then compared with this server's rows once the copy's manifests
-  # have reconciled. Nothing reads it.
+  # A checkout's file verdicts and repository state (`CopyOverlay`), stored for
+  # the read path.
   def handle_in("overlay", %{"verdicts" => verdicts} = payload, socket) when is_list(verdicts) do
     case CopyOverlay.report(socket.assigns.scope, payload) do
       {:ok, _report} ->
-        socket =
-          socket
-          |> assign(:overlay_unchecked, true)
-          |> check_overlay_when_quiet()
-          |> follow_read_model()
-
-        {:reply, :ok, socket}
+        {:reply, :ok, follow_read_model(socket)}
 
       {:error, reason} ->
         Logger.warning("[HarnessProject] could not store an overlay: #{inspect(reason)}")
@@ -1785,7 +1772,6 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
     |> assign(:reconciling, nil)
     |> assign(:reconciling_manifest, nil)
     |> assign(:reconcile_retries, 0)
-    |> check_overlay_when_quiet()
   end
 
   defp next_manifest(%{assigns: %{pending_manifest: entries}} = socket) do
@@ -2165,24 +2151,6 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
 
   defp parse_mtime(_), do: nil
 
-  # Nothing here may be a struct: `story_ids` crosses as a list, and a
-  # component as the fields the harness scanner reads for ownership and
-  # proposal validation.
-  defp serialize_read_model(%Scanner.ReadModel{} = read_model) do
-    %{
-      "component_by_module" => read_model.component_by_module,
-      "component_by_id" => Map.new(read_model.component_by_id, &serialize_component/1),
-      "story_ids" => MapSet.to_list(read_model.story_ids),
-      "story_ids_by_number" => read_model.story_ids_by_number,
-      "story_by_spec_path" => read_model.story_by_spec_path,
-      "strict" => read_model.strict?,
-      "overlay_records" => read_model.overlay_records
-    }
-  end
-
-  defp fingerprint(payload),
-    do: payload |> :erlang.term_to_binary() |> :erlang.md5() |> Base.encode16(case: :lower)
-
   # How long a burst of record writes is gathered into one read-model push.
   # Config so a test can gather over milliseconds.
   defp read_model_coalesce_ms,
@@ -2195,30 +2163,6 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   defp follow_read_model(socket) do
     :ok = GraphInputs.subscribe_read_model(socket.assigns.scope.active_project_id)
     assign(socket, :following_read_model, true)
-  end
-
-  # Compared only with no manifest reconciling or queued, so the rows have
-  # caught up with the scan the overlay came from.
-  defp check_overlay_when_quiet(
-         %{assigns: %{overlay_unchecked: true, reconciling: nil, pending_manifest: nil}} = socket
-       ) do
-    scope = socket.assigns.scope
-
-    if Application.get_env(:code_my_spec, :analysis_mode) == :inline do
-      CopyOverlay.check(scope)
-    else
-      {:ok, _pid} =
-        Task.Supervisor.start_child(CodeMySpec.TaskSupervisor, fn -> CopyOverlay.check(scope) end)
-    end
-
-    assign(socket, :overlay_unchecked, false)
-  end
-
-  defp check_overlay_when_quiet(socket), do: socket
-
-  defp serialize_component({id, component}) do
-    {id,
-     %{"module_name" => Map.get(component, :module_name), "type" => Map.get(component, :type)}}
   end
 
   # A harness may only hold a project its credential reaches: a deploy key

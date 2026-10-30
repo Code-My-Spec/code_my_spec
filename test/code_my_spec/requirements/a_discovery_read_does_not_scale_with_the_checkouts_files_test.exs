@@ -10,7 +10,9 @@ defmodule CodeMySpec.Requirements.ADiscoveryReadDoesNotScaleWithTheCheckoutsFile
 
   Asserted on rows fetched, never on duration: the same read over a checkout
   with 300 more file rows must fetch about the same number of rows. The old
-  read fetched each new file row twice.
+  read fetched each new file row twice. The checkout's harness has reported
+  its overlay, as a live one does; without a report the server computes file
+  verdicts from the rows once per change to them (`CopyOverlay.verdicts_at/1`).
   """
   use ExUnit.Case, async: true
 
@@ -19,7 +21,7 @@ defmodule CodeMySpec.Requirements.ADiscoveryReadDoesNotScaleWithTheCheckoutsFile
 
   alias CodeMySpec.Files.File
   alias CodeMySpec.Repo
-  alias CodeMySpec.Requirements.{IncrementalGraph, Preloader, Projection, RequirementGraph}
+  alias CodeMySpec.Requirements.{CopyOverlay, IncrementalGraph, Preloader, RequirementGraph}
   alias CodeMySpec.Requirements.StoryExecution
   alias Ecto.Adapters.SQL.Sandbox
 
@@ -35,6 +37,14 @@ defmodule CodeMySpec.Requirements.ADiscoveryReadDoesNotScaleWithTheCheckoutsFile
   end
 
   test "a read over 300 more file rows fetches about the same rows", %{scope: scope} do
+    {read_model, _payload} = CopyOverlay.served_read_model(scope)
+
+    {:ok, _} =
+      CopyOverlay.report(scope, %{
+        "read_model" => read_model.fingerprint,
+        "verdicts" => CopyOverlay.verdicts([], read_model)
+      })
+
     before = rows_fetched(fn -> StoryExecution.read(scope, :coding) end)
 
     add_files(scope, @added_files)
@@ -51,7 +61,7 @@ defmodule CodeMySpec.Requirements.ADiscoveryReadDoesNotScaleWithTheCheckoutsFile
     {:ok, full} = Preloader.load(scope)
     read = RequirementGraph.read_context(scope)
 
-    {full_nodes, full_edges} = Projection.load(scope, full)
+    {full_nodes, full_edges} = RequirementGraph.served_graph(scope, full)
     {nodes, edges} = RequirementGraph.served_graph(scope, read)
 
     assert full_nodes != [], "the fixture projected no rows, so this compares nothing"

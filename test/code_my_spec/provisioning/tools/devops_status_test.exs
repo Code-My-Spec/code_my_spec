@@ -256,6 +256,15 @@ defmodule CodeMySpec.Provisioning.Tools.DevopsStatusTest do
       assert String.length(line) < String.length(detail)
     end
 
+    test "an exception diagnosis keeps its full message and first frames" do
+      detail =
+        "Provisioning exception: deploy step raised in build bootstrap: KeyError: " <>
+          String.duplicate("diagnostic detail ", 150) <>
+          "\n  at CodeMySpec.Provisioning.Builder.bootstrap_and_snapshot/5 builder.ex:324"
+
+      assert DevopsStatus.step_line(errored(detail), @ctx) =~ detail
+    end
+
     test "a short reason is unaffected" do
       assert DevopsStatus.step_line(errored("no server named x"), @ctx) ==
                "Market My Spec/deploy: errored 1m 0s ago — no server named x"
