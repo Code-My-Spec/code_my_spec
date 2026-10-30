@@ -168,7 +168,45 @@ defmodule CodeMySpec.ProvisioningPlan do
 
     for step <- Sequence.for_options(enabled_options),
         environment <- step_environments(names, step),
-        do: entry(step, environment, Map.get(persisted, {step.key, environment}))
+        do:
+          step
+          |> entry(environment, Map.get(persisted, {step.key, environment}))
+          |> default_import_satisfied(scope)
+  end
+
+  # `:import` is unconditional, but "nothing to do" is a fact about the
+  # environment's own configuration, not something a run ever has to prove.
+  # Without this, every project that predates the step — or simply never
+  # named a legacy source — reads as missing it until someone runs a step
+  # that does nothing, on every single one of them.
+  defp default_import_satisfied(%{key: :import, state: :not_started} = entry, scope) do
+    if import_source_configured?(scope, entry.environment) do
+      entry
+    else
+      %{
+        entry
+        | state: :done,
+          resources: [
+            %{
+              kind: "database_import",
+              location: "none",
+              identifier: "environment=#{entry.environment} status=not_configured"
+            }
+          ]
+      }
+    end
+  end
+
+  defp default_import_satisfied(entry, _scope), do: entry
+
+  defp import_source_configured?(scope, environment) do
+    case Environments.get_deployment(scope, environment) do
+      %{import_source_container: container, import_source_database: database} ->
+        is_binary(container) and container != "" and is_binary(database) and database != ""
+
+      _ ->
+        false
+    end
   end
 
   @doc """
