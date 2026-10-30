@@ -113,14 +113,13 @@ if grep -Eq 'No CodeMySpec service answered|only an .error. field|not found' "$H
 fi
 
 step=next_requirement
+# get_next_requirement only. Claiming the work would leave a task open, and the
+# stop hook rightly refuses to let a session end on one.
 "$CMS_PROOF_CLAUDE_BIN" -p --plugin-dir "$clone/plugins/claude" --permission-mode auto \
-  --output-format text 'Call get_next_requirement exactly once. If it offers work, claim that exact requirement with start_task. Report the requirement and task ID. Do no implementation work.' >"$HOME/logs/next_requirement.log" 2>&1 || fail 'get_next_requirement or start_task call failed (see logs/next_requirement.log)'
-if ! grep -Eq 'requirement:|Offered:|fix_issue|ready_for_qa' "$HOME/logs/next_requirement.log"; then
+  --output-format text 'Call get_next_requirement exactly once and nothing else: do not call start_task. Reply with one line, REQUIREMENT: followed by the name of the requirement it offers, or REQUIREMENT: NONE if it offers nothing.' >"$HOME/logs/next_requirement.log" 2>&1 || fail 'get_next_requirement call failed (see logs/next_requirement.log)'
+if ! grep -Eq 'REQUIREMENT: *`?[a-z][a-z0-9_]+' "$HOME/logs/next_requirement.log" ||
+  grep -Eq 'REQUIREMENT: *`?NONE' "$HOME/logs/next_requirement.log"; then
   fail 'get_next_requirement returned no real work (see logs/next_requirement.log)'
-fi
-if ! grep -Eiq 'task[_ ]id|task [0-9a-f]{8}' "$HOME/logs/next_requirement.log"; then
-  step=start_task
-  fail 'no claimed task ID was reported (see logs/next_requirement.log)'
 fi
 unset CLAUDE_CODE_OAUTH_TOKEN
 printf 'PASS: private code and docs clone, device approval, harness health, init, and get_next_requirement\n'

@@ -120,9 +120,9 @@ defmodule CodeMySpec.PromotionQueue do
     with :ok <- main_copy(),
          {:ok, story} <- story(scope, story_number),
          {:ok, copy} <- promoting_copy(scope),
-         {:ok, head} <- clean_head(scope, copy),
+         {:ok, head, tree} <- clean_head(scope, copy),
          {:ok, subject} <- subject(scope, story, copy, Keyword.get(opts, :issue_id), head),
-         {:ok, entry} <- queue_or_resume(scope, copy, head, subject, opts) do
+         {:ok, entry} <- queue_or_resume(scope, copy, {head, tree}, subject, opts) do
       ensure_worker(scope)
       {:ok, %{queued: entry, position: Repository.position(entry)}}
     else
@@ -148,7 +148,7 @@ defmodule CodeMySpec.PromotionQueue do
          }}
   end
 
-  defp queue_or_resume(scope, copy, head, subject, opts) do
+  defp queue_or_resume(scope, copy, {head, tree}, subject, opts) do
     attrs =
       Map.merge(subject_attrs(subject), %{
         project_id: scope.active_project_id,
@@ -167,8 +167,8 @@ defmodule CodeMySpec.PromotionQueue do
       :none ->
         with :ok <- qa_passed(scope, subject, head),
              :ok <- assigned_issues_clear(scope, copy, subject),
-             :ok <- Promotion.red_at(%{scope | active_working_copy_id: copy.id}, head),
-             :ok <- certified_head(scope, copy, head) do
+             :ok <- Promotion.red_at(%{scope | active_working_copy_id: copy.id}, head, tree),
+             :ok <- certified_head(scope, copy, head, tree) do
           Repository.enqueue(attrs)
         end
 
@@ -514,26 +514,34 @@ defmodule CodeMySpec.PromotionQueue do
   defp promoting_copy(_scope),
     do: {:error, %{reason: "no working copy on this scope; nothing to promote."}}
 
-  # A candidate must already have a clean analyzer answer at its exact HEAD.
-  # The queue's later gate still certifies the combined batch before publication.
-  defp certified_head(scope, copy, head) do
-    if Promotion.certified_at?(%{scope | active_working_copy_id: copy.id}, head) do
-      :ok
-    else
-      {:error,
-       %{
-         reason:
-           "#{copy.id} at #{head} is not certified. Run every analyzer and fix its findings at this HEAD before promoting. Nothing was queued."
-       }}
+  # A candidate must already have passed every analyzer on its exact tree, on
+  # any copy or commit (story 1174). The queue's later gate still certifies the
+  # combined batch before publication.
+  defp certified_head(scope, copy, head, tree) do
+    case Promotion.uncertified(%{scope | active_working_copy_id: copy.id}, head, tree) do
+      [] ->
+        :ok
+
+      missing ->
+        {:error,
+         %{
+           reason:
+             "#{copy.id} at #{head} is not certified: #{Enum.join(missing, ", ")} " <>
+               "#{if length(missing) == 1, do: "has", else: "have"} not passed its tree. " <>
+               "Run #{if length(missing) == 1, do: "it", else: "them"} and fix the findings " <>
+               "at this HEAD before promoting. Nothing was queued.",
+           uncertified: missing
+         }}
     end
   end
 
-  # A clean, committed checkout, read where it lives.
+  # A clean, committed checkout, read where it lives, and its git tree (nil
+  # from a harness that does not report one).
   defp clean_head(scope, copy) do
     environment = WorkingCopies.execution_context(%{scope | active_working_copy_id: copy.id})
 
     case Runner.precheck(environment, copy.root, copy.id, nil) do
-      {:ok, %{head: head}} when is_binary(head) -> {:ok, head}
+      {:ok, %{head: head} = checkout} when is_binary(head) -> {:ok, head, checkout[:tree]}
       {:ok, _} -> {:error, %{reason: "could not read #{copy.root}'s HEAD."}}
       {:error, _} = error -> error
     end

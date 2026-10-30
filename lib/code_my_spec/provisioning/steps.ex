@@ -2234,7 +2234,13 @@ defmodule CodeMySpec.Provisioning.Steps do
         |> Keyword.put(:registry_username, credential.username)
         |> Keyword.put(:registry_password, credential.password)
 
-      _ ->
+      {:error, reason} ->
+        # The deploy still runs and kamal names the missing secret, but the
+        # cause is here, not in kamal's output.
+        Logger.warning(
+          "[Steps] no registry credential for the deploy, kamal cannot log in: #{inspect(reason)}"
+        )
+
         opts
     end
   end
@@ -4574,6 +4580,9 @@ defmodule CodeMySpec.Provisioning.Steps do
   as an argument and is never written to the working tree. Mints the
   environment's age key if it has none.
   """
+  def put_secret_in_repository(%Scope{} = scope, environment, key, value),
+    do: CodeMySpec.Provisioning.RepositorySecrets.put(scope, environment, key, value)
+
   @spec put_secret(Scope.t(), String.t(), String.t(), String.t()) ::
           {:ok, map()} | {:error, String.t()}
   def put_secret(%Scope{} = scope, environment, key, value) do

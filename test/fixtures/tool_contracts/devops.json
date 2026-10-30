@@ -275,6 +275,10 @@
           "description": "One of: repository, server, secrets, domain, dns, tls, deploy, email, inbound, storage, backups, content, widget, callback_credential, monitoring, telemetry.",
           "type": "string"
         },
+        "telemetry_mode": {
+          "description": "For the \"telemetry\" step only: \"full\" (the default: ClickHouse and the collector), \"capped\" (ClickHouse with a memory cap) or \"collector_only\" (only the OTLP collector; data queues locally until ClickHouse is installed). Pick capped or collector_only on a box shared with other apps.",
+          "type": "string"
+        },
         "ttl": {
           "description": "For DNS only: record TTL in seconds, at least 60. Defaults to 60.",
           "type": "integer"

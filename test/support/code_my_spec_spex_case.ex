@@ -2962,6 +2962,76 @@ defmodule CodeMySpecSpex.Case do
   change: the plug, the project row and the environment all still agree about
   where the project is.
   """
+  # Give a secrets spex a project repository and committed SOPS configuration.
+  def repo_secret_setup(%{scope: scope, project: project, fakes: fakes} = context) do
+    github = Map.fetch!(fakes, CodeMySpec.GitHub)
+    owner = "sam"
+    name = "spex-secrets-#{project.id}"
+    Fakes.GitHub.add_repository(github, owner, name)
+
+    project =
+      Fixtures.set_project_code_repo(project, "https://github.com/#{owner}/#{name}.git")
+
+    scope = %{scope | active_project: project}
+    local_dir = CodeMySpec.TempFile.owned_dir("spex-repo-secrets")
+    local = CodeMySpec.ExecutionContexts.ExecutionContext.new(:local, local_dir)
+
+    {recipients, private_keys} =
+      Enum.reduce(["prod", "uat"], {%{}, %{}}, fn environment, {recipients, keys} ->
+        {:ok, {public, private}} = CodeMySpec.Provisioning.Sops.generate_key()
+
+        {:ok, _} =
+          CodeMySpec.ProjectSecrets.put_value(
+            scope,
+            CodeMySpec.Provisioning.Steps.age_key_name(environment),
+            private
+          )
+
+        {Map.put(recipients, environment, public), Map.put(keys, environment, private)}
+      end)
+
+    :ok = CodeMySpec.Provisioning.Sops.write_config(local, recipients)
+    config = File.read!(Path.join(local_dir, ".sops.yaml"))
+    Fakes.GitHub.seed_file(github, owner, name, ".sops.yaml", config)
+
+    {:ok,
+     Map.merge(context, %{
+       scope: scope,
+       project: project,
+       repo_secrets: %{
+         github: github,
+         owner: owner,
+         name: name,
+         config: config,
+         private_keys: private_keys
+       }
+     })}
+  end
+
+  def repo_secret_file(context, path) do
+    case Fakes.GitHub.file(
+           context.repo_secrets.github,
+           context.repo_secrets.owner,
+           context.repo_secrets.name,
+           path
+         ) do
+      nil -> {:error, :not_found}
+      %{content: content} -> {:ok, content}
+    end
+  end
+
+  def repo_secret_commits(context), do: Fakes.GitHub.commits(context.repo_secrets.github)
+
+  def repo_secret_decrypt(context, environment, private_key) do
+    {:ok, ciphertext} = repo_secret_file(context, "envs/#{environment}.enc.env")
+    dir = CodeMySpec.TempFile.owned_dir("spex-repo-secret-decrypt")
+    local = CodeMySpec.ExecutionContexts.ExecutionContext.new(:local, dir)
+    File.mkdir_p!(Path.join(dir, "envs"))
+    File.write!(Path.join(dir, ".sops.yaml"), context.repo_secrets.config)
+    File.write!(Path.join(dir, "envs/#{environment}.enc.env"), ciphertext)
+    CodeMySpec.Provisioning.Sops.decrypt(local, environment, private_key)
+  end
+
   def real_working_directory(%{scope: scope, project: project} = context) do
     env = Fixtures.local_execution_context_fixture(working_dir: project.local_path)
 

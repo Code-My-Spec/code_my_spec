@@ -86,7 +86,7 @@ defmodule CodeMySpecSpex.Story1164.Criterion2494Spex do
         assert a, context.log
         assert b, context.log
         assert a =~ "confirmed flake; rerun=#{context.rerun_id}"
-        assert b =~ "not a flake"
+        assert b =~ "not a flake; rerun=#{context.rerun_id} failed again"
         refute b =~ "confirmed flake"
         assert context.outcome =~ "was taken out of the queue and nothing of it landed"
         {:ok, context}

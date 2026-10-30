@@ -2,8 +2,12 @@ defmodule CodeMySpecWeb.SourceGitController do
   @moduledoc ~s(Read-only Git smart HTTP for a project source repository.)
   use CodeMySpecWeb, :controller
 
+  alias CodeMySpec.Accounts
   alias CodeMySpec.Integrations
   alias CodeMySpec.Projects
+  alias CodeMySpec.Users.Scope
+
+  require Logger
 
   @max_request_bytes 16_000_000
 
@@ -26,8 +30,8 @@ defmodule CodeMySpecWeb.SourceGitController do
     with false <- Map.has_key?(conn.assigns, :box_device),
          {:ok, project} <- Projects.get_project_for_user(scope, id),
          {:ok, repo} <- repo_url(project, kind),
-         {:ok, token} <- Integrations.fetch_access_token(scope, :github),
-         {:ok, response} <- request(method, repo <> ~s(/) <> path, body, token) do
+         {:ok, token} <- account_github_token(scope, project.account_id),
+         {:ok, response} <- request(conn, method, repo <> ~s(/) <> path, body, token) do
       send_git_response(conn, method, response)
     else
       {:error, :not_found} -> send_resp(conn, :not_found, ~s(Project not found))
@@ -36,17 +40,53 @@ defmodule CodeMySpecWeb.SourceGitController do
     end
   end
 
-  defp send_git_response(conn, method, %{status: status, body: body})
-       when status in 200..299 and is_binary(body) do
-    content_type = git_content_type(method)
+  # A device grant identifies an account member, who may never have connected
+  # GitHub. Use a connection held by the project's account instead. Prefer its
+  # owner, then another connected member, so the choice is stable.
+  defp account_github_token(scope, account_id) do
+    scope
+    |> Accounts.list_account_members(account_id)
+    |> Enum.sort_by(fn member -> {member.role != :owner, member.inserted_at, member.id} end)
+    |> Enum.find_value({:error, :not_found}, fn member ->
+      member_scope = %Scope{user: member.user, user_id: member.user_id}
 
+      case Integrations.get_integration(member_scope, :github) do
+        {:ok, _integration} -> Integrations.fetch_access_token(member_scope, :github)
+        {:error, :not_found} -> nil
+      end
+    end)
+  end
+
+  defp send_git_response(conn, method, %{status: status, body: body} = response)
+       when status in 200..299 and is_binary(body) do
     conn
-    |> put_resp_header("content-type", content_type)
+    |> put_resp_header(
+      "content-type",
+      response_header(response, "content-type", git_content_type(method))
+    )
+    |> put_response_header(response, "content-encoding")
     |> send_resp(status, body)
   end
 
-  defp send_git_response(conn, _method, _response),
-    do: send_resp(conn, :bad_gateway, ~s(Git source unavailable))
+  defp send_git_response(conn, _method, %{status: status, body: body}) do
+    prefix = if is_binary(body), do: binary_part(body, 0, min(byte_size(body), 64)), else: <<>>
+
+    Logger.warning(
+      "Git source upstream returned HTTP #{status}; body prefix (hex): #{Base.encode16(prefix)}"
+    )
+
+    send_resp(conn, :bad_gateway, ~s(Git source unavailable))
+  end
+
+  defp response_header(response, name, default) do
+    response |> Req.Response.get_header(name) |> List.first() || default
+  end
+
+  defp put_response_header(conn, response, name) do
+    Enum.reduce(Req.Response.get_header(response, name), conn, fn value, conn ->
+      put_resp_header(conn, name, value)
+    end)
+  end
 
   defp git_content_type(:get), do: ~s(application/x-git-upload-pack-advertisement)
   defp git_content_type(:post), do: ~s(application/x-git-upload-pack-result)
@@ -74,36 +114,53 @@ defmodule CodeMySpecWeb.SourceGitController do
     end
   end
 
-  defp request(method, url, body, token) do
+  defp request(conn, method, url, body, token) do
     headers = [
       {~s(authorization), ~s(Basic ) <> Base.encode64(~s(x-access-token:) <> token)},
-      {~s(accept), ~s(*/*)},
       {~s(user-agent), ~s(CodeMySpec)}
     ]
 
+    headers = forward_headers(conn, headers, ["accept", "git-protocol"])
+
     headers =
-      if method == :post,
-        do: [{~s(content-type), ~s(application/x-git-upload-pack-request)} | headers],
-        else: headers
+      if method == :post do
+        [
+          {"content-type", "application/x-git-upload-pack-request"}
+          | forward_headers(conn, headers, ["content-encoding"])
+        ]
+      else
+        headers
+      end
 
     options = [
       method: method,
       url: url,
       body: body,
       headers: headers,
-      decode_body: false,
+      raw: true,
       redirect: false,
       retry: false,
       receive_timeout: 120_000
     ]
 
+    config = Application.get_env(:code_my_spec, __MODULE__, [])
+
     options =
-      case Application.get_env(:code_my_spec, __MODULE__, [])[:plug] do
-        nil -> options
-        plug -> Keyword.put(options, :plug, plug)
+      case {config[:adapter], config[:plug]} do
+        {nil, nil} -> options
+        {nil, plug} -> Keyword.put(options, :plug, plug)
+        {adapter, _plug} -> Keyword.put(options, :adapter, adapter)
       end
 
     Req.request(options)
+  end
+
+  defp forward_headers(conn, headers, names) do
+    Enum.reduce(names, headers, fn name, headers ->
+      Enum.reduce(Plug.Conn.get_req_header(conn, name), headers, fn value, headers ->
+        [{name, value} | headers]
+      end)
+    end)
   end
 
   defp read_pack(conn, body) when byte_size(body) > @max_request_bytes, do: {:error, conn}

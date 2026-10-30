@@ -346,8 +346,10 @@ defmodule CodeMySpec.Promotion.Steps do
   defp branch(env, root) do
     case git(env, root, ["rev-parse", "--abbrev-ref", "HEAD"]) do
       {branch, 0} ->
+        {head, tree} = head_and_tree(env, root)
+
         {:ok,
-         %{branch: String.trim(branch), head: head(env, root), untracked: untracked(env, root)}}
+         %{branch: String.trim(branch), head: head, tree: tree, untracked: untracked(env, root)}}
 
       {out, _} ->
         {:error, %{reason: "could not read this checkout's branch: #{String.trim(out)}"}}
@@ -1059,20 +1061,33 @@ defmodule CodeMySpec.Promotion.Steps do
     do: {:ok, %{contained: Enum.filter(commits, &ancestor?(env, root, &1, base))}}
 
   @doc """
-  The checkout's HEAD and its version — the nearest `vX.Y.Z` tag, else the
-  literal in `mix.exs` — moving nothing.
+  The checkout's HEAD, its git tree, and its version — the nearest `vX.Y.Z`
+  tag, else the literal in `mix.exs` — moving nothing.
 
   What a promote from the running copy stamps a story with: the merge path's
-  rule for a no-op merge, without the merge.
+  rule for a no-op merge, without the merge. The gate reads the tree: a pass
+  recorded on it answers there (story 1174).
   """
   @spec current(ExecutionContexts.ExecutionContext.t(), String.t()) :: result()
-  def current(env, root),
-    do: {:ok, %{head: head(env, root), version: current_version(env, root)}}
+  def current(env, root) do
+    {head, tree} = head_and_tree(env, root)
+    {:ok, %{head: head, tree: tree, version: current_version(env, root)}}
+  end
 
   defp head(env, root) do
     case git(env, root, ["rev-parse", "HEAD"]) do
       {sha, 0} -> String.trim(sha)
       _ -> nil
+    end
+  end
+
+  # One call, so the commit and its tree cannot straddle a commit landing.
+  defp head_and_tree(env, root) do
+    with {out, 0} <- git(env, root, ["rev-parse", "HEAD", "HEAD^{tree}"]),
+         [head, tree] <- String.split(out, "\n", trim: true) do
+      {head, tree}
+    else
+      _ -> {head(env, root), nil}
     end
   end
 
