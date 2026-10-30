@@ -25,6 +25,11 @@ proxy:
     interval: 3
     timeout: 5
 
+builder:
+  # Kamal requires an arch even though bin/deploy ships a prebuilt image
+  # (--skip-push). Must match this environment's host.
+  arch: arm64
+
 registry:
   server: 10.1.0.2:5000
   username:

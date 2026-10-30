@@ -7,8 +7,9 @@ defmodule CmsHarness.AnalysisSlots do
   across copies, because a saturated machine manufactures test failures rather
   than just running slowly. See knowledge/harness, "Analysis slots".
 
-  A run that cannot get a slot waits, up to `wait_ceiling/0`, then answers
-  `:busy`. `AnalysisServer` arms its kill timer only once a slot is granted.
+  A run that cannot get a slot waits in line until one frees, gate runs first;
+  waiting is never a failure. `AnalysisServer` arms its kill timer only once a
+  slot is granted.
   Named test files wait in their own `:fast` lane. A slot is released when the
   holding process exits; there is no `release/0`.
   """
@@ -17,20 +18,17 @@ defmodule CmsHarness.AnalysisSlots do
 
   require Logger
 
-  # Same order as `AnalysisServer`'s kill timeout; past it, `:busy`.
-  @wait_ceiling :timer.minutes(30)
-
   @doc """
-  Take a slot, waiting for one to free if the machine is already at its
-  limit. Answers `:busy` only if none frees within `wait_ceiling/0`.
+  Take a slot, waiting in line for one to free if the machine is already at
+  its limit.
 
   Call from the process that will do the work — the slot is held for that
   process's lifetime.
   """
-  @spec acquire(lane(), :gate | :normal) :: :ok | :busy
+  @spec acquire(lane(), :gate | :normal) :: :ok
   def acquire(lane \\ :full, priority \\ :normal)
       when lane in [:full, :fast] and priority in [:gate, :normal],
-      do: GenServer.call(__MODULE__, {:acquire, lane, priority}, wait_ceiling() + 5_000)
+      do: GenServer.call(__MODULE__, {:acquire, lane, priority}, :infinity)
 
   @typedoc "`:fast` for runs of named test files, `:full` for everything else."
   @type lane :: :full | :fast
@@ -39,14 +37,6 @@ defmodule CmsHarness.AnalysisSlots do
   @spec lane(String.t(), [String.t()]) :: lane()
   def lane(source, [_ | _]) when source in ["exunit", "spex"], do: :fast
   def lane(_source, _args), do: :full
-
-  @doc """
-  How long `acquire/0` waits for a slot before giving up and answering
-  `:busy`. Configurable as `:analysis_slot_wait_ceiling`.
-  """
-  @spec wait_ceiling() :: pos_integer()
-  def wait_ceiling,
-    do: Application.get_env(:code_my_spec, :analysis_slot_wait_ceiling, @wait_ceiling)
 
   @doc """
   How many runs may execute at once on this machine.
@@ -98,12 +88,11 @@ defmodule CmsHarness.AnalysisSlots do
     if map_size(held) >= limit(lane) do
       Logger.info(
         "[CmsHarness] an analyzer run is waiting for a machine-wide #{lane} slot: " <>
-          "#{map_size(held)} already running (limit #{limit(lane)}), waiting up to " <>
-          "#{wait_ceiling()}ms. held by: #{inspect(Map.values(held))}"
+          "#{map_size(held)} already running (limit #{limit(lane)}), " <>
+          "#{:queue.len(waiting)} ahead. held by: #{inspect(Map.values(held))}"
       )
 
-      timer_ref = Process.send_after(self(), {:wait_timeout, lane, from}, wait_ceiling())
-      waiter = {from, pid, timer_ref, priority}
+      waiter = {from, pid, priority}
       {:noreply, put_lane(state, lane, :waiting, enqueue_waiter(waiting, waiter))}
     else
       Logger.info("[CmsHarness] #{inspect(pid)} granted a machine-wide #{lane} slot immediately")
@@ -133,20 +122,6 @@ defmodule CmsHarness.AnalysisSlots do
     end
   end
 
-  # The waiter may already have been granted a slot (raced `maybe_grant_next/2`
-  # between the timer firing and this message being processed) — in which case
-  # it is no longer in `waiting` and there is nothing to time out.
-  def handle_info({:wait_timeout, lane, from}, state) do
-    case take_waiting(state.lanes[lane].waiting, from) do
-      {:ok, waiting} ->
-        GenServer.reply(from, :busy)
-        {:noreply, put_lane(state, lane, :waiting, waiting)}
-
-      :not_found ->
-        {:noreply, state}
-    end
-  end
-
   def handle_info(_message, state), do: {:noreply, state}
 
   defp put_lane(state, lane, key, value),
@@ -161,8 +136,7 @@ defmodule CmsHarness.AnalysisSlots do
     %{held: held, waiting: waiting} = state.lanes[lane]
 
     with true <- map_size(held) < limit(lane),
-         {{:value, {from, pid, timer_ref, _priority}}, rest} <- :queue.out(waiting) do
-      Process.cancel_timer(timer_ref)
+         {{:value, {from, pid, _priority}}, rest} <- :queue.out(waiting) do
       GenServer.reply(from, :ok)
       state |> put_lane(lane, :waiting, rest) |> grant(lane, pid)
     else
@@ -172,23 +146,10 @@ defmodule CmsHarness.AnalysisSlots do
 
   # A gate run waits behind earlier gate runs and ahead of everything else:
   # every team's landing waits on the promotion gate.
-  defp enqueue_waiter(waiting, {_from, _pid, _ref, :gate} = waiter) do
-    {gates, rest} = waiting |> :queue.to_list() |> Enum.split_while(&(elem(&1, 3) == :gate))
+  defp enqueue_waiter(waiting, {_from, _pid, :gate} = waiter) do
+    {gates, rest} = waiting |> :queue.to_list() |> Enum.split_while(&(elem(&1, 2) == :gate))
     :queue.from_list(gates ++ [waiter | rest])
   end
 
   defp enqueue_waiter(waiting, waiter), do: :queue.in(waiter, waiting)
-
-  defp take_waiting(waiting, target_from) do
-    list = :queue.to_list(waiting)
-
-    if Enum.any?(list, &match?({^target_from, _pid, _ref, _priority}, &1)) do
-      {:ok,
-       list
-       |> Enum.reject(&match?({^target_from, _pid, _ref, _priority}, &1))
-       |> :queue.from_list()}
-    else
-      :not_found
-    end
-  end
 end

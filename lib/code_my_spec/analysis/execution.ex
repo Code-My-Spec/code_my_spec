@@ -137,6 +137,7 @@ defmodule CodeMySpec.Analysis.Execution do
     RunsRepository.record_tree(run, %{
       "start_commit" => git(env, ["rev-parse", "HEAD"]),
       "start_tree_dirty" => if(is_binary(status), do: status != ""),
+      "start_tree" => git(env, ["rev-parse", "HEAD^{tree}"]),
       "began_at" => DateTime.utc_now()
     })
   end

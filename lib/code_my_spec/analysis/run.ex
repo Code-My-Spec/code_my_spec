@@ -57,6 +57,7 @@ defmodule CodeMySpec.Analysis.Run do
           finished_at: DateTime.t() | nil,
           start_commit: String.t() | nil,
           start_tree_dirty: boolean() | nil,
+          start_tree: String.t() | nil,
           completed_commit: String.t() | nil,
           project_id: Ecto.UUID.t(),
           project: Project.t() | Ecto.Association.NotLoaded.t(),
@@ -117,6 +118,11 @@ defmodule CodeMySpec.Analysis.Run do
     field :start_tree_dirty, :boolean
     field :completed_commit, :string
 
+    # The git tree of `start_commit`, kept only for a clean start. A pass
+    # answers for this tree from any copy or commit (story 1174); nil is never
+    # reused.
+    field :start_tree, :string
+
     belongs_to :project, Project, type: :binary_id
 
     # Which working copy this run is about. A project can have several — a
@@ -158,15 +164,24 @@ defmodule CodeMySpec.Analysis.Run do
   def sources, do: @sources
 
   @doc """
-  What a harness reported for this run: `began_at`, `start_commit` and
-  `start_tree_dirty` when it started, `completed_commit` when it finished.
+  What a harness reported for this run: `began_at`, `start_commit`,
+  `start_tree_dirty` and `start_tree` when it started, `completed_commit` when
+  it finished. A tree is kept only for a clean start.
   """
   @spec tree_changeset(t(), map()) :: Ecto.Changeset.t()
   def tree_changeset(run, attrs) do
     run
-    |> cast(attrs, [:began_at, :start_commit, :start_tree_dirty, :completed_commit])
+    |> cast(attrs, [:began_at, :start_commit, :start_tree_dirty, :start_tree, :completed_commit])
     |> validate_format(:start_commit, @sha)
+    |> validate_format(:start_tree, @sha)
     |> validate_format(:completed_commit, @sha)
+    |> clean_tree_only()
+  end
+
+  defp clean_tree_only(changeset) do
+    if get_field(changeset, :start_tree_dirty) == false,
+      do: changeset,
+      else: put_change(changeset, :start_tree, nil)
   end
 
   @spec changeset(%__MODULE__{} | Ecto.Changeset.t(), map()) :: Ecto.Changeset.t()
