@@ -135,7 +135,7 @@ defmodule CodeMySpec.Provisioning.Builder do
         &Map.put(&1, @deploy_builder_label, "true")
       )
 
-    with {:ok, server} <- ensure.(scope, BurstBox.box_name(), box_opts) do
+    with {:ok, server} <- ensure.(scope, BurstBox.box_name(architecture), box_opts) do
       join_networks(scope, server, opts)
     end
   end

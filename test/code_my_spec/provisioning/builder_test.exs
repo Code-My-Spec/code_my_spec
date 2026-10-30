@@ -109,6 +109,29 @@ defmodule CodeMySpec.Provisioning.BuilderTest do
   defp still_creating_response("available"), do: {:ok, []}
   defp still_creating_response(_not_filtered), do: {:ok, [%{"id" => 777, "status" => "creating"}]}
 
+  describe "the box a build runs on" do
+    test "an amd64 build asks for the x86 box, an arm build for the arm one" do
+      owner = self()
+
+      ensure = fn _scope, name, _opts ->
+        send(owner, {:box, name})
+        {:ok, server(%{"name" => name})}
+      end
+
+      for arch <- [:x86, :arm] do
+        assert {:ok, _} =
+                 Builder.build(
+                   scope(),
+                   "abc123",
+                   opts(architecture: arch, ensure_box: ensure, build_fun: build_fun())
+                 )
+      end
+
+      assert_received {:box, "burst-platform-x86"}
+      assert_received {:box, "burst-platform"}
+    end
+  end
+
   describe "a reused box and the build's network" do
     test "a box made for another network joins the build's before building" do
       owner = self()
