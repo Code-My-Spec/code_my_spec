@@ -17,10 +17,14 @@ defmodule CodeMySpec.Provisioning.ClickHouse.Config do
     """
   end
 
-  def server do
+  def server, do: server(:full)
+
+  def server(mode) do
+    memory = if mode == :capped, do: 671_088_640, else: 1_073_741_824
+
     """
     <clickhouse>
-      <max_server_memory_usage>1073741824</max_server_memory_usage>
+      <max_server_memory_usage>#{memory}</max_server_memory_usage>
       <mark_cache_size>67108864</mark_cache_size>
       <uncompressed_cache_size>16777216</uncompressed_cache_size>
       <max_connections>128</max_connections>
