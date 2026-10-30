@@ -172,9 +172,11 @@ defmodule CodeMySpec.Requirements.AReleaseThatAddsARequirementSeedsTheVantageTes
 
   # Rows are stored once per project.
   defp story_rows(%Scope{active_project_id: project_id}, name) do
-    stories =
-      from(s in "stories", where: s.project_id == type(^project_id, :binary_id), select: s.id)
-
-    from(n in "project_requirements", where: n.story_id in subquery(stories) and n.name == ^name)
+    from(n in "project_requirements",
+      where: n.story_id in subquery(project_stories(project_id)) and n.name == ^name
+    )
   end
+
+  defp project_stories(project_id),
+    do: from(s in "stories", where: s.project_id == type(^project_id, :binary_id), select: s.id)
 end

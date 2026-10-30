@@ -35,7 +35,17 @@ defmodule CodeMySpecTest.MailboxWire do
         }
       }
 
-      {:ok, %{socket: socket, scope: scope, awaiting: %{}}}
+      {:ok, %{socket: socket, scope: scope, awaiting: %{}, result_gate: nil}}
+    end
+
+    def handle_call({:hold_results, owner}, _from, state) do
+      {:reply, :ok, %{state | result_gate: %{owner: owner, results: []}}}
+    end
+
+    def handle_call(:release_results, _from, %{result_gate: gate} = state) do
+      state = %{state | result_gate: nil}
+      Enum.each(Enum.reverse(gate.results), &send(self(), &1))
+      {:reply, :ok, state}
     end
 
     def handle_call({:launch, request}, from, state) do
@@ -77,6 +87,15 @@ defmodule CodeMySpecTest.MailboxWire do
       {:noreply, %{state | socket: socket}}
     end
 
+    def handle_info(
+          {:transport_push, _, "agent_send_result", _, _} = result,
+          %{result_gate: %{owner: owner, results: results} = gate} = state
+        ) do
+      results = [result | results]
+      send(owner, {:wire_results_held, length(results)})
+      {:noreply, %{state | result_gate: %{gate | results: results}}}
+    end
+
     def handle_info({:transport_push, _, event, payload, _}, state)
         when event in ["agent_start_result", "agent_send_result"] do
       {from, awaiting} = Map.pop(state.awaiting, payload["ref"])
@@ -95,10 +114,20 @@ defmodule CodeMySpecTest.MailboxWire do
     def dispatch_message(_copy, agent, ref, text, _timeout) do
       [{wire, _}] = Registry.lookup(CmsHarness.Registry, {:channel, agent.working_copy})
 
+      # A retry can carry the same durable message ref while an earlier push
+      # is still awaiting its answer. The channel correlates each push by its
+      # own wire ref, as the real channel does.
+      wire_ref = "delivery-#{System.unique_integer([:positive, :monotonic])}"
+
       case GenServer.call(
              wire,
              {:deliver,
-              %{"ref" => ref, "message_ref" => ref, "agent_id" => agent.id, "message" => text}},
+              %{
+                "ref" => wire_ref,
+                "message_ref" => ref,
+                "agent_id" => agent.id,
+                "message" => text
+              }},
              5_000
            ) do
         %{"status" => "ok", "disposition" => "started"} -> {:ok, :started}

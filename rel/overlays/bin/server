@@ -1,5 +1,33 @@
 #!/bin/sh
+# Start the release with the web endpoint serving (PHX_SERVER), decrypting the
+# environment first wherever the deploy carries an age key.
+#
+# On our own boxes the image holds envs/<env>.enc.env and the container holds
+# exactly one secret, SOPS_AGE_KEY. Without decryption runtime.exs raised
+# "GITHUB_CLIENT_ID not set" at boot and the swap's health check timed out.
+# Where no key is set (Fly, whose secrets arrive as plain environment), the
+# release starts on the environment it was given.
 set -eu
-
 cd -P -- "$(dirname -- "$0")"
+
+ENV_FILE="../envs/${APP_ENV:-prod}.enc.env"
+
+if [ -n "${SOPS_AGE_KEY:-}" ]; then
+  if [ ! -f "$ENV_FILE" ]; then
+    echo "server: SOPS_AGE_KEY is set but this image has no $ENV_FILE" >&2
+    echo "server: the image holds: $(ls ../envs 2>/dev/null | tr '\n' ' ')" >&2
+    exit 1
+  fi
+
+  # Migrate first. Our boxes have no release_command (Fly's runs bin/migrate),
+  # and kamal can only run `bin/deploy migrate` once a container has booted,
+  # so a first deploy booted the app on an empty database and it crashed at
+  # start (BootRecovery: relation "analysis_runs" does not exist). Ecto's
+  # migration lock keeps a second container from racing this one; a failed
+  # migration stops the start.
+  # `exec` so the release replaces the shell and hears the stop signal.
+  exec sops exec-env "$ENV_FILE" \
+    "./code_my_spec eval CodeMySpec.Release.migrate && PHX_SERVER=true exec ./code_my_spec start"
+fi
+
 PHX_SERVER=true exec ./code_my_spec start

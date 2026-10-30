@@ -61,6 +61,7 @@ defmodule CodeMySpec.ProvisioningPlan.Step do
     # build from. Story 985 criterion 8182.
     :repository,
     :server,
+    :import,
     :secrets,
     :domain,
     :dns,
@@ -104,6 +105,7 @@ defmodule CodeMySpec.ProvisioningPlan.Step do
 
     field :attempted, :string
     field :provider_error, :string
+    field :exception_trace, :string
     field :paused_instructions, :string
 
     # When the step began, as distinct from `updated_at` (when it last
@@ -138,6 +140,7 @@ defmodule CodeMySpec.ProvisioningPlan.Step do
       :position,
       :attempted,
       :provider_error,
+      :exception_trace,
       :paused_instructions,
       :project_id,
       :started_at,
@@ -201,6 +204,7 @@ defmodule CodeMySpec.ProvisioningPlan.Step do
 
     changeset
     |> drop_unless(:provider_error, state == :errored)
+    |> drop_unless(:exception_trace, state == :errored)
     |> drop_unless(:paused_instructions, state == :paused)
   end
 

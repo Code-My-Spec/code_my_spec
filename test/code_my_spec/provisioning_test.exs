@@ -18,6 +18,51 @@ defmodule CodeMySpec.ProvisioningTest do
   defp always_absent, do: fn _scope, _key -> {:ok, :absent} end
   defp succeeds, do: fn _scope, _key, _opts -> {:ok, []} end
 
+  test "a builder exception leaves an errored deploy with a safe durable trace", %{scope: scope} do
+    secret = "registry-password-must-not-escape"
+
+    execute = fn _scope, :deploy, _opts ->
+      CodeMySpec.Provisioning.Builder.ensure_burst_box_image(scope, :x86,
+        list_images: fn _scope, _opts -> {:ok, []} end,
+        create: fn _scope, _name, _opts -> {:ok, %{"id" => 42, "name" => "builder"}} end,
+        run: fn [_command] -> {"", 0} end,
+        install_release: fn _run, _server, _opts ->
+          raise KeyError, key: :ref, term: %{registry_password: secret}
+        end,
+        destroy: fn _scope, 42 -> {:ok, %{}} end
+      )
+    end
+
+    assert {:halt, row, reason} =
+             Provisioning.run_step(scope, :deploy,
+               environment: "uat",
+               verify: always_absent(),
+               execute: execute
+             )
+
+    assert row.state == :errored
+    assert reason =~ "deploy step raised in build bootstrap"
+    assert reason =~ "KeyError: key :ref not found"
+    assert reason =~ "available keys: [:registry_password]"
+    assert reason =~ "CodeMySpec.Provisioning.Builder"
+    assert reason =~ ~r/\/\d+ .+\.ex:\d+/
+    refute reason =~ secret
+    assert row.exception_trace =~ "CodeMySpec.Provisioning.Builder"
+    refute row.exception_trace =~ secret
+    assert StepRepository.get(scope, :deploy, "uat").exception_trace == row.exception_trace
+
+    message =
+      CodeMySpec.Provisioning.Tools.RunProvisioningStep.outcome_message(
+        {:halt, row, reason},
+        "deploy (uat)",
+        "example"
+      )
+
+    assert message =~ "build bootstrap"
+    assert message =~ "CodeMySpec.Provisioning.Builder"
+    refute message =~ secret
+  end
+
   describe "the sequence" do
     # Criterion 8182 / rule 4: CI publishes the image the deploy pulls, so a
     # deploy with no remote has nothing to build from.

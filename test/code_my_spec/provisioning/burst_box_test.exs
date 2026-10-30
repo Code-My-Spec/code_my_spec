@@ -429,6 +429,12 @@ defmodule CodeMySpec.Provisioning.BurstBoxTest do
     end
   end
 
+  defp release_opts(opts) do
+    Keyword.put(opts, :version_lookup, fn ref ->
+      {:ok, ref <> String.duplicate("0", 40 - byte_size(ref)), []}
+    end)
+  end
+
   describe "install_release/3" do
     # The build marker's own start/stop commands (`Remote.build/4`'s own
     # concern — see its moduledoc) answer the same way in every one of these
@@ -475,7 +481,11 @@ defmodule CodeMySpec.Provisioning.BurstBoxTest do
       end
 
       assert :ok =
-               BurstBox.install_release(run, box, ref: "abc123", deliver: deliver, push: true)
+               BurstBox.install_release(
+                 run,
+                 box,
+                 release_opts(ref: "abc123", deliver: deliver, push: true)
+               )
 
       assert_received {:delivered, "abc123", "/build"}
     end
@@ -494,7 +504,7 @@ defmodule CodeMySpec.Provisioning.BurstBoxTest do
       deliver = fn _ref, _dir -> :ok end
 
       assert {:error, {:architecture_mismatch, built: :x86, wanted: :arm}} =
-               BurstBox.install_release(run, box, ref: "abc123", deliver: deliver)
+               BurstBox.install_release(run, box, release_opts(ref: "abc123", deliver: deliver))
     end
 
     test "proceeds when the box reports no architecture at all" do
@@ -512,7 +522,8 @@ defmodule CodeMySpec.Provisioning.BurstBoxTest do
 
       deliver = fn _ref, _dir -> :ok end
 
-      assert :ok = BurstBox.install_release(run, box, ref: "abc123", deliver: deliver)
+      assert :ok =
+               BurstBox.install_release(run, box, release_opts(ref: "abc123", deliver: deliver))
     end
 
     test "a failed build is reported and nothing is extracted" do
@@ -527,7 +538,28 @@ defmodule CodeMySpec.Provisioning.BurstBoxTest do
       deliver = fn _ref, _dir -> :ok end
 
       assert {:error, {:build_failed, 1, _output}} =
-               BurstBox.install_release(run, box, ref: "abc123", deliver: deliver)
+               BurstBox.install_release(run, box, release_opts(ref: "abc123", deliver: deliver))
+    end
+
+    # BuildKit prints layer progress first and the cause last.
+    test "a failed build keeps the end of docker's output, where the cause is" do
+      box = server()
+      progress = String.duplicate("#5 [builder 1/21] FROM elixir:1.19.5-otp-27-slim DONE\n", 100)
+      cause = "ERROR: failed to solve: process did not complete successfully: exit code: 22"
+
+      run =
+        recorder([
+          {"true", {"", 0}},
+          {"docker build --force-rm", {progress <> cause, 1}}
+        ])
+
+      deliver = fn _ref, _dir -> :ok end
+
+      assert {:error, {:build_failed, 1, output}} =
+               BurstBox.install_release(run, box, release_opts(ref: "abc123", deliver: deliver))
+
+      assert String.ends_with?(output, cause)
+      assert String.length(output) <= 1502
     end
 
     test "a failed extraction is reported with what docker said" do
@@ -544,7 +576,7 @@ defmodule CodeMySpec.Provisioning.BurstBoxTest do
       deliver = fn _ref, _dir -> :ok end
 
       assert {:error, {:release_extract_failed, 125, _output}} =
-               BurstBox.install_release(run, box, ref: "abc123", deliver: deliver)
+               BurstBox.install_release(run, box, release_opts(ref: "abc123", deliver: deliver))
     end
   end
 end

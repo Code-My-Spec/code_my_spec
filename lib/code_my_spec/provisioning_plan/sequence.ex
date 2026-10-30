@@ -80,6 +80,13 @@ defmodule CodeMySpec.ProvisioningPlan.Sequence do
       scope: :project
     },
     %{
+      key: :import,
+      label: "Database import",
+      option: nil,
+      why: "an adopted app's own data, so the first deploy does not start on an empty database",
+      scope: :environment
+    },
+    %{
       key: :domain,
       label: "Domain",
       option: :domain,
@@ -197,12 +204,13 @@ defmodule CodeMySpec.ProvisioningPlan.Sequence do
 
   `enabled` is the set of option atoms that are on. A step with no `:option`
   is unconditional — the repository, the server, its secrets, the deploy and
-  the callback credential are what "set up" means.
+  the callback credential are what "set up" means. `:import` is unconditional
+  too, but a no-op for a project that never named a legacy source.
 
   ## Examples
 
       iex> CodeMySpec.ProvisioningPlan.Sequence.for_options([]) |> Enum.map(& &1.key)
-      [:repository, :secrets, :server, :deploy, :callback_credential]
+      [:repository, :secrets, :server, :import, :deploy, :callback_credential]
   """
   @spec for_options([atom()] | MapSet.t()) :: [step()]
   def for_options(enabled) do

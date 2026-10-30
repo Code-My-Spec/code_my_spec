@@ -135,6 +135,11 @@ ENV MIX_ENV="prod"
 # Only copy the final release from the build stage
 COPY --from=builder --chown=nobody:root /app/_build/${MIX_ENV}/rel/code_my_spec ./
 
+# The encrypted environments, next to bin/ as bin/server and bin/migrate expect
+# (../envs). Ciphertext only: the plaintext envs/*.env never enter the image.
+# The container's one secret, SOPS_AGE_KEY, decrypts its own environment.
+COPY --chown=nobody:root envs/*.enc.env ./envs/
+
 USER nobody
 
 # If using an environment that doesn't automatically reap zombie processes, it is

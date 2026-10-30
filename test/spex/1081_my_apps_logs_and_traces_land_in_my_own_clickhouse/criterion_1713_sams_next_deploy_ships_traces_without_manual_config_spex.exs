@@ -23,6 +23,7 @@ defmodule CodeMySpecSpex.Story1081.Criterion1713Spex do
   spex "Sam's next deploy ships traces without manual config", criterion: 1713 do
     scenario "the generated deploy configuration already names the collector" do
       given_ "UAT telemetry setup completed", context do
+        project = CodeMySpecSpex.Fixtures.set_project_domain(context.project, "example.com")
         previous = Application.get_env(:code_my_spec, :provisioning_step_opts, [])
 
         Application.put_env(
@@ -38,6 +39,8 @@ defmodule CodeMySpecSpex.Story1081.Criterion1713Spex do
 
         run_console_step(servers_view, :server)
         await_console_step(servers_view, :server)
+        :ok = CodeMySpecSpex.Fixtures.publish_deploy_host(context.scope, "uat", "uat.example.com")
+        :ok = CodeMySpecSpex.Fixtures.publish_deploy_host(context.scope, "uat", "example.com")
 
         {:ok, view, _html} =
           live(
@@ -48,7 +51,7 @@ defmodule CodeMySpecSpex.Story1081.Criterion1713Spex do
         run_console_step(view, :telemetry)
         await_console_step(view, :telemetry)
 
-        {:ok, Map.put(context, :view, view)}
+        {:ok, context |> Map.put(:project, project) |> Map.put(:view, view)}
       end
 
       when_ "Sam's app is next deployed to UAT", context do
@@ -90,7 +93,7 @@ defmodule CodeMySpecSpex.Story1081.Criterion1713Spex do
         html = render(context.deploys_view)
 
         assert resource_step_state?(html, "deploy", "done"),
-               "expected the deploy to complete with no manual telemetry edit required"
+               "expected the deploy to complete with no manual telemetry edit required: #{html |> Floki.parse_document!() |> Floki.find("[data-test='deploy-row'][data-environment='uat']") |> Floki.text()}"
 
         {:ok, context}
       end

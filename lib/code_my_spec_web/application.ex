@@ -63,8 +63,8 @@ defmodule CodeMySpecWeb.Application do
         when_serving(serving?, CodeMySpec.RunGuard),
         when_serving(serving?, CodeMySpec.Files.LockfileSweep),
         when_serving(serving?, embeddings_configured?() && CodeMySpec.Embeddings.HexDocSweep),
-        # Deletes idle burst boxes and leftover builders. Prod only, and only
-        # with `CMS_BURST_SWEEP=1`: it deletes servers, so it is opt-in.
+        # Deletes idle deploy burst boxes and leftover builders in prod when
+        # the Hetzner API is configured.
         when_serving(serving?, burst_sweep_child(env)),
         # One reconcile per boot; a `:temporary`, non-raising Task, so it never
         # blocks or fails boot.
@@ -238,7 +238,7 @@ defmodule CodeMySpecWeb.Application do
   # below. `busy?` counts a connected embed runner as well as a running build,
   # which `BurstBox.busy?/2`'s default does not.
   defp burst_sweep_child(:prod) do
-    if System.get_env("CMS_BURST_SWEEP") == "1" and hetzner_burst_box_configured?() do
+    if hetzner_burst_box_configured?() do
       {BurstBox.Sweep,
        scope: %Scope{},
        reap_legacy_builders: true,

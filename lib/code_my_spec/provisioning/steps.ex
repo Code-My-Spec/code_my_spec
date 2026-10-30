@@ -144,6 +144,16 @@ defmodule CodeMySpec.Provisioning.Steps do
     end
   end
 
+  # Satisfied with nothing to check when no legacy source is named — the
+  # overwhelming majority of projects, for whom this step costs nothing.
+  # Configured, it is satisfied only once the target already holds what the
+  # source does; the SSH compare is the same one `run/3` ends with.
+  def verify(:import, %Scope{} = scope, opts) do
+    Enum.reduce_while(environments(scope, opts), {:ok, :satisfied, []}, fn
+      environment, {:ok, :satisfied, acc} -> verify_import(scope, environment, acc, opts)
+    end)
+  end
+
   def verify(:domain, %Scope{} = scope, _opts) do
     case domain(scope) do
       nil ->
@@ -171,7 +181,7 @@ defmodule CodeMySpec.Provisioning.Steps do
         )
 
       if length(pointable) == length(selected),
-        do: verify_dns_records(scope, domain, pointable),
+        do: verify_dns_records(scope, domain, pointable, opts),
         else: {:ok, :absent}
     else
       nil -> {:ok, :absent}
@@ -366,6 +376,14 @@ defmodule CodeMySpec.Provisioning.Steps do
       {:error, reason, partial} -> {:error, format(reason), partial}
       {:error, reason} -> {:error, format(reason)}
     end
+  end
+
+  # A no-op for every project that never named a legacy source; for the few
+  # that did, this automates what adopting an existing app used to mean
+  # doing by hand over SSH.
+  def run(:import, %Scope{} = scope, opts) do
+    environments(scope, opts)
+    |> Enum.reduce_while({:ok, []}, &run_import(scope, &1, &2, opts))
   end
 
   def run(:domain, %Scope{} = scope, opts) do
@@ -815,6 +833,23 @@ defmodule CodeMySpec.Provisioning.Steps do
     else
       {:error, reason} -> {:error, reason}
       _ -> {:error, :server_address_missing}
+    end
+  end
+
+  @doc """
+  Restore an uploaded pg_dump into `environment`'s tenant database — the
+  upload-file counterpart to `:import`'s container-to-container copy
+  (`Database.import_from/4`, b6daceee). A cutover's target is typically
+  migrated ahead of the restore, so it already has schema: pass
+  `confirm_non_empty: true` once that is expected, or this refuses and
+  names what rows are already there.
+  """
+  @spec restore_database_dump(Scope.t(), String.t(), String.t(), keyword()) ::
+          {:ok, map()} | {:error, term()}
+  def restore_database_dump(%Scope{} = scope, environment, dump_path, opts \\ []) do
+    case on_import_box(scope, environment, opts) do
+      {:ok, box_opts} -> Database.restore_dump(scope, environment, dump_path, box_opts)
+      {:error, reason} -> {:error, format(reason)}
     end
   end
 
@@ -2031,7 +2066,7 @@ defmodule CodeMySpec.Provisioning.Steps do
          # builder refuses without `opts[:reference]`.
          {:ok, reference} <- Registry.reference(scope, tag, opts),
          opts = Keyword.put(opts, :reference, reference),
-         opts = with_deploy_execution(opts, scope, environment, reference, architecture),
+         {:ok, opts} <- with_deploy_execution(opts, scope, environment, reference, architecture),
          {:ok, build} <- build_on_builder(scope, tag, architecture, opts) do
       {:ok,
        %{
@@ -2067,9 +2102,33 @@ defmodule CodeMySpec.Provisioning.Steps do
       |> with_registry_credential_for_deploy(scope)
       |> Keyword.put(:environment_previously_deployed, previously_deployed?(scope, environment))
 
-    Keyword.put(opts, :then, fn run, dir ->
-      Deploy.run(env(scope), environment, Keyword.merge(deploy_opts, run: run, remote_dir: dir))
-    end)
+    with :ok <- deploy_target_known(deploy_opts, host, environment) do
+      {:ok,
+       Keyword.put(opts, :then, fn run, dir ->
+         Deploy.run(
+           env(scope),
+           environment,
+           Keyword.merge(deploy_opts, run: run, remote_dir: dir)
+         )
+       end)}
+    end
+  end
+
+  # Ahead of a cutover the host name still resolves to the old host, so
+  # kamal falling back to it would reach the wrong machine (and hang there).
+  defp deploy_target_known(deploy_opts, host, environment) do
+    case {Keyword.get(deploy_opts, :confirm_dns_after_deploy), Keyword.get(deploy_opts, :host_ip)} do
+      {true, ip} when is_binary(ip) and ip != "" ->
+        :ok
+
+      {true, _} ->
+        {:error,
+         "cannot deploy #{environment} ahead of its DNS: no address was found for its server, " <>
+           "and #{host} still points elsewhere"}
+
+      _ ->
+        :ok
+    end
   end
 
   # Tells `Deploy.run/3` whether a failing health check protects something
@@ -2234,7 +2293,13 @@ defmodule CodeMySpec.Provisioning.Steps do
         |> Keyword.put(:registry_username, credential.username)
         |> Keyword.put(:registry_password, credential.password)
 
-      _ ->
+      {:error, reason} ->
+        # The deploy still runs and kamal names the missing secret, but the
+        # cause is here, not in kamal's output.
+        Logger.warning(
+          "[Steps] no registry credential for the deploy, kamal cannot log in: #{inspect(reason)}"
+        )
+
         opts
     end
   end
@@ -2275,8 +2340,13 @@ defmodule CodeMySpec.Provisioning.Steps do
 
   # The box this environment's traffic lands on; not knowable when the deploy
   # config was generated.
+  # The recorded address first (what the DNS readiness check reads), then the
+  # provider's, looked up by server name.
   defp with_host_ip(opts, scope, environment) do
-    case environment_ip(scope, %{name: environment}, opts) do
+    recorded = Environments.get_deployment(scope, environment)
+    target = %{name: environment, ip: recorded && recorded.ip}
+
+    case environment_ip(scope, target, opts) do
       ip when is_binary(ip) and ip != "" -> Keyword.put(opts, :host_ip, ip)
       _ -> opts
     end
@@ -2339,18 +2409,18 @@ defmodule CodeMySpec.Provisioning.Steps do
 
   ## Helpers
 
-  defp verify_dns_records(scope, domain, environments) do
+  defp verify_dns_records(scope, domain, environments, opts) do
     with {:ok, %{"id" => zone_id}} <- Cloudflare.find_zone(scope, domain),
          {:ok, records} <- Cloudflare.list_dns_records(scope, zone_id) do
-      dns_records_satisfied(records, environments)
+      dns_records_satisfied(records, environments, opts)
     else
       # Unreadable zone: absent, and the idempotent run converges.
       _ -> {:ok, :absent}
     end
   end
 
-  defp dns_records_satisfied(records, environments) do
-    if Enum.all?(environments, &record_points_at?(records, &1)),
+  defp dns_records_satisfied(records, environments, opts) do
+    if Enum.all?(environments, &record_points_at?(records, &1, opts)),
       do:
         {:ok, :satisfied,
          Enum.flat_map(environments, &(dns_resources_for(&1) ++ [dns_outcome(&1, "unchanged")]))},
@@ -2359,10 +2429,14 @@ defmodule CodeMySpec.Provisioning.Steps do
 
   # Present and pointing at this environment's server — a leftover record may
   # point at an address the project no longer holds.
-  defp record_points_at?(records, environment) do
+  defp record_points_at?(records, environment, opts) do
+    ttl = Keyword.get(opts, :ttl)
+
     Enum.any?(records, fn record ->
       record["name"] == environment.host and record["type"] == "A" and
-        record["content"] == environment.ip and record["proxied"] != true
+        record["content"] == environment.ip and
+        record["proxied"] != true and
+        (is_nil(ttl) or record["ttl"] == ttl)
     end)
   end
 
@@ -2812,8 +2886,9 @@ defmodule CodeMySpec.Provisioning.Steps do
           identifier: to_string(result.failed_phase)
         }
 
-        # With what the script said, not just that it failed.
-        {:error, with_output(reason, result.output), [failure | phases]}
+        # The phase and the same bounded error excerpt logged by Deploy.run
+        # survive in both the persisted status row and the starter's message.
+        {:error, Deploy.failure_detail(result), [failure | phases]}
 
       %{swapped_at: _} ->
         {:ok, [%{kind: "deployment", location: "#{environment}/#{host}"} | phases]}
@@ -2935,8 +3010,10 @@ defmodule CodeMySpec.Provisioning.Steps do
     version = Keyword.get(opts, :deployed_version)
 
     with {:ok, delivery} <- check_secrets(scope, environment),
+         :ok <- import_complete(scope, environment, opts),
          :ok <- config_targets_this_project(scope, environment),
          :ok <- require_script(scope, "bin/deploy"),
+         :ok <- deploy_dns_ready(scope, environment, host, opts),
          # Before the build: the builder archives HEAD, and the image is
          # versioned by HEAD.
          :ok <- commit_generated_configuration(scope),
@@ -2974,8 +3051,77 @@ defmodule CodeMySpec.Provisioning.Steps do
     end
   end
 
+  # Kamal connects to the named host and ACME validates that same name. Refuse
+  # before committing configuration or building an image if any public name
+  # still points elsewhere. The resolver can be supplied by a test.
+  # `confirm_dns_after_deploy`: a deploy ahead of a cutover, onto a server the
+  # name does not point at yet. Kamal reaches it by its recorded address
+  # (CMS_DEPLOY_HOST_IP) and kamal-proxy requests the certificate on the first
+  # request after the flip, so only ACME waits for DNS.
+  defp deploy_dns_ready(scope, environment, host, opts) do
+    if Keyword.get(opts, :confirm_dns_after_deploy) == true,
+      do: :ok,
+      else: deploy_dns_ready_check(scope, environment, host, opts)
+  end
+
+  defp deploy_dns_ready_check(scope, environment, host, opts) do
+    target = Environments.get_deployment(scope, environment)
+    ip = target && target.ip
+
+    if is_binary(ip) and ip != "" do
+      lookup = Keyword.get(opts, :dns_lookup, &Dns.lookup/3)
+      hosts = Enum.uniq(expected_hosts(scope, environment) ++ [host])
+
+      Enum.reduce_while(hosts, :ok, fn name, :ok ->
+        answers = if is_binary(name) and name != "", do: lookup.(name, :a, []), else: []
+
+        if ip in answers do
+          {:cont, :ok}
+        else
+          resolved = if answers == [], do: "no address", else: Enum.join(answers, ", ")
+          name = name || "the deploy hostname"
+
+          {:halt,
+           {:error,
+            "#{name} resolves to #{resolved}, not this server (#{ip}). Point DNS at this server before deploying."}}
+        end
+      end)
+    else
+      {:error,
+       "#{environment} has no recorded server address; deploy cannot check its public DNS yet."}
+    end
+  end
+
   defp deployed_image_reference(%{reference: reference}), do: reference
   defp deployed_image_reference(_image), do: nil
+
+  # `:import`'s own gate already blocks the setup checklist, but
+  # `run_provisioning_step` can run `:deploy` directly, out of sequence, so
+  # this is the one check that cannot be skipped by running steps out of
+  # order. A no-op for the overwhelming majority of environments, which
+  # never name a legacy source.
+  defp import_complete(scope, environment, opts) do
+    case import_source(scope, environment) do
+      nil ->
+        :ok
+
+      source ->
+        with {:ok, box_opts} <- on_import_box(scope, environment, opts),
+             {:ok, credential} <- Database.credential(scope, environment),
+             {:ok, true} <- Database.imported?(box_opts, source, credential.database) do
+          :ok
+        else
+          {:ok, false} -> {:error, empty_database_refusal(environment, source)}
+          {:error, reason} -> {:error, format(reason)}
+        end
+    end
+  end
+
+  defp empty_database_refusal(environment, source) do
+    "#{environment} is set up to adopt #{source.container}/#{source.database}, but its own " <>
+      "tenant database does not hold that data yet — run the import step before deploying, " <>
+      "or this release boots against an empty database."
+  end
 
   # A build already ran the deploy on its box (`with_deploy_execution/4`), so
   # its result is reused. Only an unbuilt image (explicit `:image` or
@@ -3576,19 +3722,20 @@ defmodule CodeMySpec.Provisioning.Steps do
           if is_nil(ip) do
             {:cont, {resources, pauses}}
           else
-            unchanged? =
-              Enum.any?(existing, fn record ->
-                record["name"] == environment.host and record["type"] == "A" and
-                  record["content"] == ip and record["proxied"] != true
-              end)
+            old = Enum.find(existing, &(&1["name"] == environment.host and &1["type"] == "A"))
+            unchanged? = record_points_at?(existing, %{environment | ip: ip}, opts)
+            change = dns_change(environment, old, ip, opts)
+            report = Keyword.get(opts, :report_dns_change, fn message -> Logger.info(message) end)
+            report.("DNS change: #{change.identifier}")
+            reported = resources ++ [change]
 
-            case write_dns_record_for(scope, zone, environment, ip, existing, resources, opts) do
+            case write_dns_record_for(scope, zone, environment, ip, existing, reported, opts) do
               {:cont, {:ok, written}} ->
                 outcome = if unchanged?, do: "unchanged", else: "written"
                 {:cont, {written ++ [dns_outcome(environment, outcome)], pauses}}
 
               {:halt, {:error, reason}} ->
-                {:halt, {:error, reason, resources}}
+                {:halt, {:error, reason, reported}}
             end
           end
       end
@@ -3603,11 +3750,23 @@ defmodule CodeMySpec.Provisioning.Steps do
       {resources, pauses} ->
         outcomes =
           resources
-          |> Enum.filter(&(&1.kind == "dns_outcome"))
+          |> Enum.filter(&(&1.kind in ["dns_outcome", "dns_change"]))
           |> Enum.map_join(", ", & &1.identifier)
 
         {:paused, "DNS outcomes: #{outcomes}. #{Enum.join(pauses, " ")}", resources}
     end
+  end
+
+  defp dns_change(environment, old, ip, opts) do
+    old_value = if old, do: old["content"], else: "absent"
+    ttl = Keyword.get(opts, :ttl, 60)
+
+    %{
+      kind: "dns_change",
+      location: environment.host,
+      identifier:
+        "environment=#{environment.name} #{environment.host} #{old_value} -> #{ip} proxied=false ttl=#{ttl}"
+    }
   end
 
   defp dns_outcome(environment, outcome) do
@@ -3647,7 +3806,10 @@ defmodule CodeMySpec.Provisioning.Steps do
   defp write_dns_record_for(scope, zone, environment, ip, existing, acc, opts) do
     write = Keyword.get(opts, :write_dns_record, &Cloudflare.ensure_dns_record/5)
 
-    case write.(scope, zone["id"], environment.host, ip, records: existing, proxied: false) do
+    record_opts = [records: existing, proxied: false]
+    record_opts = Keyword.put(record_opts, :ttl, Keyword.get(opts, :ttl, 60))
+
+    case write.(scope, zone["id"], environment.host, ip, record_opts) do
       {:ok, response} ->
         record = dns_resource(environment.host, ip, response, environment.name)
         confirm_dns_record(environment, ip, record, acc, opts)
@@ -4038,6 +4200,101 @@ defmodule CodeMySpec.Provisioning.Steps do
 
   defp environment_row(scope, environment) do
     Environments.get_deployment(scope, environment) || %{name: environment}
+  end
+
+  # `nil` unless the environment actually names a legacy container and
+  # database — both, or neither: a half-configured source is treated the
+  # same as none, rather than guessing the other half.
+  defp import_source(scope, environment) do
+    case environment_row(scope, environment) do
+      %{import_source_container: container, import_source_database: database}
+      when is_binary(container) and container != "" and is_binary(database) and database != "" ->
+        %{container: container, database: database}
+
+      _ ->
+        nil
+    end
+  end
+
+  defp verify_import(scope, environment, acc, opts) do
+    case import_source(scope, environment) do
+      nil ->
+        {:cont, {:ok, :satisfied, acc ++ [not_configured_resource(environment)]}}
+
+      source ->
+        with {:ok, box_opts} <- on_import_box(scope, environment, opts),
+             {:ok, credential} <- Database.credential(scope, environment),
+             {:ok, true} <- Database.imported?(box_opts, source, credential.database) do
+          {:cont, {:ok, :satisfied, acc ++ [import_resource(environment, source)]}}
+        else
+          {:ok, false} -> {:halt, {:ok, :absent}}
+          {:error, reason} -> {:halt, {:error, format(reason)}}
+        end
+    end
+  end
+
+  defp run_import(scope, environment, {:ok, acc}, opts) do
+    case import_source(scope, environment) do
+      nil ->
+        {:cont, {:ok, acc ++ [not_configured_resource(environment)]}}
+
+      source ->
+        case on_import_box(scope, environment, opts) do
+          {:ok, box_opts} -> run_import_on_box(scope, environment, source, box_opts, acc)
+          {:error, reason} -> {:halt, {:error, format(reason), acc}}
+        end
+    end
+  end
+
+  defp run_import_on_box(scope, environment, source, box_opts, acc) do
+    case Database.import_from(scope, environment, source, box_opts) do
+      {:ok, _counts} -> {:cont, {:ok, acc ++ [import_resource(environment, source)]}}
+      {:error, reason} -> {:halt, {:error, format(reason), acc}}
+    end
+  end
+
+  # Recorded even when there is nothing to import, so a done `:import` step
+  # is never resource-less — that is what a stub that never ran looks like
+  # (`CodeMySpec.ProvisioningTest`, "a step that reports done has resources
+  # to show for it"). This one says, truthfully, that it checked and there
+  # was nothing to do.
+  defp not_configured_resource(environment) do
+    %{
+      kind: "database_import",
+      location: "none",
+      identifier: "environment=#{environment} status=not_configured"
+    }
+  end
+
+  defp import_resource(environment, source) do
+    %{
+      kind: "database_import",
+      location: "#{source.container}/#{source.database}",
+      identifier: "environment=#{environment}"
+    }
+  end
+
+  # `opts[:run]` wins, as every other step lets a test or a caller already
+  # on the box skip establishing SSH a second time.
+  defp on_import_box(scope, environment, opts) do
+    case Keyword.get(opts, :run) do
+      nil -> ssh_onto_box(scope, environment, opts)
+      _run -> {:ok, opts}
+    end
+  end
+
+  defp ssh_onto_box(scope, environment, opts) do
+    with {:ok, ssh_opts} <- with_builder_ssh(scope, opts),
+         ip when is_binary(ip) and ip != "" <-
+           environment_ip(scope, environment_row(scope, environment), ssh_opts) do
+      {:ok, Keyword.put(ssh_opts, :run, Remote.ssh_runner(%{"ip" => ip}, ssh_opts))}
+    else
+      {:error, reason} ->
+        {:error, "could not reach #{environment}'s server to import onto: #{format(reason)}"}
+
+      _ ->
+        {:error, "no address is recorded for #{environment}, so there is no box to import onto"}
+    end
   end
 
   defp awaiting_first_message(site) do
@@ -4522,6 +4779,9 @@ defmodule CodeMySpec.Provisioning.Steps do
   as an argument and is never written to the working tree. Mints the
   environment's age key if it has none.
   """
+  def put_secret_in_repository(%Scope{} = scope, environment, key, value),
+    do: CodeMySpec.Provisioning.RepositorySecrets.put(scope, environment, key, value)
+
   @spec put_secret(Scope.t(), String.t(), String.t(), String.t()) ::
           {:ok, map()} | {:error, String.t()}
   def put_secret(%Scope{} = scope, environment, key, value) do
@@ -4564,6 +4824,23 @@ defmodule CodeMySpec.Provisioning.Steps do
       {:ok, keys} -> {:ok, Enum.reverse(keys)}
       error -> error
     end)
+  end
+
+  @doc """
+  `import_dotenv/3` for a project whose secrets live in its repository: every
+  key in one commit through the GitHub API, no working copy involved.
+  """
+  @spec import_dotenv_in_repository(Scope.t(), String.t(), String.t()) ::
+          {:ok, [String.t()]} | {:error, String.t()}
+  def import_dotenv_in_repository(%Scope{} = scope, environment, dotenv) when is_binary(dotenv) do
+    with {:ok, %{keys: keys}} <-
+           CodeMySpec.Provisioning.RepositorySecrets.put_many(
+             scope,
+             environment,
+             dotenv |> Sops.parse_dotenv() |> Enum.sort()
+           ) do
+      {:ok, keys}
+    end
   end
 
   defp put_secret_in(scope, resolved_environment, environment, key, value) do

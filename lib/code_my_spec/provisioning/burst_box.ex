@@ -38,13 +38,20 @@ defmodule CodeMySpec.Provisioning.BurstBox do
   @spec release_path() :: String.t()
   def release_path, do: @release_path
 
-  # Every caller must pass this one name or an account ends up with two boxes
+  # Every caller must pass these names or an account ends up with extra boxes
   # (`Builder.build/3` and `HetznerFlameBackend`'s config in `application.ex`).
+  # One box per architecture: a build runs natively, so an amd64 image cannot
+  # come off the arm box.
   @box_name "burst-platform"
 
-  @doc "The one burst box name every caller should pass to `ensure_box/3`."
+  @doc "The arm burst box name every caller should pass to `ensure_box/3`."
   @spec box_name() :: String.t()
   def box_name, do: @box_name
+
+  @doc "The burst box name for builds on `architecture`."
+  @spec box_name(:arm | :x86 | nil) :: String.t()
+  def box_name(:x86), do: @box_name <> "-x86"
+  def box_name(_arm), do: @box_name
 
   ## ensure_box
 

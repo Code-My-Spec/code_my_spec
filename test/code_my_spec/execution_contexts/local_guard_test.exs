@@ -37,8 +37,9 @@ defmodule CodeMySpec.ExecutionContexts.LocalGuardTest do
       Port.open({:spawn_executable, System.find_executable("mix") |> String.to_charlist()}, [
         :binary,
         :exit_status,
-        args: [~c"run", ~c"--no-start", String.to_charlist(script)],
-        cd: File.cwd!() |> String.to_charlist()
+        args: [~c"run", ~c"--no-compile", ~c"--no-start", String.to_charlist(script)],
+        cd: File.cwd!() |> String.to_charlist(),
+        env: [{~c"MIX_ENV", ~c"test"}]
       ])
 
     {:os_pid, beam_pid} = Port.info(port, :os_pid)
@@ -48,7 +49,9 @@ defmodule CodeMySpec.ExecutionContexts.LocalGuardTest do
       File.rm_rf(dir)
     end)
 
-    assert eventually(fn -> File.exists?(pid_file) end)
+    assert eventually(fn -> File.exists?(pid_file) end),
+           "nested mix did not start the child: #{port_output(port)}"
+
     child_pid = pid_file |> File.read!() |> String.trim()
     assert {_, 0} = System.cmd("/bin/kill", ["-0", child_pid], stderr_to_stdout: true)
 
@@ -60,6 +63,15 @@ defmodule CodeMySpec.ExecutionContexts.LocalGuardTest do
 
              status != 0 or String.starts_with?(String.trim(state), "Z")
            end)
+  end
+
+  defp port_output(port) do
+    receive do
+      {^port, {:data, data}} -> data <> port_output(port)
+      {^port, {:exit_status, status}} -> "exit status #{status}; " <> port_output(port)
+    after
+      0 -> ""
+    end
   end
 
   defp eventually(fun) do

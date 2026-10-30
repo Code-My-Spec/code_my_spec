@@ -12,6 +12,7 @@ defmodule CodeMySpec.Provisioning.Builder.Remote do
   require Logger
 
   alias CodeMySpec.ExecutionContexts
+  alias CodeMySpec.Provisioning.Builder.Version
   alias CodeMySpec.Provisioning.Truncate
   alias CodeMySpec.Provisioning.Wait
 
@@ -47,11 +48,12 @@ defmodule CodeMySpec.Provisioning.Builder.Remote do
 
     # One log line per phase, so a long build and a hung one are
     # distinguishable from outside.
-    with :ok <- await_ssh(run, Keyword.get(opts, :ssh_attempts, @ssh_attempts), opts),
+    with {:ok, version} <- Version.for_ref(ref, opts),
+         :ok <- await_ssh(run, Keyword.get(opts, :ssh_attempts, @ssh_attempts), opts),
          _ = Logger.info("[Builder] ssh reachable, delivering #{ref}"),
          :ok <- deliver_source(deliver, ref, dir, opts) do
       Logger.info("[Builder] source delivered, running docker build")
-      build_marked(run, ref, reference, dir, opts)
+      build_marked(run, ref, reference, dir, Keyword.put(opts, :cms_version, version))
     end
   end
 
@@ -295,11 +297,20 @@ defmodule CodeMySpec.Provisioning.Builder.Remote do
   # container; BuildKit leaves none and ignores the flag. Correct either way.
   defp docker_build(run, reference, ref, dir, opts) do
     labels = "--label commit=#{ref}" <> service_label(Keyword.get(opts, :service))
-    flags = "--force-rm " <> labels <> platform_flag(Keyword.get(opts, :platform))
+    version = Keyword.fetch!(opts, :cms_version)
+
+    flags =
+      "--force-rm " <>
+        labels <>
+        platform_flag(Keyword.get(opts, :platform)) <>
+        " --build-arg CMS_VERSION=#{shell_quote(version)}"
 
     case run.(["cd #{dir} && docker build #{flags} -t #{reference} ."]) do
-      {_, 0} -> :ok
-      {output, status} -> {:error, {:build_failed, status, trim(output)}}
+      {_, 0} ->
+        :ok
+
+      {output, status} ->
+        {:error, {:build_failed, status, output |> trim() |> Truncate.tail(1500)}}
     end
   end
 

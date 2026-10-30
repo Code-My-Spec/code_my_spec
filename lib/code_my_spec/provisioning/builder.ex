@@ -73,6 +73,11 @@ defmodule CodeMySpec.Provisioning.Builder do
   # the architecture.
   @bootstrap_role_label "cms-bootstrap-role"
 
+  @deploy_builder_label "cms-deploy-builder"
+
+  @doc "Label added to burst boxes created for a deploy build."
+  def deploy_builder_label, do: @deploy_builder_label
+
   @doc "The label `BurstBox.Sweep` looks for to find a temp bootstrap server whose snapshot outcome is not yet confirmed."
   @spec bootstrap_role_label() :: String.t()
   def bootstrap_role_label, do: @bootstrap_role_label
@@ -124,18 +129,63 @@ defmodule CodeMySpec.Provisioning.Builder do
       |> Keyword.put(:architecture, architecture)
       |> Keyword.put(:server_type, Keyword.get(opts, :server_type) || spec.server_type)
       |> Keyword.put(:location, Keyword.get(opts, :builder_location) || spec.location)
+      # A deploy build box builds other images; it does not run this app.
+      # Without this, a first box for an architecture with no snapshot yet
+      # bootstrapped our own release and raised on the missing :ref.
+      |> Keyword.put_new(:install_release, fn _run, _server, _opts -> :ok end)
+      |> Keyword.update(
+        :labels,
+        %{@deploy_builder_label => "true"},
+        &Map.put(&1, @deploy_builder_label, "true")
+      )
 
-    ensure.(scope, BurstBox.box_name(), box_opts)
+    with {:ok, server} <- ensure.(scope, BurstBox.box_name(architecture), box_opts) do
+      join_networks(scope, server, opts)
+    end
   end
 
-  # Nothing here destroys the shared box outright. `Lifecycle.check/3` frees an
-  # idle box at the end of its billing hour; `BurstBox.Sweep` is the safety net.
+  # The box is the account's one, so it already exists for every build after
+  # the first, and `:network_ids` only reaches Hetzner when a box is created.
+  # A box made for uat's network then built for prod and could not reach
+  # prod's registry ("Client.Timeout exceeded" on docker login).
+  defp join_networks(scope, server, opts) do
+    attached = for net <- server["private_net"] || [], do: net["network"]
+
+    case (Keyword.get(opts, :network_ids) || []) -- attached do
+      [] ->
+        {:ok, server}
+
+      missing ->
+        attach = Keyword.get(opts, :attach_to_network, &Hetzner.attach_to_network/3)
+        find = Keyword.get(opts, :find, &Hetzner.find_server/2)
+
+        with :ok <- attach_all(scope, server["id"], missing, attach) do
+          find.(scope, server["name"])
+        end
+    end
+  end
+
+  defp attach_all(scope, server_id, network_ids, attach) do
+    Enum.reduce_while(network_ids, :ok, fn network_id, :ok ->
+      case attach.(scope, server_id, network_id) do
+        {:ok, _} -> {:cont, :ok}
+        {:error, _} = error -> {:halt, error}
+      end
+    end)
+  end
+
+  # A deploy-created box is checked immediately after the build and deploy
+  # callback. `BurstBox.Sweep` covers an interrupted process.
   defp release_box(scope, server, opts) do
-    busy? = Keyword.get(opts, :busy?, &BurstBox.busy?/2)
+    # The probe SSHes the box, so it needs the build's SSH options.
+    busy? =
+      Keyword.get(opts, :busy?, fn scope, server -> BurstBox.busy?(scope, server, opts) end)
+
     destroy = Keyword.get(opts, :destroy, &Hetzner.delete_server/2)
     now = Keyword.get(opts, :now, &DateTime.utc_now/0)
 
-    Lifecycle.check(scope, server, busy?: busy?, destroy: destroy, now: now)
+    force? = Map.get(server, "labels", %{})[@deploy_builder_label] == "true"
+    Lifecycle.check(scope, server, busy?: busy?, destroy: destroy, now: now, force?: force?)
   end
 
   # The only line that says a build finished, one way or the other — otherwise
@@ -252,7 +302,11 @@ defmodule CodeMySpec.Provisioning.Builder do
               "CodeMySpec burst box (#{architecture})"
             )
 
-          bootstrap_and_snapshot(scope, server, architecture, destroy, create_image, opts)
+          try do
+            bootstrap_and_snapshot(scope, server, architecture, create_image, opts)
+          after
+            destroy_temp_server(destroy, scope, server, architecture)
+          end
 
         {:error, _reason} = error ->
           error
@@ -260,11 +314,8 @@ defmodule CodeMySpec.Provisioning.Builder do
     end
   end
 
-  # The source server is not destroyed until its snapshot is confirmed. A
-  # failure before `create_image` returned an id destroys it here; anything
-  # after hands off to `finish_snapshot/8`.
-  # See knowledge/provisioning, "Burst box image".
-  defp bootstrap_and_snapshot(scope, server, architecture, destroy, create_image, opts) do
+  # The caller owns cleanup after server creation, including raises and throws.
+  defp bootstrap_and_snapshot(scope, server, architecture, create_image, opts) do
     run = Keyword.get(opts, :run) || Remote.ssh_runner(server, opts)
     attempts = Keyword.get(opts, :ssh_attempts, 90)
     list_images = Keyword.get(opts, :list_images, &Hetzner.list_images/2)
@@ -280,38 +331,15 @@ defmodule CodeMySpec.Provisioning.Builder do
              description: description,
              labels: %{label => to_string(architecture)}
            ) do
-      finish_snapshot(scope, server, architecture, destroy, list_images, image, label, opts)
-    else
-      error ->
-        destroy_temp_server(destroy, scope, server, architecture)
-        error
+      finish_snapshot(scope, server, architecture, list_images, image, label, opts)
     end
   end
 
-  # Destroys the source only on a confirmed outcome: the image is available, or
-  # Hetzner dropped it. A poll that ran out leaves the source running and names
-  # it in the error.
-  defp finish_snapshot(scope, server, architecture, destroy, list_images, image, label, opts) do
+  defp finish_snapshot(scope, server, architecture, list_images, image, label, opts) do
     case await_image_ready(list_images, scope, image["id"], architecture, label, opts) do
-      :ok ->
-        destroy_temp_server(destroy, scope, server, architecture)
-        {:ok, image["id"]}
-
-      {:error, {:image_vanished, _id}} = error ->
-        destroy_temp_server(destroy, scope, server, architecture)
-        error
-
-      {:error, reason} ->
-        Logger.error(
-          "[Builder] #{architecture} burst-box image #{inspect(image["id"])} was not " <>
-            "confirmed ready (#{inspect(reason)}) — leaving bootstrap server " <>
-            "#{server_id(server)} (#{inspect(server_name(server))}) running rather than " <>
-            "risk deleting it while the snapshot may still be mid-write. Check Hetzner's " <>
-            "own status for that image, then either destroy the server by hand (mix " <>
-            "cms.provisioning_leaks) or re-run once it is clear which way the snapshot went."
-        )
-
-        {:error, {:image_not_confirmed, image["id"], server_id(server)}}
+      :ok -> {:ok, image["id"]}
+      {:error, {:image_vanished, _id}} = error -> error
+      {:error, _reason} -> {:error, {:image_not_confirmed, image["id"], server_id(server)}}
     end
   end
 

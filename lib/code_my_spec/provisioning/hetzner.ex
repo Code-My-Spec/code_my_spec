@@ -849,6 +849,32 @@ defmodule CodeMySpec.Provisioning.Hetzner do
        when status in 200..299,
        do: {:ok, body}
 
+  defp handle_response(
+         {:ok,
+          %Req.Response{
+            status: 403,
+            body: %{
+              "error" => %{
+                "code" => "resource_limit_exceeded",
+                "details" => %{"limits" => limits}
+              }
+            }
+          }}
+       )
+       when is_list(limits) do
+    if Enum.any?(limits, &(&1["name"] == "primary_ip_limit")) do
+      {:error,
+       {:resource_limit_exceeded,
+        "Hetzner account primary IP limit is full. Existing servers and allocated primary IPs use these slots; delete an unused server or primary IP before retrying."}}
+    else
+      names = Enum.map_join(limits, ", ", &String.replace(to_string(&1["name"]), "_", " "))
+
+      {:error,
+       {:resource_limit_exceeded,
+        "Hetzner account limit is full (#{names}). Delete unused resources before retrying."}}
+    end
+  end
+
   defp handle_response({:ok, %Req.Response{status: status, body: body}}),
     do: {:error, {:hetzner_error, status, body}}
 

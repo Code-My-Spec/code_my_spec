@@ -44,4 +44,11 @@ defmodule CodeMySpec.Provisioning.TruncateTest do
 
     assert String.length(Truncate.head_and_tail(text)) < String.length(text)
   end
+
+  test "tail keeps only the end, marked as cut" do
+    text = String.duplicate("a", 400) <> "the cause"
+
+    assert Truncate.tail(text, 20) == "…\n" <> String.slice(text, -20, 20)
+    assert Truncate.tail("short", 20) == "short"
+  end
 end

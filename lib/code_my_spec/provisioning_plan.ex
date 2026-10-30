@@ -248,13 +248,15 @@ defmodule CodeMySpec.ProvisioningPlan do
   """
   @spec checklist(Scope.t(), Project.t(), keyword()) :: [map()]
   def checklist(%Scope{} = scope, %Project{} = project, plan_opts \\ []) do
-    for step <- plan(plan_scope(scope, project), setup_options(project), plan_opts) do
+    plan_scope = plan_scope(scope, project)
+
+    for step <- plan(plan_scope, setup_options(project), plan_opts) do
       %{
         project_id: project.id,
         project_name: project.name,
         key: step.key,
         environment: step.environment,
-        state: if(step.state == :done or step.resources != [], do: :present, else: :missing),
+        state: checklist_state(step, plan_scope),
         detail: step.provider_error,
         # The last run's verdict and when it was recorded, beside the presence
         # verdict.
@@ -262,6 +264,31 @@ defmodule CodeMySpec.ProvisioningPlan do
         recorded_at: if(step.state == :running, do: step.started_at, else: step.completed_at),
         paused_instructions: step.paused_instructions
       }
+    end
+  end
+
+  # `:import` is unconditional, but "nothing to do" is a fact about the
+  # environment's own configuration, never something a run has to prove --
+  # `plan/3` still reports it honestly `:not_started` (criterion 7959 reads
+  # the plan before anything runs), only the checklist's own present/missing
+  # verdict treats an unconfigured source as present. Without this, every
+  # project that predates the step, or simply never named one, reads as
+  # missing it until someone runs a step that does nothing.
+  defp checklist_state(%{key: :import, state: :not_started} = step, scope) do
+    if import_source_configured?(scope, step.environment), do: :missing, else: :present
+  end
+
+  defp checklist_state(step, _scope) do
+    if step.state == :done or step.resources != [], do: :present, else: :missing
+  end
+
+  defp import_source_configured?(scope, environment) do
+    case Environments.get_deployment(scope, environment) do
+      %{import_source_container: container, import_source_database: database} ->
+        is_binary(container) and container != "" and is_binary(database) and database != ""
+
+      _ ->
+        false
     end
   end
 

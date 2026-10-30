@@ -41,6 +41,8 @@ defmodule CodeMySpec.Agents.Main.Digest do
             | nil,
           completions: [struct()],
           tokens: [TokenBurn.t()],
+          main_copy_id: Ecto.UUID.t() | nil,
+          previous_requirements: %{total: non_neg_integer(), satisfied: non_neg_integer()} | nil,
           failed: String.t() | nil
         }
 
@@ -52,6 +54,10 @@ defmodule CodeMySpec.Agents.Main.Digest do
             completions: [],
             # Each agent's token use over the last hour (`TokenBurn`).
             tokens: [],
+            # Whose problems are main's own: the project's main working copy.
+            main_copy_id: nil,
+            # What the previous check-in counted, for the change since (2477).
+            previous_requirements: nil,
             failed: nil
 
   @doc "A digest that could not be assembled, and what stopped it."
@@ -73,8 +79,55 @@ defmodule CodeMySpec.Agents.Main.Digest do
 
   def quiet?(%Digest{} = digest) do
     digest.questions == [] and digest.completions == [] and machinery_ok?(digest.machinery) and
-      Enum.all?(digest.work, &settled?/1) and TokenBurn.over_threshold(digest.tokens) == []
+      Enum.all?(digest.work, &settled?/1) and TokenBurn.over_threshold(digest.tokens) == [] and
+      Enum.all?(copy_problems(digest), &(not &1.raised?))
   end
+
+  @doc """
+  Each working copy with blocking problems, once — not once per agent on it.
+
+  A problem belongs to a copy, so a coder and a QA sharing one failing test are
+  one entry (criterion 2473). `raised?` is whether it is main's to look at
+  (criterion 2480): the copy is the main working copy, or one of its problems is
+  also on another copy, which no single team's change explains. Anything else is
+  a team's work in progress — counted, not raised.
+  """
+  @spec copy_problems(t()) :: [
+          %{
+            working_copy_id: Ecto.UUID.t(),
+            root: String.t() | nil,
+            problems: [map()],
+            raised?: boolean()
+          }
+        ]
+  def copy_problems(%Digest{failed: reason}) when is_binary(reason), do: []
+
+  def copy_problems(%Digest{work: work, main_copy_id: main}) do
+    copies =
+      work
+      |> Enum.filter(&(&1.problems != [] and is_binary(&1.working_copy_id)))
+      |> Enum.uniq_by(& &1.working_copy_id)
+
+    shared =
+      copies
+      |> Enum.flat_map(fn entry -> entry.problems |> Enum.map(&problem_key/1) |> Enum.uniq() end)
+      |> Enum.frequencies()
+      |> Enum.filter(fn {_key, count} -> count > 1 end)
+      |> MapSet.new(fn {key, _count} -> key end)
+
+    Enum.map(copies, fn entry ->
+      %{
+        working_copy_id: entry.working_copy_id,
+        root: entry.working_copy_root,
+        problems: entry.problems,
+        raised?:
+          entry.working_copy_id == main or
+            Enum.any?(entry.problems, &MapSet.member?(shared, problem_key(&1)))
+      }
+    end)
+  end
+
+  defp problem_key(problem), do: {problem.source, problem.file_path, problem.message}
 
   @doc """
   Who main is told about as stalled (step 4b): running, holding no task, no
@@ -99,7 +152,7 @@ defmodule CodeMySpec.Agents.Main.Digest do
   # Working or idle as expected, which is criterion 3320's own phrasing. An
   # agent holding a task it has not spoken about for hours is neither.
   defp settled?(%AgentWork{} = entry) do
-    entry.blocked_reasons == [] and entry.problems == [] and
+    entry.blocked_reasons == [] and
       not AgentWork.toolless?(entry) and not AgentWork.provider_blocked?(entry) and
       not AgentWork.timing_out?(entry) and not stalled?(entry)
   end

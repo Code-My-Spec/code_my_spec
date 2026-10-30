@@ -389,7 +389,10 @@ defmodule CodeMySpec.Provisioning.Cloudflare do
       not Keyword.has_key?(opts, :proxied) or
         existing["proxied"] == Keyword.get(opts, :proxied)
 
-    if priority_matches?(existing, Keyword.get(opts, :priority)) and proxy_matches do
+    ttl_matches =
+      not Keyword.has_key?(opts, :ttl) or existing["ttl"] == Keyword.get(opts, :ttl)
+
+    if priority_matches?(existing, Keyword.get(opts, :priority)) and proxy_matches and ttl_matches do
       {:ok, %{"result" => Map.put(existing, "__adopted__", true)}}
     else
       update_dns_record(scope, zone_id, existing["id"], name, content, opts)

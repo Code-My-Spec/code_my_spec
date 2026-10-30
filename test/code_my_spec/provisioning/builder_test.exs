@@ -109,6 +109,91 @@ defmodule CodeMySpec.Provisioning.BuilderTest do
   defp still_creating_response("available"), do: {:ok, []}
   defp still_creating_response(_not_filtered), do: {:ok, [%{"id" => 777, "status" => "creating"}]}
 
+  describe "the box a build runs on" do
+    test "an amd64 build asks for the x86 box, an arm build for the arm one" do
+      owner = self()
+
+      ensure = fn _scope, name, _opts ->
+        send(owner, {:box, name})
+        {:ok, server(%{"name" => name})}
+      end
+
+      for arch <- [:x86, :arm] do
+        assert {:ok, _} =
+                 Builder.build(
+                   scope(),
+                   "abc123",
+                   opts(architecture: arch, ensure_box: ensure, build_fun: build_fun())
+                 )
+      end
+
+      assert_received {:box, "burst-platform-x86"}
+      assert_received {:box, "burst-platform"}
+    end
+  end
+
+  describe "a first box for an architecture" do
+    test "does not install this app's release, so it needs no :ref" do
+      owner = self()
+
+      ensure = fn _scope, _name, box_opts ->
+        send(owner, {:install, box_opts[:install_release].(fn _ -> {"", 0} end, %{}, [])})
+        {:ok, server()}
+      end
+
+      assert {:ok, _} =
+               Builder.build(
+                 scope(),
+                 "abc123",
+                 opts(architecture: :x86, ensure_box: ensure, build_fun: build_fun())
+               )
+
+      assert_received {:install, :ok}
+    end
+  end
+
+  describe "a reused box and the build's network" do
+    test "a box made for another network joins the build's before building" do
+      owner = self()
+      on_uat = server(%{"private_net" => [%{"network" => 12_602_966}]})
+
+      attach = fn _scope, id, network_id ->
+        send(owner, {:attached, id, network_id})
+        {:ok, :attached}
+      end
+
+      assert {:ok, _} =
+               Builder.build(
+                 scope(),
+                 "abc123",
+                 opts(
+                   find: fn _scope, _name -> {:ok, on_uat} end,
+                   network_ids: [12_586_313],
+                   attach_to_network: attach,
+                   build_fun: build_fun()
+                 )
+               )
+
+      assert_received {:attached, 42, 12_586_313}
+    end
+
+    test "a box already on the build's network is left as it is" do
+      on_prod = server(%{"private_net" => [%{"network" => 12_586_313}]})
+
+      assert {:ok, _} =
+               Builder.build(
+                 scope(),
+                 "abc123",
+                 opts(
+                   find: fn _scope, _name -> {:ok, on_prod} end,
+                   network_ids: [12_586_313],
+                   attach_to_network: fn _, _, _ -> flunk("already attached") end,
+                   build_fun: build_fun()
+                 )
+               )
+    end
+  end
+
   describe "build/3" do
     test "returns the image the build produced" do
       build = fn _scope, _server, _ref, arch ->
@@ -171,7 +256,11 @@ defmodule CodeMySpec.Provisioning.BuilderTest do
       owner = self()
 
       create = fn _scope, _name, create_opts ->
-        send(owner, {:created, create_opts[:server_type], create_opts[:location]})
+        send(
+          owner,
+          {:created, create_opts[:server_type], create_opts[:location], create_opts[:labels]}
+        )
+
         {:ok, %{"server" => server()}}
       end
 
@@ -190,7 +279,9 @@ defmodule CodeMySpec.Provisioning.BuilderTest do
 
       # cpx31, not cpx32: identical on paper, but cpx32 does not exist in ash or
       # hil, and the builder has to be created wherever the app box is.
-      assert_received {:created, "cpx31", "fsn1"}
+      assert_received {:created, "cpx31", "fsn1", labels}
+      assert labels[Builder.deploy_builder_label()] == "true"
+      assert labels["cms-burst-role"] == "true"
     end
 
     # The builder pushes to a registry on the app box's private network, and a
@@ -272,7 +363,17 @@ defmodule CodeMySpec.Provisioning.BuilderTest do
       run = fn [_cmd] -> {"", 0} end
 
       assert {:error, {:source_delivery_failed, :no_reachable_source, _}, _resources} =
-               Builder.build(scope, "abc123", opts(run: run, reference: "reg/app:abc123"))
+               Builder.build(
+                 scope,
+                 "abc123",
+                 opts(
+                   run: run,
+                   reference: "reg/app:abc123",
+                   version_lookup: fn ref ->
+                     {:ok, ref <> String.duplicate("0", 40 - byte_size(ref)), []}
+                   end
+                 )
+               )
     end
   end
 
@@ -401,23 +502,17 @@ defmodule CodeMySpec.Provisioning.BuilderTest do
       assert_received :destroyed
     end
 
-    # The bug the live test (story 877/992 follow-on) actually found:
-    # `destroy_temp_server` used to run unconditionally after this `with`
-    # chain, including on a poll that merely gave up — so a real snapshot
-    # that was still mid-write got destroyed along with its own source,
-    # losing the whole (expensive) bootstrap with nothing to show for it.
-    # Giving up now means leaving the source alone and naming it in the
-    # error — never guessing by deleting the one thing that could still
-    # turn into a usable image.
-    test "gives up without destroying the source if the image is never confirmed ready" do
+    test "destroys the source when the image is never confirmed ready" do
+      owner = self()
       list_images = &list_images_creating_forever/2
       create = fn _scope, _name, _create_opts -> {:ok, server()} end
       run = fn [_command] -> {"", 0} end
       install_release = fn _run, _server, _opts -> :ok end
       create_image = fn _scope, 42, _image_opts -> {:ok, %{"image" => %{"id" => 777}}} end
 
-      destroy = fn _scope, _id ->
-        flunk("the source must not be destroyed while the snapshot's outcome is unconfirmed")
+      destroy = fn _scope, 42 ->
+        send(owner, :destroyed)
+        {:ok, %{}}
       end
 
       assert {:error, {:image_not_confirmed, 777, 42}} =
@@ -431,10 +526,11 @@ defmodule CodeMySpec.Provisioning.BuilderTest do
                  image_poll_attempts: 2,
                  image_poll_interval_ms: 0
                )
+
+      assert_received :destroyed
     end
 
-    # Harness's distinction (3): a timeout and a confirmed loss are not the
-    # same thing, and only one of them still has something worth protecting.
+    # Preserve the distinct error when Hetzner confirms the image vanished.
     test "destroys the source and says the image vanished, rather than merely not-ready, when it is actually gone" do
       owner = self()
       list_images = fn _scope, _opts -> {:ok, []} end
@@ -547,6 +643,52 @@ defmodule CodeMySpec.Provisioning.BuilderTest do
       assert_received :destroyed
     end
 
+    test "a raised bootstrap error still destroys the temp server and propagates" do
+      owner = self()
+      create = fn _scope, _name, _opts -> {:ok, server()} end
+      run = fn [_command] -> {"", 0} end
+
+      destroy = fn _scope, 42 ->
+        send(owner, :destroyed)
+        {:ok, %{}}
+      end
+
+      assert_raise RuntimeError, "release crashed", fn ->
+        Builder.ensure_burst_box_image(scope(), :x86,
+          list_images: fn _scope, _opts -> {:ok, []} end,
+          create: create,
+          run: run,
+          install_release: fn _run, _server, _opts -> raise "release crashed" end,
+          destroy: destroy
+        )
+      end
+
+      assert_received :destroyed
+    end
+
+    test "a thrown bootstrap error still destroys the temp server and propagates" do
+      owner = self()
+      create = fn _scope, _name, _opts -> {:ok, server()} end
+      run = fn [_command] -> {"", 0} end
+
+      destroy = fn _scope, 42 ->
+        send(owner, :destroyed)
+        {:ok, %{}}
+      end
+
+      assert catch_throw(
+               Builder.ensure_burst_box_image(scope(), :x86,
+                 list_images: fn _scope, _opts -> {:ok, []} end,
+                 create: create,
+                 run: run,
+                 install_release: fn _run, _server, _opts -> throw(:release_crashed) end,
+                 destroy: destroy
+               )
+             ) == :release_crashed
+
+      assert_received :destroyed
+    end
+
     test "is required — there is no silent default that skips installing the release" do
       list_images = fn _scope, _opts -> {:ok, []} end
       create = fn _scope, _name, _create_opts -> {:ok, server()} end
@@ -643,6 +785,84 @@ defmodule CodeMySpec.Provisioning.BuilderTest do
   # (success, failure, raise) reaches the check, and that its answer is
   # reported honestly rather than assumed.
   describe "build/3 — releasing the shared box afterward" do
+    test "deletes a box it creates when the build succeeds" do
+      owner = self()
+
+      create = fn _, name, create_opts ->
+        server =
+          server(%{
+            "name" => name,
+            "created" => "2026-08-03T00:00:00Z",
+            "labels" => create_opts[:labels]
+          })
+
+        send(owner, {:created_box, server["id"]})
+        {:ok, %{"server" => server}}
+      end
+
+      options =
+        opts(
+          find: fn _, _ -> {:error, :not_found} end,
+          ensure_burst_box_image: fn _, _, _ -> {:ok, "image-id"} end,
+          create: create,
+          build_fun: build_fun(),
+          busy?: fn _, _ -> false end,
+          destroy: recording_destroy(owner),
+          now: fn -> ~U[2026-08-03 00:10:00Z] end
+        )
+
+      assert {:ok, build} = Builder.build(scope(), "abc123", options)
+      assert build.builder_destroyed
+      assert_received {:created_box, 42}
+      assert_received {:destroyed, 42}
+    end
+
+    test "deletes an idle deploy-created box after a successful build before the billing window" do
+      created =
+        server(%{
+          "created" => "2026-08-03T00:00:00Z",
+          "labels" => %{Builder.deploy_builder_label() => "true"}
+        })
+
+      options =
+        opts(
+          find: fn _, _ -> {:ok, created} end,
+          now: fn -> ~U[2026-08-03 00:10:00Z] end,
+          busy?: fn _, _ -> false end,
+          destroy: recording_destroy(self()),
+          build_fun: build_fun()
+        )
+
+      assert {:ok, build} = Builder.build(scope(), "abc123", options)
+      assert build.builder_destroyed
+      assert_received {:destroyed, 42}
+    end
+
+    test "deletes an idle deploy-created box after a failed build before the billing window" do
+      created =
+        server(%{
+          "created" => "2026-08-03T00:00:00Z",
+          "labels" => %{Builder.deploy_builder_label() => "true"}
+        })
+
+      build = fn _, _, _, _ -> {:error, :compilation_failed} end
+
+      options =
+        opts(
+          find: fn _, _ -> {:ok, created} end,
+          now: fn -> ~U[2026-08-03 00:10:00Z] end,
+          busy?: fn _, _ -> false end,
+          destroy: recording_destroy(self()),
+          build_fun: build
+        )
+
+      assert {:error, :compilation_failed, disposition} =
+               Builder.build(scope(), "abc123", options)
+
+      assert disposition.builder_destroyed
+      assert_received {:destroyed, 42}
+    end
+
     test "keeps the box, and reports it, when it is not due for a check" do
       assert {:ok, result} = Builder.build(scope(), "abc123", opts(build_fun: build_fun()))
 
@@ -653,6 +873,28 @@ defmodule CodeMySpec.Provisioning.BuilderTest do
       assert {:ok, build} = Builder.build(scope(), "abc123", due_opts(build_fun: build_fun()))
 
       assert_received {:destroyed, 42}
+      assert build.builder_destroyed
+    end
+
+    # The default probe SSHes the box with the build's own options; called
+    # without them it raised `key :env not found`, replacing the deploy's
+    # real error (2026-10-30 prod deploy).
+    test "asks the box itself whether it is busy, with the build's options" do
+      owner = self()
+
+      run = fn [command] ->
+        send(owner, {:probed, command})
+        {"", 0}
+      end
+
+      opts =
+        [build_fun: build_fun(), run: run]
+        |> due_opts()
+        |> Keyword.delete(:busy?)
+
+      assert {:ok, build} = Builder.build(scope(), "abc123", opts)
+
+      assert_received {:probed, "docker ps -q --filter label=" <> _}
       assert build.builder_destroyed
     end
 
