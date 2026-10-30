@@ -117,6 +117,33 @@ defmodule CodeMySpec.Provisioning.Tools.RunProvisioningStepConfirmApexRepointTes
   defp response_text({_status, text}), do: text
 
   describe "execute/2 for the dns step" do
+    test "requires one environment before touching Cloudflare", %{scope: scope} do
+      frame = %Frame{assigns: %{current_scope: scope}}
+      context = Map.put(frame.assigns, :scope, scope)
+
+      response = ToolLibrary.run("run_provisioning_step", %{step: "dns"}, context)
+
+      assert response_text(response) =~ "needs :environment"
+      refute_received {:wrote, _, _}
+      refute_received {:created, _, _}
+    end
+
+    test "rejects an invalid TTL before touching Cloudflare", %{scope: scope} do
+      frame = %Frame{assigns: %{current_scope: scope}}
+      context = Map.put(frame.assigns, :scope, scope)
+
+      response =
+        ToolLibrary.run(
+          "run_provisioning_step",
+          %{step: "dns", environment: "prod", ttl: 59},
+          context
+        )
+
+      assert response_text(response) =~ "ttl must be at least 60 seconds"
+      refute_received {:wrote, _, _}
+      refute_received {:created, _, _}
+    end
+
     test "pauses on a live apex without confirm_apex_repoint, and writes nothing", %{
       scope: scope
     } do
@@ -125,7 +152,7 @@ defmodule CodeMySpec.Provisioning.Tools.RunProvisioningStepConfirmApexRepointTes
       response =
         ToolLibrary.run(
           "run_provisioning_step",
-          %{step: "dns"},
+          %{step: "dns", environment: "prod"},
           Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
         )
 
@@ -146,7 +173,7 @@ defmodule CodeMySpec.Provisioning.Tools.RunProvisioningStepConfirmApexRepointTes
       response =
         ToolLibrary.run(
           "run_provisioning_step",
-          %{step: "dns", environment: "uat"},
+          %{step: "dns", environment: "uat", proxied: false, ttl: 60},
           Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
         )
 
@@ -160,7 +187,7 @@ defmodule CodeMySpec.Provisioning.Tools.RunProvisioningStepConfirmApexRepointTes
     test "repoints the apex when confirm_apex_repoint is true", %{scope: scope} do
       frame = %Frame{assigns: %{current_scope: scope}}
 
-      params = %{step: "dns", confirm_apex_repoint: true}
+      params = %{step: "dns", environment: "prod", confirm_apex_repoint: true}
 
       response =
         ToolLibrary.run(

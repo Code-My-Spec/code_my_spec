@@ -67,7 +67,7 @@ defmodule CodeMySpec.Provisioning.Tools.RunProvisioningStep do
         {:meta, :string,
          [
            description:
-             "Required for the \"deploy\" step: which environment to deploy (e.g. \"uat\"). Deploying is a decision about one specific environment, not a batch operation — without this, `Steps.run(:deploy, …)` would deploy every environment the project has in one call, in an unspecified order, stopping at the first failure. That silently includes prod even when a caller only meant to touch uat, so this tool requires naming the one environment intended."
+             "Required for the \"deploy\" and \"dns\" steps: which environment to change (e.g. \"uat\"). Deploying is a decision about one specific environment, not a batch operation — without this, `Steps.run(:deploy, …)` would deploy every environment the project has in one call, in an unspecified order, stopping at the first failure. That silently includes prod even when a caller only meant to touch uat, so this tool requires naming the one environment intended."
          ]},
       inbound_probe_to:
         {:meta, :string,
@@ -75,6 +75,15 @@ defmodule CodeMySpec.Provisioning.Tools.RunProvisioningStep do
            description:
              "For the \"inbound\" step only: an address on the project's own domain to prove receiving works (e.g. \"sam@example.com\"). Resend accepts mail only to addresses configured for the domain, so this cannot be guessed."
          ]},
+      proxied:
+        {:meta, :boolean,
+         [
+           description:
+             "For DNS only: must be false so the record stays DNS-only. Defaults to false."
+         ]},
+      ttl:
+        {:meta, :integer,
+         [description: "For DNS only: record TTL in seconds, at least 60. Defaults to 60."]},
       confirm_apex_repoint:
         {:meta, :boolean,
          [
@@ -95,7 +104,8 @@ defmodule CodeMySpec.Provisioning.Tools.RunProvisioningStep do
     with {:ok, scope} <- CodeMySpec.Tools.project_scope(context),
          {:ok, project} <- CodeMySpec.Tools.connected_project(scope),
          {:ok, key} <- find_step(step),
-         :ok <- require_environment(key, params) do
+         :ok <- require_environment(key, params),
+         :ok <- validate_dns_options(key, params) do
       starter = Starter.new(scope, context, label(step, params))
 
       scope
@@ -111,6 +121,7 @@ defmodule CodeMySpec.Provisioning.Tools.RunProvisioningStep do
     []
     |> with_inbound_probe(params)
     |> with_confirm_apex_repoint(params)
+    |> with_dns_options(params)
     |> with_confirm_inbound_mx_repoint(params)
     |> with_force(params)
     |> with_environment(params)
@@ -129,6 +140,12 @@ defmodule CodeMySpec.Provisioning.Tools.RunProvisioningStep do
       _ -> opts
     end
   end
+
+  defp with_dns_options(opts, %{step: "dns"} = params) do
+    Keyword.put(opts, :ttl, Map.get(params, :ttl, 60))
+  end
+
+  defp with_dns_options(opts, _params), do: opts
 
   defp with_confirm_inbound_mx_repoint(opts, params) do
     case Map.get(params, :confirm_inbound_mx_repoint) do
@@ -183,7 +200,33 @@ defmodule CodeMySpec.Provisioning.Tools.RunProvisioningStep do
     end
   end
 
+  defp require_environment(:dns, params) do
+    case Map.get(params, :environment) do
+      environment when is_binary(environment) and environment != "" ->
+        :ok
+
+      _ ->
+        {:error,
+         "the \"dns\" step needs :environment — name the one environment whose record to write"}
+    end
+  end
+
   defp require_environment(_key, _params), do: :ok
+
+  defp validate_dns_options(:dns, params) do
+    cond do
+      Map.get(params, :proxied, false) != false ->
+        {:error, "DNS proxied must be false for a DNS-only record"}
+
+      not (is_integer(Map.get(params, :ttl, 60)) and Map.get(params, :ttl, 60) >= 60) ->
+        {:error, "DNS ttl must be at least 60 seconds"}
+
+      true ->
+        :ok
+    end
+  end
+
+  defp validate_dns_options(_key, _params), do: :ok
 
   # The `:provisioning_run_async` flag `Provisioning.run_step_async/3` reads:
   # under test a spawned child holds neither the Ecto sandbox checkout nor the
@@ -292,12 +335,13 @@ defmodule CodeMySpec.Provisioning.Tools.RunProvisioningStep do
   defp dns_outcomes(%{resources: resources}, "dns") when is_list(resources) do
     outcomes =
       resources
-      |> Enum.filter(&(&1.kind == "dns_outcome"))
+      |> Enum.filter(&(&1.kind in ["dns_change", "dns_outcome"]))
       |> Enum.map_join(", ", & &1.identifier)
 
     if outcomes == "", do: "", else: " DNS outcomes: #{outcomes}."
   end
 
+  defp dns_outcomes(row, "dns (" <> _environment), do: dns_outcomes(row, "dns")
   defp dns_outcomes(_row, _step), do: ""
 
   defp answer, do: "This is the outcome of the step you started — act on it now."
