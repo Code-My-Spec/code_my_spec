@@ -26,13 +26,24 @@ defmodule CodeMySpec.Provisioning.Builder.VersionTest do
     %{repo: repo, first: first, second: String.trim(second)}
   end
 
-  test "uses the release tag on the requested commit even after HEAD moves", ctx do
-    assert {:ok, "v2.4.6"} = Version.for_ref(String.slice(ctx.first, 0, 12), version_cd: ctx.repo)
+  # mix.exs takes CMS_VERSION verbatim and Mix refuses anything that is not a
+  # Version: "v2.0.719" failed the 2026-10-30 prod image build at `mix compile`.
+  test "uses the release tag on the requested commit even after HEAD moves, without its v", ctx do
+    assert {:ok, "2.4.6"} = Version.for_ref(String.slice(ctx.first, 0, 12), version_cd: ctx.repo)
   end
 
-  test "uses the requested untagged commit's short SHA", ctx do
-    assert {:ok, String.slice(ctx.second, 0, 12)} ==
+  test "names an untagged commit in build metadata", ctx do
+    assert {:ok, "0.0.0+g" <> short} =
              Version.for_ref(String.slice(ctx.second, 0, 12), version_cd: ctx.repo)
+
+    assert short == String.slice(ctx.second, 0, 12)
+  end
+
+  test "every version it answers is one Mix accepts", ctx do
+    for commit <- [ctx.first, ctx.second] do
+      assert {:ok, version} = Version.for_ref(String.slice(commit, 0, 12), version_cd: ctx.repo)
+      assert {:ok, _} = Elixir.Version.parse(version)
+    end
   end
 
   test "refuses an unknown commit with a plain message", ctx do
@@ -54,7 +65,7 @@ defmodule CodeMySpec.Provisioning.Builder.VersionTest do
       Req.Test.json(conn, Map.fetch!(responses, key))
     end)
 
-    assert {:ok, "v2.4.6"} =
+    assert {:ok, "2.4.6"} =
              Version.for_ref("abc123", github_repo: "acme/app", github_token: "test-token")
   end
 end

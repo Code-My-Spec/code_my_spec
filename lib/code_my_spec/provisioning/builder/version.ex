@@ -1,5 +1,5 @@
 defmodule CodeMySpec.Provisioning.Builder.Version do
-  @moduledoc "Resolve the version of the exact commit sent to the builder."
+  @moduledoc "Resolve the version of the exact commit sent to the builder, as a valid `Version`."
 
   alias CodeMySpec.ExecutionContexts
 
@@ -13,14 +13,16 @@ defmodule CodeMySpec.Provisioning.Builder.Version do
     with true <- is_binary(ref) and Regex.match?(@ref, ref),
          {:ok, sha, tags} <- lookup(ref, opts),
          true <- is_binary(sha) and Regex.match?(@sha, sha) and String.starts_with?(sha, ref) do
+      # What mix.exs gets as CMS_VERSION, so it must parse as a Version:
+      # the tag without its "v", or build metadata naming the commit.
       version =
         tags
         |> Enum.filter(&Regex.match?(@release_tag, &1))
-        |> Enum.sort()
-        |> List.last()
+        |> Enum.map(&String.trim_leading(&1, "v"))
+        |> Enum.max_by(&Elixir.Version.parse!/1, Elixir.Version, fn -> nil end)
         |> case do
-          nil -> String.slice(sha, 0, 12)
-          tag -> tag
+          nil -> "0.0.0+g" <> String.slice(sha, 0, 12)
+          release -> release
         end
 
       {:ok, version}

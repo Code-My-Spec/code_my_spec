@@ -65,7 +65,7 @@ defmodule CodeMySpec.Provisioning.Builder.RemoteTest do
   defp arm, do: {"arm64\n", 0}
 
   describe "build/4" do
-    test "a tagged commit passes its release tag into the image" do
+    test "a tagged commit passes its release version into the image" do
       run = recorder(self(), %{"inspect" => arm()})
       sha = "abc123" <> String.duplicate("0", 34)
       lookup = fn "abc123" -> {:ok, sha, ["v2.4.6"]} end
@@ -78,10 +78,10 @@ defmodule CodeMySpec.Provisioning.Builder.RemoteTest do
                  opts(run, version_lookup: lookup)
                )
 
-      assert build_command() =~ "--build-arg CMS_VERSION='v2.4.6'"
+      assert build_command() =~ "--build-arg CMS_VERSION='2.4.6'"
     end
 
-    test "an untagged commit passes the short SHA of that commit" do
+    test "an untagged commit passes its short SHA as build metadata" do
       run = recorder(self(), %{"inspect" => arm()})
       sha = "abc123456789" <> String.duplicate("0", 28)
       lookup = fn "abc123" -> {:ok, sha, []} end
@@ -94,7 +94,7 @@ defmodule CodeMySpec.Provisioning.Builder.RemoteTest do
                  opts(run, version_lookup: lookup)
                )
 
-      assert build_command() =~ "--build-arg CMS_VERSION='abc123456789'"
+      assert build_command() =~ "--build-arg CMS_VERSION='0.0.0+gabc123456789'"
     end
 
     test "an unknown commit refuses the build with a plain message" do
