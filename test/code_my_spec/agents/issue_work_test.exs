@@ -12,6 +12,7 @@ defmodule CodeMySpec.Agents.IssueWorkTest do
 
   import CodeMySpec.DevicesFixtures
   import CodeMySpec.IssuesFixtures
+  import CodeMySpec.StoriesFixtures
   import CodeMySpec.UsersFixtures
 
   alias Anubis.Server.Frame
@@ -26,6 +27,7 @@ defmodule CodeMySpec.Agents.IssueWorkTest do
   alias CodeMySpec.AnalysisFixtures
   alias CodeMySpec.Issues
   alias CodeMySpec.Repo
+  alias CodeMySpec.TaskOwner
   alias CodeMySpec.Agents.Agent.Task
   alias CodeMySpec.Support.InMemoryExecutionContext
   alias CodeMySpec.WorkingCopies
@@ -316,6 +318,51 @@ defmodule CodeMySpec.Agents.IssueWorkTest do
     assert message =~ "no longer exists"
   end
 
+  test "an assigned unlinked issue cannot resolve with an unlanded fix", ctx do
+    assert_unlanded_resolution_refused(ctx, false)
+  end
+
+  test "an assigned story issue cannot resolve with an unlanded fix", ctx do
+    assert_unlanded_resolution_refused(ctx, true)
+  end
+
+  defp assert_unlanded_resolution_refused(ctx, story_linked?) do
+    copy_id = copy(ctx.scope)
+    coder = agent(ctx.scope, :coding, copy_id)
+
+    issue = issue_for_resolution_test(ctx, story_linked?)
+
+    {:ok, assigned} = Agents.assign_issue_to_working_copy(ctx.scope, issue.id, copy_id)
+
+    {:ok, owner} =
+      TaskOwner.add_task(ctx.scope, reload(coder), %{
+        status: :active,
+        requirement_name: "fix_issue",
+        issue_id: issue.id
+      })
+
+    task = Enum.find(owner.tasks, &(&1.requirement_name == "fix_issue"))
+
+    # The original struct predates assignment, exactly the stale caller that
+    # previously bypassed a guard placed only at the resolve_issue tool.
+    assert {:error, :fix_not_landed_on_main_use_evaluate_task_then_promote_issue} =
+             Issues.resolve_issue(ctx.scope, issue, "Committed on the copy")
+
+    assert {:error, :fix_not_landed_on_main_use_evaluate_task_then_promote_issue} =
+             Issues.resolve_issue(ctx.scope, assigned, "Committed on the copy")
+
+    assert %{status: :accepted, landed_commit: nil} = Issues.get_issue(ctx.scope, issue.id)
+    assert %{status: :active} = TaskOwner.find_task(reload(coder), task.id)
+  end
+
+  defp issue_for_resolution_test(ctx, false), do: ctx.issue
+
+  defp issue_for_resolution_test(ctx, true) do
+    story = story_fixture(ctx.scope)
+    {:ok, linked} = Issues.update_issue(ctx.scope, ctx.issue, %{story_id: story.id})
+    linked
+  end
+
   test "resolving an issue supersedes its promotion offer without affecting other work", ctx do
     copy_id = copy(ctx.scope)
     coding = agent(ctx.scope, :coding, copy_id)
@@ -341,7 +388,8 @@ defmodule CodeMySpec.Agents.IssueWorkTest do
         {"requirement", "issue:#{Ecto.UUID.generate()}:fix_issue"}
       )
 
-    {:ok, _} = Issues.resolve_issue(ctx.scope, promoting, "Landed on main.")
+    {:ok, landed} = Issues.record_fix_landed(ctx.scope, promoting, @head)
+    {:ok, _} = Issues.resolve_issue(ctx.scope, landed, "Landed on main.")
 
     assert Repo.get!(CodeMySpec.Agents.Offer, offered.id).status == :superseded
     assert Repo.get!(CodeMySpec.Agents.Offer, other.id).status == :open
@@ -356,7 +404,8 @@ defmodule CodeMySpec.Agents.IssueWorkTest do
     qa = agent(ctx.scope, :qa, copy_id)
 
     {:ok, _} = Agents.assign_issue_to_working_copy(ctx.scope, ctx.issue.id, copy_id)
-    {:ok, _} = Issues.resolve_issue(ctx.scope, ctx.issue, "Fixed directly.")
+    {:ok, landed} = Issues.record_fix_landed(ctx.scope, ctx.issue, @head)
+    {:ok, _} = Issues.resolve_issue(ctx.scope, landed, "Landed on main.")
 
     assert %{status: :blocked, actionable: []} = IssueWork.execution(ctx.scope, reload(qa))
     assert reload(qa).issue_id == nil
@@ -381,7 +430,8 @@ defmodule CodeMySpec.Agents.IssueWorkTest do
     qa = agent(ctx.scope, :qa, copy_id)
 
     {:ok, _} = Agents.assign_issue_to_working_copy(ctx.scope, ctx.issue.id, copy_id)
-    {:ok, _} = Issues.resolve_issue(ctx.scope, ctx.issue, "Fixed directly.")
+    {:ok, landed} = Issues.record_fix_landed(ctx.scope, ctx.issue, @head)
+    {:ok, _} = Issues.resolve_issue(ctx.scope, landed, "Landed on main.")
 
     assert %{status: :blocked} = IssueWork.execution(ctx.scope, reload(qa))
 
