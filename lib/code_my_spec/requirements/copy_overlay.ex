@@ -178,6 +178,35 @@ defmodule CodeMySpec.Requirements.CopyOverlay do
   def report(_scope, _payload), do: {:error, :no_copy}
 
   @doc """
+  The overlay a reader at `vantage` sees: its copy's last report, or for `nil`
+  the project's default copy's. `:awaiting` when that copy has not reported,
+  `:no_checkout` when `nil` has no default copy to read.
+  """
+  @spec at(Ecto.UUID.t(), Ecto.UUID.t() | nil) ::
+          {:reported, [map()], DateTime.t()} | :awaiting | :no_checkout
+  def at(project_id, nil) do
+    case Repo.one(
+           from(p in CodeMySpec.Projects.Project,
+             where: p.id == ^project_id,
+             select: p.default_working_copy_id
+           )
+         ) do
+      nil -> :no_checkout
+      copy -> at(project_id, copy)
+    end
+  end
+
+  def at(_project_id, copy) do
+    case Repo.get(Report, copy) do
+      nil ->
+        :awaiting
+
+      report ->
+        {:reported, :erlang.binary_to_term(report.verdicts, [:safe]), report.reported_at}
+    end
+  end
+
+  @doc """
   Compare the checkout's last report with the server's own rows for it, once
   the projector has settled, and record the result on the report.
   """

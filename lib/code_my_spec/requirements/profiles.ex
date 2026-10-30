@@ -38,7 +38,8 @@ defmodule CodeMySpec.Requirements.Profiles do
   alias CodeMySpec.Users.Scope
 
   @type name ::
-          :issues
+          :dispatch
+          | :issues
           | :files
           | :links
           | :stories
@@ -125,6 +126,15 @@ defmodule CodeMySpec.Requirements.Profiles do
       Repo.all(from(c in Component, where: c.project_id == ^project_id)),
       Repo.all(from(s in Story, where: s.project_id == ^project_id, select: s.id))
     )
+  end
+
+  # What `work_dispatched` reads of `:stories`, without the Three Amigos
+  # collections it does not.
+  defp fetch(%Scope{active_project_id: project_id} = scope, :dispatch) do
+    %{
+      stories: Repo.all(from(s in Story, where: s.project_id == ^project_id)),
+      epic_in_progress?: Epics.in_progress?(scope)
+    }
   end
 
   # What each story points at: the component it names, and its UAT deploy.

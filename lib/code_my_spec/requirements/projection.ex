@@ -236,10 +236,14 @@ defmodule CodeMySpec.Requirements.Projection do
     |> Repo.all()
   end
 
-  # Entities indexed by id once, and each definition set built once per read:
-  # the registry builds definitions on every call, and a read has thousands of
-  # rows.
-  defp rehydrate_all(rows, ctx) do
+  @doc """
+  Rows as nodes: identity and verdict from the row, everything else from its
+  definition and entity. A row whose entity `ctx` lacks, or whose name matches
+  no definition, is dropped. Entities indexed by id once, and each definition
+  set built once per read: a read has thousands of rows.
+  """
+  @spec rehydrate_all([Node.t()], map()) :: [Requirement.t()]
+  def rehydrate_all(rows, ctx) do
     ix =
       Map.merge(ctx, %{
         stories_by_id: Map.new(ctx.stories, &{&1.id, &1}),
@@ -372,8 +376,12 @@ defmodule CodeMySpec.Requirements.Projection do
   defp entity_name(%{name: name}) when is_binary(name), do: name
   defp entity_name(_entity), do: nil
 
-  # An edge is only in the graph if both its nodes rehydrated; one that lost an
-  # end would gate a node on something unreachable.
-  defp edges_for(project_id, nodes),
+  @doc """
+  The project's edges among `nodes`. An edge is only in the graph if both its
+  nodes rehydrated; one that lost an end would gate a node on something
+  unreachable.
+  """
+  @spec edges_for(Ecto.UUID.t(), [Requirement.t()]) :: [map()]
+  def edges_for(project_id, nodes),
     do: project_id |> GraphStore.edges() |> Edges.among(MapSet.new(nodes, &Topology.node_key/1))
 end

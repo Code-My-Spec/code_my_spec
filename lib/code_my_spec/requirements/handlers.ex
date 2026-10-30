@@ -271,6 +271,24 @@ defmodule CodeMySpec.Requirements.Handlers do
   @spec copy_verdicts(map()) :: [sweep()]
   def copy_verdicts(profiles), do: Enum.map(@copy_names, &settle(&1, profiles, nil))
 
+  # Records, but a checkout's own: its issues leave out those on stories placed
+  # at another checkout.
+  @gate_names ~w(issues_triaged issues_resolved work_dispatched)
+
+  @doc """
+  The checkout's three placement-filtered gates, settled now from its issues
+  and the project's stories. Cheap enough to answer on read.
+  """
+  @spec gate_verdicts(Scope.t()) :: [sweep()]
+  def gate_verdicts(%Scope{} = scope) do
+    profiles = %{issues: Profiles.load(scope, :issues), stories: Profiles.load(scope, :dispatch)}
+    Enum.map(@gate_names, &settle(&1, profiles, scope))
+  end
+
+  @doc "The requirement names `gate_verdicts/1` settles."
+  @spec gate_names() :: [String.t()]
+  def gate_names, do: @gate_names
+
   @doc "The requirement names `copy_verdicts/1` settles."
   @spec copy_names() :: [String.t()]
   def copy_names, do: @copy_names
