@@ -134,15 +134,7 @@ Critical details:
 
 ### What Kamal carries
 
-`.kamal/secrets-common` holds **only** what's needed to reach SSM + GHCR — never app secrets:
-
-```bash
-KAMAL_REGISTRY_PASSWORD=${KAMAL_REGISTRY_PASSWORD}   # = gh auth token
-AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}               # the app IAM user's long-term key
-AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
-```
-
-`scripts/deploy` populates these in the shell (from SSM via the shared `devops/scripts/render-env`, and `gh auth token`) before invoking Kamal. See the silent-creds-fail guard in `hetzner-docker-deploy.md` §5.
+For an app using this SSM layout, Kamal needs only the bootstrap AWS credentials and its private-registry credentials; application secrets are loaded from SSM at boot. `CodeMySpec.Provisioning.Deploy` passes the registry credentials and image reference into the generated deploy script after `Provisioning.Builder` has pushed the image to the app server's private registry. It does not obtain a GHCR token or wait for a CI image build. See `hetzner-docker-deploy.md` for the current build and deploy flow.
 
 ---
 
@@ -173,7 +165,7 @@ CLOAK_KEY=$(openssl rand -base64 32)       # 32 bytes for AES-256-GCM at-rest (C
 
 ## 4. Rotation
 
-- **App secret (e.g. `RESEND_API_KEY`):** `varlock set` the new value locally, re-run `build-ssm-env` + `seed-secrets` (or `aws ssm put-parameter --overwrite`), then redeploy / restart so `Secrets.load!/1` re-reads it. A no-code-change "roll secrets" is just `kamal deploy --skip-push --version=<current-sha>` after updating SSM.
+- **App secret (e.g. `RESEND_API_KEY`):** `varlock set` the new value locally, re-run `build-ssm-env` + `seed-secrets` (or `aws ssm put-parameter --overwrite`), then redeploy through the project's provisioning flow so `Secrets.load!/1` re-reads it. A no-code-change secret rotation can restart the running app after SSM is updated; the current image remains in the private registry.
 - **AWS IAM key (bootstrap pair):** mint a new key (`aws iam create-access-key`), `varlock set` both halves, deploy, then delete the old key. See `aws-s3-iam.md`.
 
 ---
