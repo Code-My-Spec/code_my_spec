@@ -2234,7 +2234,13 @@ defmodule CodeMySpec.Provisioning.Steps do
         |> Keyword.put(:registry_username, credential.username)
         |> Keyword.put(:registry_password, credential.password)
 
-      _ ->
+      {:error, reason} ->
+        # The deploy still runs and kamal names the missing secret, but the
+        # cause is here, not in kamal's output.
+        Logger.warning(
+          "[Steps] no registry credential for the deploy, kamal cannot log in: #{inspect(reason)}"
+        )
+
         opts
     end
   end
