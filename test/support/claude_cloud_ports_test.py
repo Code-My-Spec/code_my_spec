@@ -60,6 +60,7 @@ class HookTests(unittest.TestCase):
 
         class Receiver(http.server.BaseHTTPRequestHandler):
             def do_POST(self):
+                self.rfile.read(int(self.headers['Content-Length']))
                 received.append(self.path)
                 self.send_response(200)
                 self.end_headers()
