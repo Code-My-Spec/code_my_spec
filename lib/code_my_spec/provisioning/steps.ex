@@ -144,6 +144,16 @@ defmodule CodeMySpec.Provisioning.Steps do
     end
   end
 
+  # Satisfied with nothing to check when no legacy source is named — the
+  # overwhelming majority of projects, for whom this step costs nothing.
+  # Configured, it is satisfied only once the target already holds what the
+  # source does; the SSH compare is the same one `run/3` ends with.
+  def verify(:import, %Scope{} = scope, opts) do
+    Enum.reduce_while(environments(scope, opts), {:ok, :satisfied, []}, fn
+      environment, {:ok, :satisfied, acc} -> verify_import(scope, environment, acc, opts)
+    end)
+  end
+
   def verify(:domain, %Scope{} = scope, _opts) do
     case domain(scope) do
       nil ->
@@ -366,6 +376,14 @@ defmodule CodeMySpec.Provisioning.Steps do
       {:error, reason, partial} -> {:error, format(reason), partial}
       {:error, reason} -> {:error, format(reason)}
     end
+  end
+
+  # A no-op for every project that never named a legacy source; for the few
+  # that did, this automates what adopting an existing app used to mean
+  # doing by hand over SSH.
+  def run(:import, %Scope{} = scope, opts) do
+    environments(scope, opts)
+    |> Enum.reduce_while({:ok, []}, &run_import(scope, &1, &2, opts))
   end
 
   def run(:domain, %Scope{} = scope, opts) do
@@ -815,6 +833,23 @@ defmodule CodeMySpec.Provisioning.Steps do
     else
       {:error, reason} -> {:error, reason}
       _ -> {:error, :server_address_missing}
+    end
+  end
+
+  @doc """
+  Restore an uploaded pg_dump into `environment`'s tenant database — the
+  upload-file counterpart to `:import`'s container-to-container copy
+  (`Database.import_from/4`, b6daceee). A cutover's target is typically
+  migrated ahead of the restore, so it already has schema: pass
+  `confirm_non_empty: true` once that is expected, or this refuses and
+  names what rows are already there.
+  """
+  @spec restore_database_dump(Scope.t(), String.t(), String.t(), keyword()) ::
+          {:ok, map()} | {:error, term()}
+  def restore_database_dump(%Scope{} = scope, environment, dump_path, opts \\ []) do
+    case on_import_box(scope, environment, opts) do
+      {:ok, box_opts} -> Database.restore_dump(scope, environment, dump_path, box_opts)
+      {:error, reason} -> {:error, format(reason)}
     end
   end
 
@@ -2946,6 +2981,7 @@ defmodule CodeMySpec.Provisioning.Steps do
     version = Keyword.get(opts, :deployed_version)
 
     with {:ok, delivery} <- check_secrets(scope, environment),
+         :ok <- import_complete(scope, environment, opts),
          :ok <- config_targets_this_project(scope, environment),
          :ok <- require_script(scope, "bin/deploy"),
          :ok <- deploy_dns_ready(scope, environment, host, opts),
@@ -3029,6 +3065,34 @@ defmodule CodeMySpec.Provisioning.Steps do
 
   defp deployed_image_reference(%{reference: reference}), do: reference
   defp deployed_image_reference(_image), do: nil
+
+  # `:import`'s own gate already blocks the setup checklist, but
+  # `run_provisioning_step` can run `:deploy` directly, out of sequence, so
+  # this is the one check that cannot be skipped by running steps out of
+  # order. A no-op for the overwhelming majority of environments, which
+  # never name a legacy source.
+  defp import_complete(scope, environment, opts) do
+    case import_source(scope, environment) do
+      nil ->
+        :ok
+
+      source ->
+        with {:ok, box_opts} <- on_import_box(scope, environment, opts),
+             {:ok, credential} <- Database.credential(scope, environment),
+             {:ok, true} <- Database.imported?(box_opts, source, credential.database) do
+          :ok
+        else
+          {:ok, false} -> {:error, empty_database_refusal(environment, source)}
+          {:error, reason} -> {:error, format(reason)}
+        end
+    end
+  end
+
+  defp empty_database_refusal(environment, source) do
+    "#{environment} is set up to adopt #{source.container}/#{source.database}, but its own " <>
+      "tenant database does not hold that data yet — run the import step before deploying, " <>
+      "or this release boots against an empty database."
+  end
 
   # A build already ran the deploy on its box (`with_deploy_execution/4`), so
   # its result is reused. Only an unbuilt image (explicit `:image` or
@@ -4107,6 +4171,102 @@ defmodule CodeMySpec.Provisioning.Steps do
 
   defp environment_row(scope, environment) do
     Environments.get_deployment(scope, environment) || %{name: environment}
+  end
+
+  # `nil` unless the environment actually names a legacy container and
+  # database — both, or neither: a half-configured source is treated the
+  # same as none, rather than guessing the other half.
+  defp import_source(scope, environment) do
+    case environment_row(scope, environment) do
+      %{import_source_container: container, import_source_database: database}
+      when is_binary(container) and container != "" and is_binary(database) and database != "" ->
+        %{container: container, database: database}
+
+      _ ->
+        nil
+    end
+  end
+
+  defp verify_import(scope, environment, acc, opts) do
+    case import_source(scope, environment) do
+      nil ->
+        {:cont, {:ok, :satisfied, acc ++ [not_configured_resource(environment)]}}
+
+      source ->
+        with {:ok, box_opts} <- on_import_box(scope, environment, opts),
+             {:ok, credential} <- Database.credential(scope, environment),
+             {:ok, true} <- Database.imported?(box_opts, source, credential.database) do
+          {:cont, {:ok, :satisfied, acc ++ [import_resource(environment, source)]}}
+        else
+          {:ok, false} -> {:halt, {:ok, :absent}}
+          {:error, reason} -> {:halt, {:error, format(reason)}}
+        end
+    end
+  end
+
+  defp run_import(scope, environment, {:ok, acc}, opts) do
+    case import_source(scope, environment) do
+      nil ->
+        {:cont, {:ok, acc ++ [not_configured_resource(environment)]}}
+
+      source ->
+        case on_import_box(scope, environment, opts) do
+          {:ok, box_opts} -> run_import_on_box(scope, environment, source, box_opts, acc)
+          {:error, reason} -> {:halt, {:error, format(reason), acc}}
+        end
+    end
+  end
+
+  defp run_import_on_box(scope, environment, source, box_opts, acc) do
+    case Database.import_from(scope, environment, source, box_opts) do
+      {:ok, _counts} -> {:cont, {:ok, acc ++ [import_resource(environment, source)]}}
+      {:error, reason} -> {:halt, {:error, format(reason), acc}}
+    end
+  end
+
+  # Recorded even when there is nothing to import, so a done `:import` step
+  # is never resource-less — that is what a stub that never ran looks like
+  # (`CodeMySpec.ProvisioningTest`, "a step that reports done has resources
+  # to show for it"). This one says, truthfully, that it checked and there
+  # was nothing to do.
+  defp not_configured_resource(environment) do
+    %{
+      kind: "database_import",
+      location: "none",
+      identifier: "environment=#{environment} status=not_configured"
+    }
+  end
+
+  defp import_resource(environment, source) do
+    %{
+      kind: "database_import",
+      location: "#{source.container}/#{source.database}",
+      identifier: "environment=#{environment}"
+    }
+  end
+
+  # `opts[:run]` wins, as every other step lets a test or a caller already
+  # on the box skip establishing SSH a second time.
+  defp on_import_box(scope, environment, opts) do
+    case Keyword.get(opts, :run) do
+      nil -> ssh_onto_box(scope, environment, opts)
+      _run -> {:ok, opts}
+    end
+  end
+
+  defp ssh_onto_box(scope, environment, opts) do
+    with {:ok, ssh_opts} <- with_builder_ssh(scope, opts),
+         ip when is_binary(ip) and ip != "" <-
+           environment_ip(scope, environment_row(scope, environment), ssh_opts) do
+      {:ok, Keyword.put(ssh_opts, :run, Remote.ssh_runner(%{"ip" => ip}, ssh_opts))}
+    else
+      {:error, reason} ->
+        {:error, "could not reach #{environment}'s server to import onto: #{format(reason)}"}
+
+      _ ->
+        {:error,
+         "no address is recorded for #{environment}, so there is no box to import onto"}
+    end
   end
 
   defp awaiting_first_message(site) do

@@ -434,6 +434,289 @@ defmodule CodeMySpec.Provisioning.DatabaseTest do
     defp role_exists_response(false), do: {"", 0}
   end
 
+  describe "import_from/4" do
+    defp source, do: %{container: "legacy-pg", database: "legacy_db"}
+
+    defp import_from(source, opts \\ []) do
+      Database.import_from(
+        scope(),
+        "uat",
+        source,
+        Keyword.merge([run: matched_count_recorder(self(), 3, 3), database_credential: credential()], opts)
+      )
+    end
+
+    # Both sides answer the same row-count query; the count itself only
+    # matters to the tests below that make it mismatch.
+    defp matched_count_recorder(owner, source_count, target_count) do
+      fn [command] ->
+        send(owner, {:ran, command})
+        count_response(command, source_count, target_count)
+      end
+    end
+
+    defp count_response(command, source_count, target_count) do
+      row_count_response(
+        String.contains?(command, "json_object_agg"),
+        String.contains?(command, "docker exec 'legacy-pg'"),
+        source_count,
+        target_count
+      )
+    end
+
+    defp row_count_response(false, _from_source?, _source_count, _target_count), do: {"", 0}
+
+    defp row_count_response(true, true, source_count, _target_count),
+      do: {Jason.encode!(%{"t" => source_count}), 0}
+
+    defp row_count_response(true, false, _source_count, target_count),
+      do: {Jason.encode!(%{"t" => target_count}), 0}
+
+    test "pipes a dump from the source straight into a restore on cms-postgres" do
+      assert {:ok, _} = import_from(source())
+
+      commands = collect_commands()
+
+      assert Enum.any?(
+               commands,
+               &(&1 =~
+                   "docker exec 'legacy-pg' pg_dump -Fc --no-owner --no-acl --no-comments " <>
+                     "-U 'postgres' -d 'legacy_db'" and
+                   &1 =~ " | docker exec -i cms-postgres pg_restore --no-owner --no-acl " <>
+                     "-U 'postgres' -d 'app_sam_s_app_uat'")
+             )
+    end
+
+    # The SQL payload itself is shell-escaped as one argument, which rewrites
+    # every quote it already contains — so these check the quote-free
+    # fragments that survive that escaping intact, not the literal SQL text.
+    test "reassigns ownership of every table, sequence and view to the tenant role, never the admin" do
+      assert {:ok, _} = import_from(source())
+
+      commands = collect_commands()
+
+      owned = Enum.find(commands, &(&1 =~ "DO"))
+      assert owned =~ "ALTER TABLE public.%I OWNER TO %I"
+      assert owned =~ "ALTER SEQUENCE public.%I OWNER TO %I"
+      assert owned =~ "ALTER VIEW public.%I OWNER TO %I"
+      assert owned =~ "pg_tables"
+      assert owned =~ "pg_sequences"
+      assert owned =~ "pg_views"
+      assert owned =~ "app_sam_s_app"
+      assert owned =~ "-d 'app_sam_s_app_uat'"
+    end
+
+    test "reports both sides' row counts once they match" do
+      assert {:ok, %{source: %{"t" => 3}, target: %{"t" => 3}}} = import_from(source())
+    end
+
+    # The whole point of comparing at all: a restore that silently dropped
+    # rows (a constraint violation `pg_restore` warned about and moved past)
+    # must not be reported as a successful import.
+    test "a row-count mismatch is reported, not silently accepted" do
+      assert {:error, {:database_import_row_counts_mismatched, %{"t" => 3}, %{"t" => 1}}} =
+               import_from(source(), run: matched_count_recorder(self(), 3, 1))
+    end
+
+    test "a restore failure is reported rather than reassigning ownership on nothing" do
+      assert {:error, {:database_import_failed, 1, _}} =
+               import_from(source(), run: &restore_failure_response/1)
+    end
+
+    defp restore_failure_response([command]), do: restore_failure_response(command)
+
+    defp restore_failure_response(command) when is_binary(command) do
+      restore_failure_for(String.contains?(command, "pg_restore"))
+    end
+
+    defp restore_failure_for(true), do: {"pg_restore: error: could not execute query", 1}
+    defp restore_failure_for(false), do: {"", 0}
+  end
+
+  describe "imported?/3" do
+    defp imported?(source, run) do
+      Database.imported?([run: run], source, "app_sam_s_app_uat")
+    end
+
+    test "true once the target already holds what the source does" do
+      assert {:ok, true} = imported?(source(), matched_count_recorder(self(), 3, 3))
+    end
+
+    test "false while the target is still behind" do
+      assert {:ok, false} = imported?(source(), matched_count_recorder(self(), 3, 0))
+    end
+
+    # A check must never be the thing that moves data — only `import_from/4`
+    # is allowed to run `pg_dump`/`pg_restore`.
+    test "only reads — never dumps, restores or reassigns ownership" do
+      assert {:ok, _} = imported?(source(), matched_count_recorder(self(), 3, 3))
+
+      commands = collect_commands()
+      refute Enum.any?(commands, &(&1 =~ "pg_dump"))
+      refute Enum.any?(commands, &(&1 =~ "pg_restore"))
+      refute Enum.any?(commands, &(&1 =~ "OWNER TO"))
+    end
+  end
+
+  describe "restore_dump/4" do
+    @dump_path "/uploads/fly-prod.dump"
+    @target "app_sam_s_app_uat"
+    @scratch "app_sam_s_app_uat_dump_check"
+
+    defp restore_dump(responses, opts \\ []) do
+      Database.restore_dump(
+        scope(),
+        "uat",
+        @dump_path,
+        Keyword.merge(
+          [
+            run: restore_dump_run(self(), responses),
+            database_credential: credential(),
+            now: fn -> ~U[2026-10-30 03:00:00.000000Z] end
+          ],
+          opts
+        )
+      )
+    end
+
+    # The target's row-count query runs twice â before anything, and again
+    # after the real restore â and the two must answer differently for the
+    # happy path to mean anything. `:counters` rather than the process
+    # dictionary: the closure is called from inside `Database`, not from the
+    # test process, so state keyed on `self()` there would never match this.
+    defp restore_dump_run(owner, %{before: before, scratch: scr, after: aft}) do
+      counter = :counters.new(1, [])
+
+      fn [command] ->
+        send(owner, {:ran, command})
+        restore_dump_response(classify_restore_command(command), counter, before, scr, aft)
+      end
+    end
+
+    defp classify_restore_command(command) do
+      {String.contains?(command, "json_object_agg"), database_of(command)}
+    end
+
+    defp database_of(command), do: extract_database(Regex.run(~r/-d '([^']*)'/, command))
+
+    defp extract_database([_, database]), do: database
+    defp extract_database(nil), do: nil
+
+    defp restore_dump_response({true, @scratch}, _counter, _before, scr, _aft),
+      do: {Jason.encode!(scr), 0}
+
+    defp restore_dump_response({true, @target}, counter, before, _scr, aft) do
+      n = :counters.get(counter, 1)
+      :counters.add(counter, 1, 1)
+      {Jason.encode!(target_counts_for(n, before, aft)), 0}
+    end
+
+    defp restore_dump_response(_other, _counter, _before, _scr, _aft), do: {"", 0}
+
+    defp target_counts_for(0, before, _aft), do: before
+    defp target_counts_for(_n, _before, aft), do: aft
+
+    test "refuses a non-empty target without confirmation, naming what's there" do
+      responses = %{before: %{"users" => 5}, scratch: %{}, after: %{}}
+
+      assert {:error, {:database_restore_target_not_empty, %{"users" => 5}}} =
+               restore_dump(responses)
+
+      refute Enum.any?(collect_commands(), &(&1 =~ "pg_dump" or &1 =~ "pg_restore")),
+             "a refused restore must not have touched anything"
+    end
+
+    test "proceeds once the caller confirms a non-empty target, and reports its row counts" do
+      responses = %{before: %{"users" => 5}, scratch: %{"users" => 7}, after: %{"users" => 7}}
+
+      assert {:ok, %{rows: %{"users" => 7}, pre_restore_dump: path}} =
+               restore_dump(responses, confirm_non_empty: true)
+
+      assert path =~ "uat"
+      assert path =~ ".dump"
+    end
+
+    test "an already-empty target needs no confirmation" do
+      responses = %{before: %{}, scratch: %{"users" => 3}, after: %{"users" => 3}}
+
+      assert {:ok, %{rows: %{"users" => 3}}} = restore_dump(responses)
+    end
+
+    test "takes a pre-restore dump of the target before the real restore overwrites it" do
+      responses = %{before: %{}, scratch: %{"users" => 3}, after: %{"users" => 3}}
+
+      assert {:ok, _} = restore_dump(responses)
+
+      commands = collect_commands()
+
+      pre_restore_index =
+        Enum.find_index(commands, &(&1 =~ "pg_dump -Fc" and &1 =~ "-d '#{@target}'"))
+
+      real_restore_index =
+        Enum.find_index(
+          commands,
+          &(&1 =~ "pg_restore" and &1 =~ "-d '#{@target}'" and &1 =~ "< '#{@dump_path}'")
+        )
+
+      assert pre_restore_index, "no pre-restore dump of the target was taken at all"
+      assert real_restore_index, "no real restore into the target ran"
+      assert pre_restore_index < real_restore_index,
+             "the pre-restore dump must happen before anything overwrites the target"
+    end
+
+    test "restores from the uploaded file directly, never from a pipe" do
+      responses = %{before: %{}, scratch: %{}, after: %{}}
+
+      assert {:ok, _} = restore_dump(responses)
+
+      commands = collect_commands()
+
+      assert Enum.any?(
+               commands,
+               &(&1 =~ "docker exec -i cms-postgres pg_restore --no-owner --no-acl " and
+                   &1 =~ "-d '#{@target}' < '#{@dump_path}'")
+             )
+    end
+
+    test "reassigns ownership of every table, sequence and view to the tenant role" do
+      responses = %{before: %{}, scratch: %{}, after: %{}}
+
+      assert {:ok, _} = restore_dump(responses)
+
+      commands = collect_commands()
+      owned = Enum.find(commands, &(&1 =~ "ALTER TABLE public.%I OWNER TO %I"))
+
+      assert owned
+      assert owned =~ "app_sam_s_app"
+      assert owned =~ "-d '#{@target}'"
+    end
+
+    test "creates and drops its own disposable database to learn the dump's row counts" do
+      responses = %{before: %{}, scratch: %{"users" => 3}, after: %{"users" => 3}}
+
+      assert {:ok, _} = restore_dump(responses)
+
+      commands = collect_commands()
+      assert Enum.any?(commands, &(&1 =~ "CREATE DATABASE #{@scratch}"))
+      assert Enum.any?(commands, &(&1 =~ "DROP DATABASE IF EXISTS #{@scratch}"))
+
+      # Never the live backup-verification scratch database â a cutover
+      # restore caught mid-flight must not collide with a running backup
+      # proof, or vice versa.
+      refute @scratch == Database.scratch_database(scope(), "uat")
+    end
+
+    # The whole reason row counts are checked against the dump rather than
+    # skipped: a restore that silently dropped rows must not be reported as
+    # successful.
+    test "a row-count mismatch against the dump is reported, not silently accepted" do
+      responses = %{before: %{}, scratch: %{"users" => 3}, after: %{"users" => 1}}
+
+      assert {:error, {:database_restore_row_counts_mismatched, %{"users" => 3}, %{"users" => 1}}} =
+               restore_dump(responses)
+    end
+  end
+
   describe "repair_existing/2" do
     test "repairs every discovered tenant without creating resources or changing passwords" do
       owner = self()

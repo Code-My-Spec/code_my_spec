@@ -21,7 +21,9 @@ defmodule CodeMySpec.Environments.Environment do
           server_name: String.t() | nil,
           ip: String.t() | nil,
           device_id: Ecto.UUID.t() | nil,
-          first_deployed_at: DateTime.t() | nil
+          first_deployed_at: DateTime.t() | nil,
+          import_source_container: String.t() | nil,
+          import_source_database: String.t() | nil
         }
 
   schema "environments" do
@@ -31,6 +33,12 @@ defmodule CodeMySpec.Environments.Environment do
     field :server_name, :string
     field :ip, :string
     field :first_deployed_at, :utc_datetime_usec
+    # Both set means this environment has a legacy database to copy before
+    # its first deploy — another container on the same box, never a remote
+    # host. Either blank and the `:import` step, and the deploy-time check
+    # beside it, are both a no-op.
+    field :import_source_container, :string
+    field :import_source_database, :string
 
     belongs_to :project, CodeMySpec.Projects.Project
     belongs_to :device, CodeMySpec.Devices.Device
@@ -41,7 +49,17 @@ defmodule CodeMySpec.Environments.Environment do
   @doc false
   def changeset(environment, attrs) do
     environment
-    |> cast(attrs, [:name, :host, :server_name, :ip, :project_id, :device_id, :management])
+    |> cast(attrs, [
+      :name,
+      :host,
+      :server_name,
+      :ip,
+      :project_id,
+      :device_id,
+      :management,
+      :import_source_container,
+      :import_source_database
+    ])
     |> validate_required([:name, :project_id, :management])
     |> immutable_management()
     # The same constraint the server name, the DNS label and the sops filename

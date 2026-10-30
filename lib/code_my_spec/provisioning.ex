@@ -350,7 +350,7 @@ defmodule CodeMySpec.Provisioning do
   end
 
   defp with_environment_opt(_scope, key, environment, opts)
-       when key in [:secrets, :storage, :backups, :widget, :callback_credential],
+       when key in [:secrets, :storage, :backups, :widget, :callback_credential, :import],
        do: Keyword.put(opts, :environments, [environment])
 
   defp with_environment_opt(_scope, _key, _environment, opts), do: opts

@@ -25,6 +25,7 @@ defmodule CodeMySpec.Agents.Main.MachineryRepository do
   alias CodeMySpec.Analysis.HarnessRegistry
   alias CodeMySpec.Analysis.Run
   alias CodeMySpec.Devices.Device
+  alias CodeMySpec.PromotionQueue.Waits
   alias CodeMySpec.Repo
   alias CodeMySpec.Users.Scope
   alias CodeMySpec.WorkingCopies.WorkingCopy
@@ -41,6 +42,7 @@ defmodule CodeMySpec.Agents.Main.MachineryRepository do
       copies: copies,
       analyzers: analyzers(scope),
       machines: machines(scope, copies),
+      queue: Waits.status(scope.active_project_id),
       tool_fault: Machinery.tool_fault(copies)
     }
   end

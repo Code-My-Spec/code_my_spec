@@ -58,10 +58,11 @@ defmodule CodeMySpec.Agents.Main.Machinery do
           copies: [copy()],
           analyzers: [analyzer()],
           machines: [machine()],
+          queue: map() | nil,
           tool_fault: :none | :machine | {:agents, [Ecto.UUID.t()]}
         }
 
-  defstruct copies: [], analyzers: [], machines: [], tool_fault: :none
+  defstruct copies: [], analyzers: [], machines: [], queue: nil, tool_fault: :none
 
   @doc """
   Where the inability to call tools belongs.
