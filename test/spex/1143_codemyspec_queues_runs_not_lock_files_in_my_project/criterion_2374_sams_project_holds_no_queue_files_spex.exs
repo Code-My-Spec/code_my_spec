@@ -29,7 +29,11 @@ defmodule CodeMySpecSpex.Story1143.Criterion2374Spex do
     :ok
   end
 
-  spex "Sam's project holds no queue files", criterion: 2374 do
+  # `fail_on_error_logs: false`: the live harness really runs what is requested,
+  # and this checkout has no test tooling, so each run is refused and its late
+  # answer rejected (the result was already delivered). Those logs are the
+  # harness working; this criterion is about the files left behind.
+  spex "Sam's project holds no queue files", criterion: 2374, fail_on_error_logs: false do
     scenario "after several runs, nothing in the checkout queues them" do
       given_ "Sam's checkout is served by a live harness", context do
         {:ok, HarnessHooks.ensure_live_harness(context)}
