@@ -107,7 +107,13 @@ defmodule CmsHarness.Sync do
         log_unclassified(env, project.root)
 
         Channel.deliver_observations(project.root, observations)
-        report_overlay(env, project.root, observations, read_model)
+
+        report_overlay(
+          env,
+          project.root,
+          {CopyOverlay.files_digest(observations), observations},
+          read_model
+        )
     end
   end
 
@@ -121,8 +127,7 @@ defmodule CmsHarness.Sync do
 
     {:ok, _pid} =
       Task.Supervisor.start_child(task_supervisor(project.root), fn ->
-        observations = :erlang.binary_to_term(retained)
-        report_overlay(env, project.root, observations, read_model)
+        report_overlay(env, project.root, :erlang.binary_to_term(retained), read_model)
       end)
 
     :ok
@@ -133,12 +138,15 @@ defmodule CmsHarness.Sync do
   for a 5,000-file checkout, packed, against 6 MB for the scan itself.
   """
   @spec retained([map()]) :: binary()
-  def retained(observations),
-    do: observations |> CopyOverlay.retained() |> :erlang.term_to_binary([:compressed])
+  def retained(observations) do
+    {CopyOverlay.files_digest(observations), CopyOverlay.retained(observations)}
+    |> :erlang.term_to_binary([:compressed])
+  end
 
   # The checkout's file verdicts and repository state, which only this machine
-  # can read. Nothing from a server that serves no records.
-  defp report_overlay(env, root, observations, read_model) do
+  # can read, with the digest of the scan they answer. Nothing from a server
+  # that serves no records.
+  defp report_overlay(env, root, {files, observations}, read_model) do
     case CopyOverlay.verdicts(observations, read_model) do
       nil ->
         :ok
@@ -148,6 +156,7 @@ defmodule CmsHarness.Sync do
           root,
           Map.merge(repository_state(env), %{
             "read_model" => read_model.fingerprint,
+            "files" => files,
             "verdicts" => verdicts
           })
         )

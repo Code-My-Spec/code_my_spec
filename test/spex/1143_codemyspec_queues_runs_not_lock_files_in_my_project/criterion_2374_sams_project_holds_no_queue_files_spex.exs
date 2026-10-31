@@ -12,6 +12,7 @@ defmodule CodeMySpecSpex.Story1143.Criterion2374Spex do
 
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
+  alias CmsHarnessTest.ClusteredProject
   alias CmsHarnessTest.LiveHarness
   alias CodeMySpec.ExecutionContexts
   alias CodeMySpec.ExecutionContexts.ExecutionContext
@@ -31,8 +32,14 @@ defmodule CodeMySpecSpex.Story1143.Criterion2374Spex do
 
   spex "Sam's project holds no queue files", criterion: 2374 do
     scenario "after several runs, nothing in the checkout queues them" do
+      # A checkout whose suite links to the harness, as every project's must:
+      # one that cannot is refused at once, and that refusal, answered after
+      # this scenario has answered the run itself, logged errors. Its held
+      # test keeps the harness's own run going until the scenario ends.
       given_ "Sam's checkout is served by a live harness", context do
-        {:ok, HarnessHooks.ensure_live_harness(context)}
+        context = HarnessHooks.ensure_live_harness(context)
+        :ok = ClusteredProject.make(context.harness.root)
+        {:ok, context}
       end
 
       given_ "Sam's agents have requested several runs", context do

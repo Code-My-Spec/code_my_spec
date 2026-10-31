@@ -30,7 +30,7 @@ defmodule CodeMySpec.Requirements.CopyGraph do
   @no_checkout "no checkout has reported files"
   @awaiting "awaiting this copy's report"
 
-  @doc "The graph at the scope's vantage, as `{nodes, edges}`, like `Projection.load/2`."
+  @doc "The graph at the scope's vantage, as `{nodes, edges}`."
   @spec load(Scope.t(), map()) :: {[Requirement.t()], [map()]}
   def load(%Scope{} = scope, ctx) do
     # A project never projected, or a checkout it does not have, reads as no

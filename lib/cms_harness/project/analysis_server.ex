@@ -27,9 +27,13 @@ defmodule CmsHarness.Project.AnalysisServer do
   alias CmsHarness.AnalysisSlots
   alias CmsHarness.Channel
   alias CmsHarness.DiskCapacity
+  alias CmsHarness.RunLink
   alias CmsHarness.Sync
   alias CodeMySpec.DurableRun
   alias CodeMySpec.ExecutionContexts.ExecutionContext
+
+  # How long a recorded run has to rejoin before its node is asked whether it lives.
+  @recovery_grace_ms 60_000
 
   # A ceiling, not an expectation: it bounds the run that will never finish,
   # which would otherwise hold every later analyzer behind it.
@@ -175,7 +179,7 @@ defmodule CmsHarness.Project.AnalysisServer do
   def init(project) do
     Process.set_label({__MODULE__, project.root})
     recovering = DurableRun.for_root(project.root) |> Map.new(&{&1["run_id"], &1})
-    if map_size(recovering) > 0, do: Process.send_after(self(), :poll_recovery, 100)
+    Enum.each(recovering, fn {id, manifest} -> recover(project.root, id, manifest) end)
 
     {:ok,
      %{
@@ -356,15 +360,13 @@ defmodule CmsHarness.Project.AnalysisServer do
      state}
   end
 
+  # At its node as well: a recovered run may not have rejoined yet.
   defp cancel_durable_run(run_id) do
-    case DurableRun.read_manifest(run_id) do
-      {:ok, manifest} ->
-        DurableRun.cancel(manifest)
-        DurableRun.cleanup(run_id)
+    with {:ok, manifest} <- DurableRun.read_manifest(run_id),
+         do: RunLink.cancel_at(manifest["node"], run_id)
 
-      _ ->
-        :ok
-    end
+    RunLink.cancel(run_id)
+    DurableRun.cleanup(run_id)
   end
 
   @impl true
@@ -429,6 +431,11 @@ defmodule CmsHarness.Project.AnalysisServer do
     task_pid = running.task.pid
     cleanup_deadline = System.monotonic_time(:millisecond) + @cleanup_confirm_deadline
     ownership = Execution.capture(task_pid)
+
+    # A test run's shards are sessions of their own, outside the groups below:
+    # halted by name, linked or not.
+    with {:ok, manifest} <- DurableRun.read_manifest(run_id),
+         do: RunLink.halt_nodes(manifest["node"])
 
     cleanup =
       Task.Supervisor.async_nolink(Sync.task_supervisor(state.project.root), fn ->
@@ -563,107 +570,129 @@ defmodule CmsHarness.Project.AnalysisServer do
 
   def handle_info({:slot_acquired, _run_id, _waited_ms}, state), do: {:noreply, state}
 
-  def handle_info({:track_durable, id}, state) do
-    case DurableRun.read_manifest(id) do
-      {:ok, manifest} ->
-        if map_size(state.recovering) == 0, do: Process.send_after(self(), :poll_recovery, 250)
-        {:noreply, %{state | recovering: Map.put(state.recovering, id, manifest)}}
+  def handle_info({:track_completed, manifest}, state) do
+    {:noreply, %{state | recovering: Map.put(state.recovering, manifest["run_id"], manifest)}}
+  end
+
+  # A recorded run finished after a restart: it rejoined, replayed, and its
+  # exit is in. What it wrote to its results file is the answer, read once its
+  # node is gone: a runner can still be writing (sexy_spex's backstop lines,
+  # `cms.spex` merging its shards' JSONL) after the exit is reported.
+  def handle_info({:run_exited, id, status}, state) do
+    case Map.fetch(state.recovering, id) do
+      {:ok, %{"status" => "running"} = manifest} ->
+        manifest = Map.put(manifest, "exit_status", status)
+
+        if node_alive?(manifest["node"]) do
+          Node.monitor(String.to_atom(manifest["node"]), true)
+          {:noreply, %{state | recovering: Map.put(state.recovering, id, manifest)}}
+        else
+          {:noreply, answer_exited(state, id, manifest)}
+        end
 
       _ ->
         {:noreply, state}
     end
   end
 
-  def handle_info({:track_completed, manifest}, state) do
-    if map_size(state.recovering) == 0, do: Process.send_after(self(), :poll_recovery, 250)
+  def handle_info({:nodedown, node}, state) do
+    node = Atom.to_string(node)
 
-    {:noreply,
-     %{
-       state
-       | recovering:
-           Map.put(state.recovering, manifest["run_id"], Map.put(manifest, "sent", true))
-     }}
+    exited =
+      for {id, %{"status" => "running", "node" => ^node, "exit_status" => _} = manifest} <-
+            state.recovering,
+          do: {id, manifest}
+
+    {:noreply, Enum.reduce(exited, state, fn {id, m}, acc -> answer_exited(acc, id, m) end)}
   end
 
-  def handle_info(:poll_recovery, state) do
-    recovering =
-      Map.new(state.recovering, fn {id, manifest} ->
-        current =
-          if manifest["status"] == "completed" do
-            manifest
-          else
-            case DurableRun.read_manifest(id) do
-              # Completed by `deliver/4`, which sent it, before its
-              # `:track_completed` arrived.
-              {:ok, %{"status" => "completed"} = latest} -> Map.put(latest, "sent", true)
-              {:ok, latest} -> latest
-              _ -> manifest
-            end
-          end
+  # A run that has not finished within the grace: waited for while its node
+  # answers, reported as gone when it does not. Never answered as a pass.
+  def handle_info({:recovered_timeout, id}, state) do
+    case Map.fetch(state.recovering, id) do
+      {:ok, %{"status" => "running"} = manifest} ->
+        Logger.error(
+          "[CmsHarness] #{manifest["source"]} run #{id} for #{state.project.root} exceeded " <>
+            "#{timeout()}ms since it started — halting it"
+        )
 
-        manifest =
-          if state.running && state.running.run_id == id do
-            poll_live_run(state.project.root, current)
-          else
-            poll_recovered_run(state.project.root, current)
-          end
+        RunLink.cancel(id)
+        RunLink.halt_nodes(manifest["node"])
+        result = {:error, "analyzer timed out after #{timeout()}ms"}
+        {:noreply, answer_recovered(state, id, manifest, result)}
 
-        {id, manifest}
-      end)
+      _ ->
+        {:noreply, state}
+    end
+  end
 
-    if map_size(recovering) > 0, do: Process.send_after(self(), :poll_recovery, 250)
-    {:noreply, maybe_start_next(%{state | recovering: recovering})}
+  def handle_info({:recovery_check, id}, state) do
+    case Map.fetch(state.recovering, id) do
+      {:ok, %{"status" => "running"} = manifest} ->
+        cond do
+          node_alive?(manifest["node"]) ->
+            Process.send_after(self(), {:recovery_check, id}, recovery_grace())
+            {:noreply, state}
+
+          Map.has_key?(manifest, "exit_status") ->
+            {:noreply, answer_exited(state, id, manifest)}
+
+          true ->
+            result = {:error, "the run's node went away before it reported its result"}
+            {:noreply, answer_recovered(state, id, manifest, result)}
+        end
+
+      _ ->
+        {:noreply, state}
+    end
   end
 
   def handle_info(_message, state), do: {:noreply, state}
 
-  defp poll_recovered_run(root, %{"status" => "completed"} = manifest) do
-    unless manifest["sent"] do
-      Enum.each(
-        DurableRun.unacknowledged_payloads(manifest),
-        &Channel.deliver_analysis_result(root, &1)
-      )
-    end
+  # Claimed so its rejoin is adopted; a run already answered resends what the
+  # server has not acknowledged.
+  defp recover(root, id, %{"status" => "completed"} = manifest) do
+    Enum.each(
+      DurableRun.unacknowledged_payloads(manifest),
+      &Channel.deliver_analysis_result(root, &1)
+    )
 
-    Map.put(manifest, "sent", true)
+    id
   end
 
-  defp poll_recovered_run(root, %{"status" => "starting"} = manifest) do
-    if DurableRun.startup_stale?(manifest) do
-      poll_recovered_run(root, Map.put(manifest, "status", "exited"))
-    else
-      manifest
-    end
+  # The same ceiling as a run started here, counted from when it started: a
+  # run whose runner answers but which never reports is not waited on forever.
+  defp recover(root, id, manifest) do
+    :ok = RunLink.claim(id, root, self())
+    Process.send_after(self(), {:recovery_check, id}, recovery_grace())
+    Process.send_after(self(), {:recovered_timeout, id}, remaining(manifest))
+    manifest
   end
 
-  defp poll_recovered_run(root, manifest) do
-    manifest = poll_live_run(root, manifest)
+  defp remaining(%{"started_at" => started_at}) do
+    case DateTime.from_iso8601(started_at) do
+      {:ok, started, _} ->
+        max(timeout() - DateTime.diff(DateTime.utc_now(), started, :millisecond), 0)
 
-    if DurableRun.alive?(manifest) do
-      manifest
-    else
-      result =
-        case DurableRun.completed_result(manifest) do
-          {:ok, raw} -> {:ok, raw}
-          {:error, reason} -> {:error, "analyzer process ended during harness restart: #{reason}"}
-        end
-
-      payloads = recovered_payloads(manifest, result)
-      manifest = DurableRun.complete(manifest, payloads)
-      Enum.each(payloads, &Channel.deliver_analysis_result(root, &1))
-      Map.put(manifest, "sent", true)
+      _ ->
+        0
     end
   end
 
-  defp poll_live_run(root, manifest) do
-    {events, offsets} = DurableRun.stream_events(manifest)
-
-    for event <- events, live = DurableRun.live_event(event), live != nil do
-      Channel.deliver_analysis_event(root, %{"run_id" => manifest["run_id"], "event" => live})
-    end
-
-    DurableRun.advance(manifest, offsets)
+  defp answer_recovered(state, id, manifest, result) do
+    payloads = recovered_payloads(manifest, result)
+    manifest = DurableRun.complete(manifest, payloads)
+    Enum.each(payloads, &Channel.deliver_analysis_result(state.project.root, &1))
+    maybe_start_next(%{state | recovering: Map.put(state.recovering, id, manifest)})
   end
+
+  defp answer_exited(state, id, manifest) do
+    result = Analysis.recovered_result(manifest, manifest["exit_status"])
+    answer_recovered(state, id, Map.delete(manifest, "exit_status"), result)
+  end
+
+  defp node_alive?(nil), do: false
+  defp node_alive?(node), do: Node.ping(String.to_atom(node)) == :pong
 
   defp recovered_payloads(manifest, result) do
     owner = manifest["run_id"]
@@ -884,8 +913,13 @@ defmodule CmsHarness.Project.AnalysisServer do
   # independent of the analyzer's own timer -- a hung git call must not be
   # able to hold a slot indefinitely just because it runs before the part
   # the kill timer watches.
-  defp bounded_tree_state(env) do
-    task = Task.async(fn -> Analysis.tree_state(env) end)
+  defp bounded_tree_state(env), do: snapshot_tree_state(env, fn -> Analysis.tree_state(env) end)
+
+  @doc false
+  def snapshot_tree_state(env, snapshot) when is_function(snapshot, 0) do
+    # Git can fail to spawn on the host. A linked snapshot task would kill the
+    # analyzer owner before it could report that the suite never ran.
+    task = Task.Supervisor.async_nolink(Sync.task_supervisor(env.cwd), snapshot)
 
     case Task.yield(task, @git_snapshot_timeout) || Task.shutdown(task, :brutal_kill) do
       {:ok, tree} -> {:ok, tree}
@@ -920,56 +954,55 @@ defmodule CmsHarness.Project.AnalysisServer do
           {:ok, start_tree} ->
             send(parent, {:analysis_started, entry.run_id, start_tree})
 
-            durable? = durable?(project.root, entry)
+            durable? = durable?(entry)
 
-            if durable? do
-              DurableRun.begin_run(
-                entry.run_id,
-                project.root,
-                entry.source,
-                entry.args,
-                start_tree.commit,
-                entry.tied_run_ids
-              )
-
-              send(parent, {:track_durable, entry.run_id})
+            if durable? and not DurableRun.links?(project.root) do
+              {:ran,
+               {:error,
+                "#{entry.source} needs client_utils 0.4.0 or later to run: add " <>
+                  ~s({:client_utils, "~> 0.4.0"} to mix.exs and run mix deps.get)}, nil}
+            else
+              run_durable(project, entry, env, start_tree, durable?)
             end
 
-            result =
-              Analysis.run(project, entry.source, entry.args, entry.run_id,
-                output_capture: Map.get(entry, :output_capture),
-                durable_run: if(durable?, do: entry.run_id)
-              )
-
-            completed_tree =
-              case bounded_tree_state(env) do
-                {:ok, tree} -> tree
-                {:error, _reason} -> nil
-              end
-
-            {:ran, result, completed_tree}
-
           {:error, reason} ->
-            {:ran, {:error, "git snapshot before the analyzer ran: #{reason}"}, nil}
+            {:ran,
+             {:error,
+              "git snapshot before the analyzer ran: #{reason}. No analysis was run; start a fresh #{entry.source} run once git can spawn"},
+             nil}
         end
     end
   end
 
-  # A run outlives this harness only when the project's formatter writes the
-  # event stream the next harness re-attaches to; an older one keeps the
-  # guarded launch, which ends the run with its owner.
-  defp durable?(root, %{source: source} = entry) when source in ["exunit", "spex"] do
-    with false <- DurableRun.streams?(root) do
-      Logger.info(
-        "[CmsHarness] #{source} run #{entry.run_id} for #{root} will not survive a harness " <>
-          "restart: its client_utils writes no event stream (needs 0.3.2 or later)"
+  defp run_durable(project, entry, env, start_tree, durable?) do
+    if durable? do
+      DurableRun.begin_run(
+        entry.run_id,
+        project.root,
+        entry.source,
+        entry.args,
+        start_tree.commit,
+        entry.tied_run_ids
+      )
+    end
+
+    result =
+      Analysis.run(project, entry.source, entry.args, entry.run_id,
+        output_capture: Map.get(entry, :output_capture),
+        durable_run: if(durable?, do: entry.run_id)
       )
 
-      false
-    end
+    completed_tree =
+      case bounded_tree_state(env) do
+        {:ok, tree} -> tree
+        {:error, _reason} -> nil
+      end
+
+    {:ran, result, completed_tree}
   end
 
-  defp durable?(_root, _entry), do: false
+  # Every test run outlives this harness; there is no other way to run one.
+  defp durable?(%{source: source}), do: source in ["exunit", "spex"]
 
   defp answers_for(entry), do: [entry.run_id | Map.get(entry, :tied_run_ids, [])]
 
@@ -1136,6 +1169,9 @@ defmodule CmsHarness.Project.AnalysisServer do
       tree
     )
   end
+
+  defp recovery_grace,
+    do: Application.get_env(:code_my_spec, :durable_run_recovery_grace_ms, @recovery_grace_ms)
 
   defp timeout,
     do: Application.get_env(:code_my_spec, :harness_analysis_timeout, @default_timeout)

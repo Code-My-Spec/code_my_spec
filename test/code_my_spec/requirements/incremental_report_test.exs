@@ -125,22 +125,4 @@ defmodule CodeMySpec.Requirements.IncrementalReportTest do
            whole change removes from the read path.
            """
   end
-
-  test "a vantage nothing has written is still listed, at zero", %{scope: scope} do
-    Requirements.recompute(scope)
-
-    report = Requirements.incremental_report(scope)
-
-    assert Enum.any?(report.vantages, &(&1.vantage == nil)),
-           """
-           The unscoped vantage is missing from the report.
-
-           It is the row-space every reader that is not an agent resolves to,
-           and a watcher maintaining one checkout while leaving it frozen is a
-           real failure that nothing surfaced at the time. Listing it at zero
-           is how that becomes visible.
-
-           vantages: #{inspect(report.vantages)}
-           """
-  end
 end

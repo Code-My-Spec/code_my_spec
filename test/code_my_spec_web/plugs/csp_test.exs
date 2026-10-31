@@ -57,4 +57,20 @@ defmodule CodeMySpecWeb.Plugs.CSPTest do
   defp header(conn) do
     conn |> Plug.Conn.get_resp_header("content-security-policy") |> List.first()
   end
+
+  # Seen blocked in production on 2026-10-30: Clarity's script host, GA4's
+  # collect endpoints, and the Google Signals audience pixel.
+  test "admits the analytics hosts the tags actually use", %{conn: conn} do
+    header = header(CSP.call(conn, []))
+
+    directive = fn name ->
+      header |> String.split("; ") |> Enum.find(&String.starts_with?(&1, name))
+    end
+
+    assert directive.("script-src") =~ "https://*.clarity.ms"
+    assert directive.("connect-src") =~ "https://*.analytics.google.com"
+    assert directive.("connect-src") =~ "https://*.google-analytics.com"
+    assert directive.("connect-src") =~ "https://www.google.com"
+    assert directive.("img-src") =~ "https://www.google.ca"
+  end
 end

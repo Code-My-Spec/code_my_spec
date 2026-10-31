@@ -26,6 +26,7 @@ defmodule CmsHarness.WorkingCopyReporter do
   alias CmsHarness.Device
   alias CmsHarness.Projects
   alias CmsHarness.Projects.Generator
+  alias CmsHarness.RunLink
   alias CmsHarness.ServedRoots
 
   # A checkout is removed rarely and nothing acts on the news automatically.
@@ -150,6 +151,8 @@ defmodule CmsHarness.WorkingCopyReporter do
           do: root
 
     Enum.each(gone, &CopyDatabases.drop_for_root/1)
+    # Its test runs stop with it: no harness will serve it again.
+    Enum.each(gone, &RunLink.cancel_copy/1)
     %{state | dropped: Enum.into(gone, state.dropped)}
   end
 

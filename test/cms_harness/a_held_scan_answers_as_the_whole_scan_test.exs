@@ -76,8 +76,9 @@ defmodule CmsHarness.AHeldScanAnswersAsTheWholeScanTest do
   }
 
   test "the overlay from the held scan is the overlay from the whole scan" do
-    held = :erlang.binary_to_term(Sync.retained(@scan))
+    {files, held} = :erlang.binary_to_term(Sync.retained(@scan))
 
+    assert files == CopyOverlay.files_digest(@scan)
     assert CopyOverlay.verdicts(held, @read_model) == CopyOverlay.verdicts(@scan, @read_model)
   end
 
@@ -85,7 +86,7 @@ defmodule CmsHarness.AHeldScanAnswersAsTheWholeScanTest do
     assert byte_size(Sync.retained(@scan)) <
              byte_size(:erlang.term_to_binary(@scan, [:compressed]))
 
-    held = :erlang.binary_to_term(Sync.retained(@scan))
+    {_files, held} = :erlang.binary_to_term(Sync.retained(@scan))
     refute inspect(held) =~ "dependency_evidence"
   end
 end

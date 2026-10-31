@@ -12,8 +12,7 @@ defmodule CodeMySpecWeb.DevGraphLive do
     edges with an in-memory recompute (`Requirements.served_vs_recomputed/1`),
     on demand and on each pass. A set that does not empty names entities whose
     input moved with no announcement.
-  - Side by side: per-checkout vantages, the durable mark backlog, writer
-    guarantees, the event vocabulary, the last drain of each kind, the watcher,
+  - Side by side: the durable mark backlog, writer guarantees, the event vocabulary, the last drain of each kind, the watcher,
     and which checkouts have a harness joined.
 
   Read-only: the stale diff reports and discards. A page that recomputed on
@@ -50,7 +49,7 @@ defmodule CodeMySpecWeb.DevGraphLive do
      |> assign(projects: projects, selected: selected, feed: [], checking?: false)
      |> assign_report()
      |> assign_watched()
-     |> assign_vantages()
+     |> assign_drains()
      |> assign_stale()}
   end
 
@@ -63,7 +62,7 @@ defmodule CodeMySpecWeb.DevGraphLive do
     {:noreply,
      socket
      |> assign(selected: selected, feed: [])
-     |> assign_vantages()
+     |> assign_drains()
      |> assign_report()
      |> assign_watched()
      |> assign_stale()}
@@ -85,12 +84,12 @@ defmodule CodeMySpecWeb.DevGraphLive do
   # A pass landed. Re-read the rows and re-run the diff, because this is the
   # moment the answer is supposed to have become right.
   def handle_info({:graph_updated, _project_id}, socket) do
-    {:noreply, socket |> close_pass() |> assign_report() |> assign_vantages() |> assign_stale()}
+    {:noreply, socket |> close_pass() |> assign_report() |> assign_drains() |> assign_stale()}
   end
 
   def handle_info(:tick, socket) do
     schedule_tick()
-    {:noreply, socket |> assign_report() |> assign_watched() |> assign_vantages()}
+    {:noreply, socket |> assign_report() |> assign_watched() |> assign_drains()}
   end
 
   def handle_info(_other, socket), do: {:noreply, socket}
@@ -161,13 +160,11 @@ defmodule CodeMySpecWeb.DevGraphLive do
   defp joined?(working_copy_id),
     do: Registry.lookup(HarnessRegistry, to_string(working_copy_id)) != []
 
-  # Vantages side by side and the mark backlog: from a single vantage, other
-  # checkouts frozen looks healthy, and a projector failing every drain shows only
-  # as nothing changing.
-  defp assign_vantages(%{assigns: %{selected: nil}} = socket),
+  # The mark backlog and the last drains: a projector failing every drain shows
+  # only as nothing changing.
+  defp assign_drains(%{assigns: %{selected: nil}} = socket),
     do:
       assign(socket,
-        vantages: [],
         backlog: %{total: 0, groups: []},
         vocabulary: Requirements.event_vocabulary(),
         guarantees: Requirements.emit_guarantees(),
@@ -175,11 +172,10 @@ defmodule CodeMySpecWeb.DevGraphLive do
         drain: nil
       )
 
-  defp assign_vantages(%{assigns: %{selected: project}} = socket) do
+  defp assign_drains(%{assigns: %{selected: project}} = socket) do
     scope = scope_of(project)
 
     assign(socket,
-      vantages: Requirements.vantage_report(scope),
       backlog: Requirements.backlog_report(scope),
       vocabulary: Requirements.event_vocabulary(),
       guarantees: Requirements.emit_guarantees(),
@@ -297,37 +293,6 @@ defmodule CodeMySpecWeb.DevGraphLive do
           <p :if={match?({:error, _}, @stale)} class="text-sm opacity-70">
             Could not read this project: {inspect(elem(@stale, 1))}
           </p>
-        </section>
-
-        <section class="space-y-2">
-          <h2 class="text-sm font-semibold uppercase tracking-wide opacity-70">
-            Checkouts — {length(@vantages)} answering
-          </h2>
-          <p class="text-xs opacity-60">
-            A verdict is a statement about one checkout, so this is ten parallel answers rather
-            than one. From any single vantage a stuck checkout looks exactly like a healthy
-            graph; the <em>spread</em> between newest stamps is what says otherwise.
-          </p>
-          <table class="table table-xs">
-            <thead>
-              <tr>
-                <th>checkout</th>
-                <th class="text-right">rows</th>
-                <th>newest</th>
-                <th>oldest</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr :for={v <- @vantages}>
-                <td class={if is_nil(v.working_copy_id), do: "opacity-60", else: ""}>
-                  {v.label}
-                </td>
-                <td class="text-right tabular-nums">{v.rows}</td>
-                <td class="tabular-nums">{v.newest}</td>
-                <td class="tabular-nums opacity-60">{v.oldest}</td>
-              </tr>
-            </tbody>
-          </table>
         </section>
 
         <section data-test="emit-guarantees" class="space-y-2">
@@ -602,26 +567,6 @@ defmodule CodeMySpecWeb.DevGraphLive do
             </tbody>
           </table>
         </section>
-
-        <section class="space-y-2">
-          <h2 class="text-sm font-semibold uppercase tracking-wide opacity-70">Vantages</h2>
-          <table class="table table-sm">
-            <thead>
-              <tr>
-                <th>Checkout</th>
-                <th class="text-right">Rows</th>
-                <th>Newest row</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr :for={v <- @report.vantages}>
-                <td><code>{vantage_label(v.vantage)}</code></td>
-                <td class="text-right tabular-nums">{v.rows}</td>
-                <td class="tabular-nums">{v.newest || "—"}</td>
-              </tr>
-            </tbody>
-          </table>
-        </section>
       </div>
     </div>
     """
@@ -638,9 +583,6 @@ defmodule CodeMySpecWeb.DevGraphLive do
 
   defp event_class(:announced), do: "text-warning"
   defp event_class(:recomputed), do: "text-success"
-
-  defp vantage_label(nil), do: "(unscoped)"
-  defp vantage_label(id), do: String.slice(id, 0, 8)
 
   # A pass is judged against the whole project, so a full rebuild fills the bar
   # and three rows barely mark it. The floor keeps a real pass visible rather

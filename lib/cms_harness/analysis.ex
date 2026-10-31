@@ -33,8 +33,8 @@ defmodule CmsHarness.Analysis do
 
   alias CmsHarness.AnalyzerEnv
   alias CmsHarness.RunLink
-  alias CodeMySpec.Analysis.RunNode
   alias CodeMySpec.Analysis.Runners
+  alias CodeMySpec.Analysis.RunNode
   alias CodeMySpec.BddSpecs.Spex
   alias CodeMySpec.Compile
   alias CodeMySpec.DurableRun
@@ -300,27 +300,18 @@ defmodule CmsHarness.Analysis do
 
   defp execute("exunit", env, args) do
     analyzer_env = AnalyzerEnv.extra_env(env, "exunit")
-
-    extra_env =
-      analyzer_env ++
-        durable_stream_env(env, analyzer_env) ++
-        if(env.metadata[:durable_run], do: [], else: RunLink.env(env.cwd, env.metadata[:run_id]))
+    link = RunLink.env(env.cwd, env.metadata[:run_id])
+    record_durable(env, analyzer_env, link)
 
     # No pre-run truncate, deliberately. See knowledge/harness, "Analysis".
 
-    case CodeMySpec.Tests.execute(args, execution_context: env, extra_env: extra_env) do
+    case CodeMySpec.Tests.execute(
+           args,
+           [execution_context: env, extra_env: analyzer_env ++ link] ++
+             durable_results(env, :output_file, ".json")
+         ) do
       {:ok, test_run} ->
-        {:ok,
-         %{
-           "source" => "exunit",
-           "exit_status" => test_run.exit_code,
-           # Tells "ran and failed" from "never started"; the server refuses
-           # to reconcile the second, which would clear every exunit Problem.
-           "execution_status" => to_string(test_run.execution_status),
-           "output" => cap(test_run.raw_output || ""),
-           "stats" => stats_map(test_run.stats),
-           "diagnostics" => Enum.map(test_run.failures || [], &test_failure/1)
-         }}
+        {:ok, exunit_result(test_run)}
 
       {:error, reason} ->
         {:error, inspect(reason)}
@@ -378,57 +369,133 @@ defmodule CmsHarness.Analysis do
 
   # Linked like exunit's, so a spex run streams too; the formatter is what sends.
   defp run_spex(env, args) do
-    {args, link} =
-      case if(env.metadata[:durable_run],
-             do: [],
-             else: RunLink.env(env.cwd, env.metadata[:run_id])
-           ) do
-        [] ->
-          if env.metadata[:durable_run],
-            do: {args ++ ["--formatter=ClientUtils.TestFormatter"], []},
-            else: {args, []}
-
-        link ->
-          {args ++ ["--formatter=ClientUtils.TestFormatter"], link}
-      end
-
+    link = RunLink.env(env.cwd, env.metadata[:run_id])
+    args = if link == [], do: args, else: args ++ ["--formatter=ClientUtils.TestFormatter"]
     analyzer_env = AnalyzerEnv.extra_env(env, "spex")
+    record_durable(env, analyzer_env, link)
 
     result =
-      Spex.execute(args,
-        execution_context: env,
-        extra_env: analyzer_env ++ durable_stream_env(env, analyzer_env) ++ link
+      Spex.execute(
+        args,
+        [execution_context: env, extra_env: analyzer_env ++ link] ++
+          durable_results(env, :jsonl_path, ".jsonl")
       )
 
     if link != [], do: RunLink.exited(env.metadata[:run_id])
 
     case result do
       {:ok, failures, exit_code, output} ->
-        {:ok,
-         %{
-           "source" => "spex",
-           "exit_status" => exit_code,
-           # No failures plus a nonzero exit means the suite did not run; the
-           # output is where the reason can be read.
-           "output" => output || "",
-           "diagnostics" => Enum.map(failures, &spex_failure/1)
-         }}
+        {:ok, spex_result(failures, exit_code, output)}
 
       {:error, reason} ->
         {:error, inspect(reason)}
     end
   end
 
-  # The partition is recorded for a harness that answers the run after a
-  # restart, as `stamp_partition/3` reports it for a run answered here.
-  defp durable_stream_env(%{metadata: %{durable_run: id}}, analyzer_env) when is_integer(id) do
-    with {_key, partition} <- List.keyfind(analyzer_env, "MIX_TEST_PARTITION", 0),
-         do: DurableRun.update(id, %{"partition" => partition})
+  @doc """
+  The answer for a run that finished after the harness restarted: what it wrote
+  to its results and output files, with the exit status it reported.
+  """
+  def recovered_result(manifest, status) do
+    case {recovered(manifest, status), manifest["partition"]} do
+      # The database it ran on, as `stamp_partition/3` reports a run answered here.
+      {{:ok, raw}, partition} when is_binary(partition) ->
+        {:ok, Map.put(raw, "partition", partition)}
 
-    [{"CMS_RUN_EVENT_STREAM", DurableRun.stream_path(id)}]
+      {{:ok, raw}, _} ->
+        {:ok, raw}
+
+      # Sent on the wire as a string, like every other analyzer error.
+      {{:error, reason}, _} when is_binary(reason) ->
+        {:error, reason}
+
+      {{:error, reason}, _} ->
+        {:error, inspect(reason)}
+    end
   end
 
-  defp durable_stream_env(_env, _analyzer_env), do: []
+  defp recovered(manifest, status) do
+    id = manifest["run_id"]
+    output = read_output(id)
+
+    case manifest["source"] do
+      "exunit" ->
+        # No results file reads as a suite that never ran, never as a pass.
+        json =
+          case File.read(DurableRun.results_path(id, ".json")) do
+            {:ok, json} -> json
+            {:error, _} -> "{}"
+          end
+
+        with {:ok, run} <-
+               CodeMySpec.Tests.results(json, %{exit_code: status, raw_output: output}),
+             do: {:ok, exunit_result(run)}
+
+      "spex" ->
+        case Spex.parse_jsonl(DurableRun.results_path(id, ".jsonl")) do
+          {:ok, failures} ->
+            {:ok, spex_result(failures, status, output)}
+
+          {:error, reason} ->
+            {:error, "spex results unreadable after restart: #{inspect(reason)}"}
+        end
+    end
+  end
+
+  defp read_output(id) do
+    [DurableRun.output_path(id) | Path.wildcard(DurableRun.output_path(id) <> ".shard-*")]
+    |> Enum.map_join(&(File.read(&1) |> elem(1) |> to_string()))
+  end
+
+  @doc "An exunit result as the server reads it, from a test run here or after a restart."
+  def exunit_result(test_run) do
+    %{
+      "source" => "exunit",
+      "exit_status" => test_run.exit_code,
+      # Tells "ran and failed" from "never started"; the server refuses
+      # to reconcile the second, which would clear every exunit Problem.
+      "execution_status" => to_string(test_run.execution_status),
+      "output" => cap(test_run.raw_output || ""),
+      "stats" => stats_map(test_run.stats),
+      "diagnostics" => Enum.map(test_run.failures || [], &test_failure/1)
+    }
+  end
+
+  @doc "A spex result as the server reads it, from a run here or after a restart."
+  def spex_result(failures, exit_code, output) do
+    %{
+      "source" => "spex",
+      "exit_status" => exit_code,
+      # No failures plus a nonzero exit means the suite did not run; the
+      # output is where the reason can be read.
+      "output" => output || "",
+      "diagnostics" => Enum.map(failures, &spex_failure/1)
+    }
+  end
+
+  # What a harness answering the run after a restart needs: the run's node
+  # (to tell a dead run from one yet to rejoin) and the partition it used, as
+  # `stamp_partition/3` reports it for a run answered here.
+  defp record_durable(%{metadata: %{durable_run: id}}, analyzer_env, link) when is_integer(id) do
+    partition = with {_, value} <- List.keyfind(analyzer_env, "MIX_TEST_PARTITION", 0), do: value
+    node = with {_, opts} <- List.keyfind(link, "ELIXIR_ERL_OPTIONS", 0), do: run_node(opts)
+    DurableRun.update(id, %{"partition" => partition, "node" => node})
+  end
+
+  defp record_durable(_env, _analyzer_env, _link), do: :ok
+
+  defp run_node(opts) do
+    case Regex.run(~r/-name (\S+)/, opts) do
+      [_, name] -> name
+      _ -> nil
+    end
+  end
+
+  # The run's results go beside its record, where the next harness reads them.
+  defp durable_results(%{metadata: %{durable_run: id}}, key, extension) when is_integer(id),
+    do: [{key, DurableRun.results_path(id, extension)}]
+
+  defp durable_results(_env, _key, _extension), do: []
 
   defp crashed(source, exception) do
     Logger.error("[CmsHarness] #{source} crashed: #{Exception.message(exception)}")

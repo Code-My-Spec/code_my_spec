@@ -45,9 +45,8 @@ defmodule CodeMySpecSpex.Story1062.Criterion3422Spex do
       given_ :synced_context_component
 
       given_ "a graph that has been computed and stored", context do
-        # `read_settled_graph/1` reads twice on purpose: the first read of a
-        # vantage no pass has computed is what puts it in `Projection.vantages/1`,
-        # and the second is the one answered from rows.
+        # `read_settled_graph/1` reads twice on purpose: the first read settles
+        # the projector, the second is answered from what it settled.
         graph = read_settled_graph(context)
 
         assert graph["nodes"] != [],

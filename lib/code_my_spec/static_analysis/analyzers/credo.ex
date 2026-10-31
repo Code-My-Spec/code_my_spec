@@ -134,32 +134,28 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.Credo do
     # root, and that override predates this call going through the abstraction.
     #
     # clean_otp_env is applied by the environment (see Local.cmd/4).
-    case CodeMySpec.ExecutionContexts.cmd(environment, "mix", args,
-           cd: code_repo,
-           stderr_to_stdout: true,
-           env: Keyword.get(opts, :extra_env, [])
-         ) do
-      {output, exit_code} when exit_code in 0..127 ->
-        handle_credo_output(output, exit_code, temp_file)
+    cmd_opts = [
+      cd: code_repo,
+      stderr_to_stdout: true,
+      env: Keyword.get(opts, :extra_env, [])
+    ]
+
+    case CodeMySpec.ExecutionContexts.cmd(environment, "mix", ["compile"], cmd_opts) do
+      {_output, 0} ->
+        case CodeMySpec.ExecutionContexts.cmd(environment, "mix", args, cmd_opts) do
+          {output, exit_code} when exit_code in 0..31 ->
+            write_and_return(temp_file, output)
+
+          {output, exit_code} ->
+            {:error, "Credo was not run: exited #{exit_code}: #{output}"}
+        end
 
       {output, exit_code} ->
-        {:error, "Credo failed with exit code #{exit_code}: #{output}"}
+        {:error, "Credo was not run: mix compile exited #{exit_code}: #{output}"}
     end
   rescue
     exception ->
       {:error, "Failed to execute Credo: #{Exception.message(exception)}"}
-  end
-
-  defp handle_credo_output(output, exit_code, temp_file) when exit_code > 1 do
-    if String.trim(output) == "" do
-      {:error, "Credo failed with exit code #{exit_code} and no output"}
-    else
-      write_and_return(temp_file, output)
-    end
-  end
-
-  defp handle_credo_output(output, _exit_code, temp_file) do
-    write_and_return(temp_file, output)
   end
 
   # sobelow_skip ["Traversal.FileModule"]

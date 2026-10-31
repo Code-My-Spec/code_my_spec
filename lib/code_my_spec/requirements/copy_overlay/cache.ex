@@ -1,8 +1,9 @@
 defmodule CodeMySpec.Requirements.CopyOverlay.Cache do
   @moduledoc """
-  File verdicts the server computed for a copy with no current report, one
-  entry per copy, kept while its key (the records' fingerprint and the copy's
-  files) holds. Owns the table and nothing else, like `DrainCost`.
+  What the server derives from a copy's File rows (its computed file verdicts,
+  the digest of its files), one entry per name, kept while its key (the
+  records' fingerprint, the copy's files) holds. Owns the table and nothing
+  else, like `DrainCost`.
 
   Where the table is not running (the harness, a desktop build without it),
   every fetch computes: slower, never wrong.
@@ -20,21 +21,21 @@ defmodule CodeMySpec.Requirements.CopyOverlay.Cache do
     {:ok, %{}}
   end
 
-  @doc "The copy's entry when `key` still matches it, else `compute.()`, kept under `key`."
-  @spec fetch(Ecto.UUID.t(), term(), (-> term())) :: term()
-  def fetch(copy, key, compute) do
+  @doc "The entry named `name` when `key` still matches it, else `compute.()`, kept under `key`."
+  @spec fetch(term(), term(), (-> term())) :: term()
+  def fetch(name, key, compute) do
     case :ets.whereis(@table) do
       :undefined ->
         compute.()
 
       _table ->
-        case :ets.lookup(@table, copy) do
-          [{^copy, ^key, value}] ->
+        case :ets.lookup(@table, name) do
+          [{^name, ^key, value}] ->
             value
 
           _missing_or_moved ->
             value = compute.()
-            :ets.insert(@table, {copy, key, value})
+            :ets.insert(@table, {name, key, value})
             value
         end
     end
