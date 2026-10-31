@@ -50,7 +50,8 @@ defmodule CodeMySpecWeb.Plugs.CSP do
       # Stripe's own iframe, which is what keeps card details off our origin.
       # Without these the form silently never mounts — the page renders, the
       # element does not, and nothing in the server logs says why.
-      "script-src 'self' 'nonce-#{nonce}' https://www.googletagmanager.com https://static.cloudflareinsights.com https://js.stripe.com https://www.clarity.ms",
+      # Clarity's tag loads its script from scripts.clarity.ms, not www.
+      "script-src 'self' 'nonce-#{nonce}' https://www.googletagmanager.com https://static.cloudflareinsights.com https://js.stripe.com https://*.clarity.ms",
       # Previews are framed from a subdomain of our own domain, which is not
       # `'self'` — a different host is a different origin however closely
       # related. Without this the app is willing to be framed and we refuse to
@@ -68,8 +69,15 @@ defmodule CodeMySpecWeb.Plugs.CSP do
       # (https://*.clarity.ms), not just www — a single hostname here silently
       # drops session data with no visible error, the exact failure mode this
       # policy exists to avoid for every other analytics vendor listed.
-      "connect-src 'self' https://www.googletagmanager.com https://www.google-analytics.com https://region1.google-analytics.com https://cloudflareinsights.com https://api.stripe.com https://*.clarity.ms",
-      "img-src 'self' data: https://images.codemyspec.com https://www.google-analytics.com https://www.googletagmanager.com https://img.shields.io",
+      #
+      # GA4 sends hits to *.google-analytics.com and *.analytics.google.com,
+      # and with Google Signals on, to www.google.com as well (Google's CSP
+      # guide for GA4). Blocked hits fail silently: the page view never counts.
+      "connect-src 'self' https://*.googletagmanager.com https://*.google-analytics.com https://*.analytics.google.com https://www.google.com https://cloudflareinsights.com https://api.stripe.com https://*.clarity.ms",
+      # Google Signals' audience pixel loads from the visitor's country domain
+      # (www.google.ca seen 2026-10-30); a CSP host cannot wildcard a TLD, so
+      # the countries we serve are listed.
+      "img-src 'self' data: https://images.codemyspec.com https://*.google-analytics.com https://*.googletagmanager.com https://www.google.com https://www.google.ca https://img.shields.io",
       # Video is served from the same bucket as the images, but media-src does
       # not inherit from img-src — without this it falls back to default-src
       # 'self' and every <video> from the CDN is blocked. The poster still

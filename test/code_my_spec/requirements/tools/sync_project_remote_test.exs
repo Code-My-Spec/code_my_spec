@@ -193,7 +193,6 @@ defmodule CodeMySpec.Requirements.Tools.SyncProjectRemoteTest do
       # A projected story whose rows are gone, as a story coming back was.
       story = story_fixture(ctx.scope)
       _ = requirements_of(ctx.scope, story)
-      Repo.delete_all(from(r in "requirements", where: r.story_id == ^story.id))
       Repo.delete_all(from(r in "project_requirements", where: r.story_id == ^story.id))
 
       # Its file verdict is the copy's overlay, never a row; its record

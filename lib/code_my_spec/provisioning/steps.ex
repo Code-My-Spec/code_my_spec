@@ -1572,6 +1572,27 @@ defmodule CodeMySpec.Provisioning.Steps do
     end
   end
 
+  @doc "Rotate the registry credential on an environment's linked server."
+  @spec rotate_registry_credential(Scope.t(), String.t(), keyword()) :: :ok | {:error, atom()}
+  def rotate_registry_credential(%Scope{} = scope, environment, opts \\ []) do
+    name = server_name(scope, opts, environment)
+
+    with {:ok, server} <- Hetzner.find_server(scope, name),
+         {:ok, network_id} <- existing_network_id(scope, server),
+         {:ok, private_ip} <- Hetzner.private_ip(server, network_id),
+         public_ip when is_binary(public_ip) <- get_in(server, ["public_net", "ipv4", "ip"]) do
+      with_ssh_runner(scope, public_ip, opts, fn run ->
+        Registry.rotate_credential(scope,
+          run: run,
+          bind: private_ip,
+          registry_attempts: Keyword.get(opts, :registry_attempts, 2)
+        )
+      end)
+    else
+      _ -> {:error, :registry_not_provisioned}
+    end
+  end
+
   defp send_and_await(scope, to, token, opts) do
     # The arriving message is identified by not being in the mailbox before
     # the send — exact on record and replay, unlike the per-run token, and

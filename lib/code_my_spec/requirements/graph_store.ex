@@ -3,15 +3,16 @@ defmodule CodeMySpec.Requirements.GraphStore do
   Reads and writes the requirement graph's rows, for the event projection.
 
   `IncrementalGraph` decides what each entity's requirements are; this is where
-  those answers land: file-backed verdicts per checkout in `requirements`, the
-  rest once per project in `project_requirements` (`project_wide_names/0`), and
-  the project's edges in `requirement_topologies`. Writes are per entity and per event: `write/3`
+  the record verdicts land, once per project in `project_requirements`
+  (`project_wide_names/0`), and the project's edges in `requirement_topologies`.
+  A checkout's file verdicts and placement gates are not stored: they are read
+  (`CopyGraph`). Writes are per entity and per event: `write/3`
   replaces what one computation covered, `put_verdict/2` and `put_verdicts/5`
   move a verdict a handler already knew, `sweep/2` settles one requirement
   across every owner of a type, and `write_topology/4` stores the project's
   edges. The projection checks —
   `projected?/1`, `definitions_covered?/2`, `incomplete_entities/2` — tell the
-  projector when a vantage's rows cannot be trusted and must be seeded.
+  projector when the project's rows cannot be trusted and must be seeded.
   """
 
   import Ecto.Query, only: [from: 2, where: 2, where: 3, dynamic: 2, select: 3]
@@ -36,7 +37,7 @@ defmodule CodeMySpec.Requirements.GraphStore do
   # (`personas_complete`): the same at every checkout, so stored once per
   # project. The rest read one checkout's files, or, like `issues_triaged`,
   # `issues_resolved` and `work_dispatched`, leave out issues on stories placed
-  # at another checkout, and are stored per checkout.
+  # at another checkout, and are read for each checkout, never stored.
   # `project_wide_names_test` derives this from the definitions' checkers.
   @project_wide ~w(
     component_linked three_amigos_complete questions_answered story_issues_triaged
@@ -63,7 +64,7 @@ defmodule CodeMySpec.Requirements.GraphStore do
     :updated_at
   ]
 
-  @doc "The requirement names stored once per project rather than per checkout."
+  @doc "The requirement names stored: once per project."
   @spec project_wide_names() :: [String.t()]
   def project_wide_names, do: @project_wide
 
@@ -140,7 +141,7 @@ defmodule CodeMySpec.Requirements.GraphStore do
   ]
   @verdict [:satisfied, :details]
 
-  # Rows this vantage already holds are compared here and rewritten by id; new
+  # Rows already held are compared here and rewritten by id; new
   # ones are inserted. Returns the ids written, so departed rows are a subtraction.
   defp upsert_group(target, entity_type, nodes, before_by_key, now) do
     {fresh, changed} =
@@ -262,7 +263,7 @@ defmodule CodeMySpec.Requirements.GraphStore do
   What an event handler writes: the single row the event settled, siblings
   untouched (`write/3` is the recompute).
 
-  `{:ok, 0}` when no row matched — the event named an entity this vantage has
+  `{:ok, 0}` when no row matched — the event named an entity the project has
   never projected (rows are created by seeding, never here). The caller counts
   misses.
   """
@@ -317,9 +318,9 @@ defmodule CodeMySpec.Requirements.GraphStore do
   # Every row of this requirement the exceptions did not name, where the answer
   # differs from the default.
   #
-  # Must carry the project predicate: a default names no entity, and the nil
-  # vantage is shared by every project, so without it a drain writes other
-  # projects' rows. See knowledge/requirements_graph, "Lessons".
+  # Must carry the project predicate: a default names no entity, and the table
+  # is shared by every project, so without it a drain writes other projects'
+  # rows. See knowledge/requirements_graph, "Lessons".
   defp settle_default(scope, entity_type, name, spec, ids, now) do
     owner = owner_field(entity_type)
 
@@ -384,7 +385,7 @@ defmodule CodeMySpec.Requirements.GraphStore do
   per entity.
 
   Answers how many rows changed. Settling never creates rows, so an entity this
-  vantage has never projected is a miss the caller counts.
+  project has never projected is a miss the caller counts.
   """
   @spec put_verdicts(Scope.t(), String.t(), String.t(), [map()], NaiveDateTime.t()) ::
           {:ok, non_neg_integer()}
@@ -501,10 +502,10 @@ defmodule CodeMySpec.Requirements.GraphStore do
   def projected?(%Scope{}), do: false
 
   @doc """
-  Whether the rows at this vantage carry every requirement the templates
+  Whether the project's rows carry every stored requirement the templates
   define for the entities they cover, and nothing the templates no longer do.
 
-  A vantage whose rows predate a definition (a release added or dropped a
+  A project whose rows predate a definition (a release added or dropped a
   requirement) is seeded like one with no rows: handlers settle rows and never
   create them. Compared per entity type; no rows of a type is not a mismatch.
   See knowledge/requirements_graph, "Seeding".
@@ -620,7 +621,7 @@ defmodule CodeMySpec.Requirements.GraphStore do
     |> Map.new(fn {type, names} -> {type, MapSet.new(names)} end)
   end
 
-  # No rows of the type is not a mismatch: the vantage may hold no such
+  # No rows of the type is not a mismatch: the project may hold no such
   # entity. Rows of the type carry exactly the defined names, or a release
   # moved between them and the rows.
   defp covered?(held, expected),

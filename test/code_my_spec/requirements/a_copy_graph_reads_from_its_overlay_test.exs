@@ -90,6 +90,25 @@ defmodule CodeMySpec.Requirements.ACopyGraphReadsFromItsOverlayTest do
            "a report for other records is not served: the copy's files answer"
   end
 
+  test "a report from a scan the copy's files have moved past is not served", %{scope: scope} do
+    ctx = Preloader.read_context(scope)
+    {:ok, _} = CopyOverlay.report(scope, flipped(report(scope)))
+    assert %{satisfied: false} = node(CopyGraph.load(scope, ctx), "technical_strategy")
+
+    # Files reach the server without this harness's scan: its report no longer
+    # answers for them.
+    Repo.insert!(%FileRecord{
+      project_id: scope.active_project_id,
+      working_copy_id: scope.active_working_copy_id,
+      path: ".code_my_spec/tasks/code_generation.sh",
+      role: :task_artifact,
+      valid: true
+    })
+
+    assert %{satisfied: true} = node(CopyGraph.load(scope, ctx), "technical_strategy"),
+           "a report computed from older files was served over the copy's rows"
+  end
+
   test "computed verdicts follow the copy's files", %{scope: scope} do
     ctx = Preloader.read_context(scope)
     assert %{satisfied: false} = node(CopyGraph.load(scope, ctx), "code_generation")
@@ -219,7 +238,7 @@ defmodule CodeMySpec.Requirements.ACopyGraphReadsFromItsOverlayTest do
   defp report(scope) do
     entries =
       Repo.all(from(f in FileRecord, where: f.working_copy_id == ^scope.active_working_copy_id))
-      |> Enum.map(&Map.take(&1, [:path, :role, :valid, :validation_errors, :size]))
+      |> Enum.map(&Map.take(&1, [:path, :role, :valid, :validation_errors, :size, :fingerprint]))
 
     {_read_model, payload} = CopyOverlay.served_read_model(scope)
     payload = payload |> Jason.encode!() |> Jason.decode!()
@@ -232,6 +251,7 @@ defmodule CodeMySpec.Requirements.ACopyGraphReadsFromItsOverlayTest do
 
     %{
       "read_model" => read_model.fingerprint,
+      "files" => CopyOverlay.files_digest(entries),
       "verdicts" => CopyOverlay.verdicts(entries, read_model)
     }
   end

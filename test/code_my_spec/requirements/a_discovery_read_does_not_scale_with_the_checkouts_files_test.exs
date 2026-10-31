@@ -10,14 +10,16 @@ defmodule CodeMySpec.Requirements.ADiscoveryReadDoesNotScaleWithTheCheckoutsFile
 
   Asserted on rows fetched, never on duration: the same read over a checkout
   with 300 more file rows must fetch about the same number of rows. The old
-  read fetched each new file row twice. The checkout's harness has reported
-  its overlay, as a live one does; without a report the server computes file
-  verdicts from the rows once per change to them (`CopyOverlay.verdicts_at/1`).
+  read fetched each new file row twice. The checkout's harness reports its
+  overlay for each scan, as a live one does. A read after the copy's files move
+  digests them once to see the report still answers for them
+  (`CopyOverlay.verdicts_at/1`); the reads after it do not.
   """
   use ExUnit.Case, async: true
 
   import CodeMySpec.StoriesFixtures
   import CodeMySpec.UsersFixtures
+  import Ecto.Query, only: [from: 2]
 
   alias CodeMySpec.Files.File
   alias CodeMySpec.Repo
@@ -37,17 +39,13 @@ defmodule CodeMySpec.Requirements.ADiscoveryReadDoesNotScaleWithTheCheckoutsFile
   end
 
   test "a read over 300 more file rows fetches about the same rows", %{scope: scope} do
-    {read_model, _payload} = CopyOverlay.served_read_model(scope)
-
-    {:ok, _} =
-      CopyOverlay.report(scope, %{
-        "read_model" => read_model.fingerprint,
-        "verdicts" => CopyOverlay.verdicts([], read_model)
-      })
-
+    report(scope)
+    _first = StoryExecution.read(scope, :coding)
     before = rows_fetched(fn -> StoryExecution.read(scope, :coding) end)
 
     add_files(scope, @added_files)
+    report(scope)
+    _first = StoryExecution.read(scope, :coding)
     later = rows_fetched(fn -> StoryExecution.read(scope, :coding) end)
 
     assert later - before < div(@added_files, 10),
@@ -67,6 +65,26 @@ defmodule CodeMySpec.Requirements.ADiscoveryReadDoesNotScaleWithTheCheckoutsFile
     assert full_nodes != [], "the fixture projected no rows, so this compares nothing"
     assert Enum.sort(nodes) == Enum.sort(full_nodes)
     assert Enum.sort(edges) == Enum.sort(full_edges)
+  end
+
+  # The overlay the copy's harness sends for its scan of these files.
+  defp report(scope) do
+    files =
+      Repo.all(
+        from(f in File,
+          where: f.working_copy_id == ^scope.active_working_copy_id,
+          select: map(f, [:path, :role, :valid, :validation_errors, :size, :fingerprint])
+        )
+      )
+
+    {read_model, _payload} = CopyOverlay.served_read_model(scope)
+
+    {:ok, _} =
+      CopyOverlay.report(scope, %{
+        "read_model" => read_model.fingerprint,
+        "files" => CopyOverlay.files_digest(files),
+        "verdicts" => CopyOverlay.verdicts(files, read_model)
+      })
   end
 
   defp add_files(scope, count) do

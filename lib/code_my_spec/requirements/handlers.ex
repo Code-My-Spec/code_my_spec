@@ -32,7 +32,6 @@ defmodule CodeMySpec.Requirements.Handlers do
   alias CodeMySpec.Requirements.BddRulesChecker
   alias CodeMySpec.Requirements.DevopsSetupChecker
   alias CodeMySpec.Requirements.DispatchChecker
-  alias CodeMySpec.Requirements.GraphStore
   alias CodeMySpec.Requirements.IssuesChecker
   alias CodeMySpec.Requirements.PersonasChecker
   alias CodeMySpec.Requirements.Profiles
@@ -121,13 +120,6 @@ defmodule CodeMySpec.Requirements.Handlers do
   end
 
   def partial_event?(%{kind: kind}), do: kind in @partial
-
-  @doc """
-  Whether a partial event's fallback only re-establishes issue nodes, which are
-  stored once per project: recomputed at one vantage, it is done at all.
-  """
-  def fallback_project_wide?(%{kind: "issue_" <> _}), do: true
-  def fallback_project_wide?(_mark), do: false
 
   # Handled kinds that can move the shape the edges are drawn from (a
   # dependency, a story relinked). The projector asks the shape whether to
@@ -224,18 +216,17 @@ defmodule CodeMySpec.Requirements.Handlers do
   What this event does to the projection.
 
   `{:ok, changes, sweeps}` — individual rows to set, and requirements to settle
-  across a whole population. `skip` names requirements already settled this
-  drain: a project-wide one is the same at every checkout.
+  across a whole population.
   """
-  @spec apply_event(Scope.t(), String.t(), map(), [String.t()]) ::
+  @spec apply_event(Scope.t(), String.t(), map()) ::
           {:ok, [change()], [sweep()]} | :no_handler
-  def apply_event(%Scope{} = scope, kind, _payload, skip \\ []) do
+  def apply_event(%Scope{} = scope, kind, _payload) do
     case Map.get(@dirties, kind) do
       nil ->
         :no_handler
 
       dirty ->
-        names = requirements_reading(dirty) -- skip
+        names = requirements_reading(dirty)
         profiles = load_profiles(scope, names)
 
         {:ok, [], Enum.map(names, &settle(&1, profiles, scope))}
@@ -277,20 +268,6 @@ defmodule CodeMySpec.Requirements.Handlers do
   @doc "The requirement names `copy_verdicts/1` settles."
   @spec copy_names() :: [String.t()]
   def copy_names, do: @copy_names
-
-  @doc """
-  Whether everything this kind moves is stored once per project: settled at one
-  checkout, it is settled at all of them.
-  """
-  @spec project_wide?(String.t() | nil) :: boolean()
-  def project_wide?(kind) do
-    case Map.get(@dirties, kind) do
-      nil -> false
-      dirty -> kind not in @shape and requirements_reading(dirty) -- project_names() == []
-    end
-  end
-
-  defp project_names, do: GraphStore.project_wide_names()
 
   # Every requirement at least one of the dirtied profiles moves. A requirement
   # moved by two is settled once, not once per profile.
