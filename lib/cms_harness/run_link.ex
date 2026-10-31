@@ -49,7 +49,7 @@ defmodule CmsHarness.RunLink do
   What a run started for `run_id` in `root` needs in its environment to report
   here. No run id, no link: the run is a plain `mix test`.
   """
-  @spec env(String.t(), integer() | nil) :: [{String.t(), String.t()}]
+  @spec env(String.t(), integer() | nil) :: [{String.t(), String.t() | nil}]
   def env(_root, nil), do: []
 
   def env(root, run_id) when is_integer(run_id) do

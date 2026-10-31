@@ -18,7 +18,7 @@ defmodule CodeMySpec.Analysis.LocalRunLink do
   What a run started here for `run_id` needs in its environment to report.
   Nothing where this listener is not running, or for a run with no id.
   """
-  @spec env(Scope.t(), integer() | nil) :: [{String.t(), String.t()}]
+  @spec env(Scope.t(), integer() | nil) :: [{String.t(), String.t() | nil}]
   def env(_scope, nil), do: []
 
   def env(%Scope{} = scope, run_id) when is_integer(run_id) do
