@@ -155,7 +155,10 @@ defmodule CodeMySpec.Tests do
   def results(json_string, metadata) do
     parse_test_results(
       json_string,
-      Map.merge(%{file_path: "unknown", command: "mix test", ran_at: DateTime.utc_now()}, metadata)
+      Map.merge(
+        %{file_path: "unknown", command: "mix test", ran_at: DateTime.utc_now()},
+        metadata
+      )
     )
   end
 
