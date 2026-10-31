@@ -118,6 +118,64 @@ defmodule CmsHarness.AnalysisSlotsTest do
       assert_receive {:took, ^gate, :ok}, 1000
       refute_receive {:took, ^normal, _}, 200
     end
+
+    # Run 66720 (2026-10-31): three copies promoting back to back on a one-slot
+    # machine, each gate run arriving while the last held the slot. An agent's
+    # spex run waited in line an hour, passed over by every grant.
+    test "goes ahead of a waiting run only so many times" do
+      {holding, :ok} = holder()
+      normal = waiter(:normal)
+      wait_until(fn -> AnalysisSlots.waiting() == 1 end)
+
+      holding =
+        Enum.reduce(1..4, holding, fn _n, holding ->
+          gate = waiter(:gate)
+          wait_until(fn -> AnalysisSlots.waiting() == 2 end)
+          send(holding, :stop)
+          assert_receive {:took, ^gate, :ok}, 1000
+          gate
+        end)
+
+      late_gate = waiter(:gate)
+      wait_until(fn -> AnalysisSlots.waiting() == 2 end)
+      send(holding, :stop)
+
+      assert_receive {:took, ^normal, :ok}, 1000
+      refute_receive {:took, ^late_gate, _}, 200
+    end
+
+    test "still waits in arrival order behind other gate runs" do
+      {holding, :ok} = holder()
+      first = waiter(:gate)
+      wait_until(fn -> AnalysisSlots.waiting() == 1 end)
+      second = waiter(:gate)
+      wait_until(fn -> AnalysisSlots.waiting() == 2 end)
+
+      send(holding, :stop)
+
+      assert_receive {:took, ^first, :ok}, 1000
+      refute_receive {:took, ^second, _}, 200
+    end
+  end
+
+  describe "a waiter that dies in line" do
+    setup do
+      Application.put_env(:code_my_spec, :analysis_slots, 1)
+      on_exit(fn -> Application.delete_env(:code_my_spec, :analysis_slots) end)
+    end
+
+    test "does not keep the slot from the next one" do
+      {holding, :ok} = holder()
+      dead = waiter(:normal)
+      wait_until(fn -> AnalysisSlots.waiting() == 1 end)
+      next = waiter(:normal)
+      wait_until(fn -> AnalysisSlots.waiting() == 2 end)
+
+      Process.exit(dead, :kill)
+      send(holding, :stop)
+
+      assert_receive {:took, ^next, :ok}, 1000
+    end
   end
 
   defp waiter(priority) do

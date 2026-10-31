@@ -7,9 +7,9 @@ defmodule CmsHarness.AnalysisSlots do
   across copies, because a saturated machine manufactures test failures rather
   than just running slowly. See knowledge/harness, "Analysis slots".
 
-  A run that cannot get a slot waits in line until one frees, gate runs first;
-  waiting is never a failure. `AnalysisServer` arms its kill timer only once a
-  slot is granted.
+  A run that cannot get a slot waits in line until one frees, gate runs first
+  but never forever ahead of anyone; waiting is never a failure.
+  `AnalysisServer` arms its kill timer only once a slot is granted.
   Named test files wait in their own `:fast` lane. A slot is released when the
   holding process exits; there is no `release/0`.
   """
@@ -17,6 +17,10 @@ defmodule CmsHarness.AnalysisSlots do
   use GenServer
 
   require Logger
+
+  # How many gate runs may go ahead of one waiting run: one promotion's
+  # compiler, credo, exunit and spex.
+  @max_overtaken 4
 
   @doc """
   Take a slot, waiting in line for one to free if the machine is already at
@@ -92,8 +96,7 @@ defmodule CmsHarness.AnalysisSlots do
           "#{:queue.len(waiting)} ahead. held by: #{inspect(Map.values(held))}"
       )
 
-      waiter = {from, pid, priority}
-      {:noreply, put_lane(state, lane, :waiting, enqueue_waiter(waiting, waiter))}
+      {:noreply, enqueue_waiter(state, lane, {from, pid, priority})}
     else
       Logger.info("[CmsHarness] #{inspect(pid)} granted a machine-wide #{lane} slot immediately")
       {:reply, :ok, grant(state, lane, pid)}
@@ -138,18 +141,49 @@ defmodule CmsHarness.AnalysisSlots do
     with true <- map_size(held) < limit(lane),
          {{:value, {from, pid, _priority}}, rest} <- :queue.out(waiting) do
       GenServer.reply(from, :ok)
-      state |> put_lane(lane, :waiting, rest) |> grant(lane, pid)
+
+      state
+      |> put_lane(lane, :waiting, rest)
+      |> put_lane(lane, :overtaken, Map.delete(overtaken(state, lane), pid))
+      |> grant(lane, pid)
     else
       _ -> state
     end
   end
 
   # A gate run waits behind earlier gate runs and ahead of everything else:
-  # every team's landing waits on the promotion gate.
-  defp enqueue_waiter(waiting, {_from, _pid, :gate} = waiter) do
-    {gates, rest} = waiting |> :queue.to_list() |> Enum.split_while(&(elem(&1, 2) == :gate))
-    :queue.from_list(gates ++ [waiter | rest])
+  # every team's landing waits on the promotion gate. But only @max_overtaken
+  # times per waiter: back-to-back promotions on a one-slot machine otherwise
+  # starve an agent's run in line forever. A waiter that has been overtaken
+  # enough holds its place, and the gate goes behind it.
+  defp enqueue_waiter(state, lane, {_from, _pid, :gate} = waiter) do
+    counts = overtaken(state, lane)
+
+    # From the back: the gate passes every waiter it may, up to the first it
+    # may not.
+    {jumped, ahead} =
+      state.lanes[lane].waiting
+      |> :queue.to_list()
+      |> Enum.reverse()
+      |> Enum.split_while(&overtakable?(&1, counts))
+
+    counts =
+      Enum.reduce(jumped, counts, fn {_from, pid, _priority}, counts ->
+        Map.update(counts, pid, 1, &(&1 + 1))
+      end)
+
+    waiting = :queue.from_list(Enum.reverse(ahead, [waiter | Enum.reverse(jumped)]))
+    state |> put_lane(lane, :waiting, waiting) |> put_lane(lane, :overtaken, counts)
   end
 
-  defp enqueue_waiter(waiting, waiter), do: :queue.in(waiter, waiting)
+  defp enqueue_waiter(state, lane, waiter),
+    do: put_lane(state, lane, :waiting, :queue.in(waiter, state.lanes[lane].waiting))
+
+  defp overtakable?({_from, pid, priority}, counts),
+    do: priority == :normal and Map.get(counts, pid, 0) < @max_overtaken
+
+  # Counts sit beside the queue, not in its entries, so a hot reload of this
+  # module finds the queue in the shape it expects; a lane from before the
+  # reload has no counts yet.
+  defp overtaken(state, lane), do: Map.get(state.lanes[lane], :overtaken, %{})
 end
