@@ -63,9 +63,7 @@ defmodule CodeMySpecSpex.GraphReadHelpers do
   @doc """
   Put a graph in the cache, so the next read measures a cached answer.
 
-  Kept because a criterion reads better saying it out loud, and because the
-  first read of a vantage no pass has computed is the one that gets that
-  vantage into `Projection.vantages/1`.
+  Kept because a criterion reads better saying it out loud.
   """
   def warm_graph(context) do
     _cold = read_graph(context)
@@ -91,11 +89,8 @@ defmodule CodeMySpecSpex.GraphReadHelpers do
   @doc """
   The same settled read, for one checkout.
 
-  A vantage no pass has computed is not in `Projection.vantages/1` yet, so the
-  first read of it is what puts it there and the second is the one that answers
-  from rows. That is the same double-read the no-argument clause does, and it
-  matters more here: a criterion comparing two checkouts reads one it has never
-  read before.
+  The same double-read the no-argument clause does: the first read settles the
+  projector, the second answers from what it settled.
   """
   def read_settled_graph(context, working_copy_id) do
     _first = read_graph(context, working_copy_id)

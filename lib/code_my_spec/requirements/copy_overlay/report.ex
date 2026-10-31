@@ -13,6 +13,7 @@ defmodule CodeMySpec.Requirements.CopyOverlay.Report do
   schema "copy_overlays" do
     field :project_id, :binary_id
     field :read_model, :string
+    field :files, :string
     field :head, :string
     field :behind, :integer
     field :dirty, :boolean
@@ -27,7 +28,7 @@ defmodule CodeMySpec.Requirements.CopyOverlay.Report do
 
   @type t :: %__MODULE__{}
 
-  @fields ~w(project_id read_model head behind dirty verdicts reported_at mismatches clean_reports compared_at)a
+  @fields ~w(project_id read_model files head behind dirty verdicts reported_at mismatches clean_reports compared_at)a
 
   def changeset(report, attrs) do
     report

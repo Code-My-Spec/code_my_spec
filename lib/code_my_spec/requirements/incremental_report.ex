@@ -43,7 +43,6 @@ defmodule CodeMySpec.Requirements.IncrementalReport do
   @type t :: %{
           watcher: map() | nil,
           total_rows: non_neg_integer(),
-          vantages: [map()],
           passes: [pass()],
           stale_read_log: boolean()
         }
@@ -55,7 +54,7 @@ defmodule CodeMySpec.Requirements.IncrementalReport do
   history, because the question is "is it incremental now".
   """
   @spec build(Scope.t(), keyword()) :: t()
-  def build(%Scope{active_project_id: project_id} = scope, opts \\ [])
+  def build(%Scope{active_project_id: project_id}, opts \\ [])
       when is_binary(project_id) do
     limit = Keyword.get(opts, :limit, 25)
     rows = owned_rows(project_id)
@@ -64,7 +63,6 @@ defmodule CodeMySpec.Requirements.IncrementalReport do
     %{
       watcher: GraphWatcher.status(project_id),
       total_rows: total,
-      vantages: vantages(rows, scope),
       passes: passes(rows, total, limit)
     }
   end
@@ -83,13 +81,6 @@ defmodule CodeMySpec.Requirements.IncrementalReport do
           s.project_id == type(^project_id, :binary_id) or
           c.project_id == type(^project_id, :binary_id)
     )
-  end
-
-  # The project's one row-space: rows are stored once per project, and a
-  # checkout's file verdicts are its overlay.
-  defp vantages(rows, _scope) do
-    {count, newest} = rows |> select([n], {count(n.id), max(n.checked_at)}) |> Repo.one()
-    [%{vantage: nil, rows: count, newest: newest}]
   end
 
   # One entry per distinct `checked_at`, newest first — which is one entry per
