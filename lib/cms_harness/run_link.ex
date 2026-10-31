@@ -27,8 +27,13 @@ defmodule CmsHarness.RunLink do
 
   alias CmsHarness.Channel
   alias CodeMySpec.Analysis.RunNode
+  alias CodeMySpec.DurableRun
 
   @halt_after_ms 5_000
+
+  # How long a finished run is kept to acknowledge a replay whose ack was lost:
+  # unacknowledged, its run would wait for a harness forever.
+  @tombstone_ms :timer.minutes(10)
 
   def start_link(opts \\ []),
     do: GenServer.start_link(__MODULE__, :ok, name: opts[:name] || __MODULE__)
@@ -62,6 +67,38 @@ defmodule CmsHarness.RunLink do
   def cancel(run_id, server \\ __MODULE__), do: GenServer.cast(server, {:cancel, run_id})
 
   @doc """
+  Stop every test run of the copy at `root`, because it is deliberately no
+  longer served: offboarded, or its directory gone. A harness restarting
+  leaves its runs alone, to rejoin the next one; this is the only stop. Each
+  recorded run is asked to stop here and at its own node (one whose copy has
+  not been served since a restart is claimed by no harness), and its record
+  removed so no harness claims it again.
+  """
+  @spec cancel_copy(String.t(), GenServer.server()) :: :ok
+  def cancel_copy(root, server \\ __MODULE__) do
+    for %{"run_id" => id} = manifest <- DurableRun.for_root(root),
+        manifest["status"] == "running" do
+      cancel_at(manifest["node"], id)
+      cancel(id, server)
+      DurableRun.cleanup(id)
+    end
+
+    :ok
+  end
+
+  @doc """
+  Stop a run at its node, adopted or not: a run whose copy is no longer served
+  is claimed by no harness, so only its own session can be asked.
+  """
+  @spec cancel_at(String.t() | nil, integer()) :: :ok
+  def cancel_at(nil, _run_id), do: :ok
+
+  def cancel_at(node, run_id) when is_binary(node) do
+    send({ClientUtils.RunLink.Session, String.to_atom(node)}, {:run_cancel, run_id})
+    :ok
+  end
+
+  @doc """
   The run's command has exited. A run that never reported its exit (it
   crashed) finishes here, once.
   """
@@ -77,7 +114,7 @@ defmodule CmsHarness.RunLink do
   def handle_call({:expect, run_id, root, owner}, _from, runs) do
     :ok = RunNode.ensure_started("cms_harness")
 
-    run = %{root: root, owner: owner, sessions: %{}, exits: %{}, shards: 1}
+    run = %{root: root, owner: owner, sessions: %{}, exits: %{}, shards: 1, finished: false}
     {:reply, :ok, Map.update(runs, run_id, run, &%{&1 | owner: owner || &1.owner})}
   end
 
@@ -97,6 +134,11 @@ defmodule CmsHarness.RunLink do
 
   def handle_info({:run_event, run_id, session, seq, event}, runs) do
     case Map.fetch(runs, run_id) do
+      # Finished: a replay whose ack was lost is acknowledged, never delivered.
+      {:ok, %{finished: true}} ->
+        send(session, {:run_ack, run_id, seq})
+        {:noreply, runs}
+
       {:ok, run} ->
         send(session, {:run_ack, run_id, seq})
         seen = get_in(run, [:sessions, session, :seq]) || 0
@@ -113,18 +155,27 @@ defmodule CmsHarness.RunLink do
 
   def handle_info({:halt, run_id}, runs) do
     with {:ok, run} <- Map.fetch(runs, run_id) do
+      # A cast: a run that heeded the cancel has no node left to answer a call,
+      # and the call's `noconnection` was raised in a process of its own.
       for {_session, %{node: node}} <- run.sessions,
-          do: spawn(fn -> :erpc.call(node, :erlang, :halt, [137], @halt_after_ms) end)
+          do: :erpc.cast(node, :erlang, :halt, [137])
     end
 
     {:noreply, runs}
+  end
+
+  def handle_info({:forget, run_id}, runs) do
+    case Map.fetch(runs, run_id) do
+      {:ok, %{finished: true}} -> {:noreply, Map.delete(runs, run_id)}
+      _ -> {:noreply, runs}
+    end
   end
 
   def handle_info(_message, runs), do: {:noreply, runs}
 
   @impl true
   def handle_cast({:cancel, run_id}, runs) do
-    with {:ok, run} <- Map.fetch(runs, run_id) do
+    with {:ok, %{finished: false} = run} <- Map.fetch(runs, run_id) do
       for {session, _} <- run.sessions, do: send(session, {:run_cancel, run_id})
       Process.send_after(self(), {:halt, run_id}, @halt_after_ms)
     end
@@ -133,12 +184,12 @@ defmodule CmsHarness.RunLink do
   end
 
   def handle_cast({:exited, run_id}, runs) do
-    case Map.pop(runs, run_id) do
-      {nil, runs} ->
-        {:noreply, runs}
-
-      {run, runs} ->
+    case Map.fetch(runs, run_id) do
+      {:ok, %{finished: false} = run} ->
         deliver(run.root, run_id, %{"event" => "finished"})
+        {:noreply, Map.put(runs, run_id, finish(run_id, run))}
+
+      _ ->
         {:noreply, runs}
     end
   end
@@ -157,10 +208,12 @@ defmodule CmsHarness.RunLink do
     }
 
     if map_size(run.exits) >= run.shards do
-      deliver(run.root, run_id, %{"event" => "finished"})
+      # A run that reported its own finish (credo's carries its totals) is not
+      # finished again with a bare one.
+      unless run[:finished?], do: deliver(run.root, run_id, %{"event" => "finished"})
       worst = run.exits |> Map.values() |> Enum.max()
       if run.owner, do: send(run.owner, {:run_exited, run_id, worst})
-      Map.delete(runs, run_id)
+      Map.put(runs, run_id, finish(run_id, run))
     else
       Map.put(runs, run_id, run)
     end
@@ -168,7 +221,17 @@ defmodule CmsHarness.RunLink do
 
   defp accept(runs, run_id, run, event) do
     deliver(run.root, run_id, event)
-    Map.put(runs, run_id, run)
+
+    Map.put(
+      runs,
+      run_id,
+      Map.put(run, :finished?, run[:finished?] || event["event"] == "finished")
+    )
+  end
+
+  defp finish(run_id, run) do
+    Process.send_after(self(), {:forget, run_id}, @tombstone_ms)
+    %{run | finished: true}
   end
 
   defp deliver(root, run_id, event),

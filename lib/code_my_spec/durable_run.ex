@@ -19,12 +19,20 @@ defmodule CodeMySpec.DurableRun do
   @session_beam "client_utils/ebin/Elixir.ClientUtils.RunLink.Session.beam"
 
   @spec dir() :: String.t()
-  def dir, do: Path.join(Paths.local_state_dir(), "runs")
+  def dir,
+    do:
+      Application.get_env(:code_my_spec, :durable_run_dir) ||
+        Path.join(Paths.local_state_dir(), "runs")
+
   def manifest_path(id) when is_integer(id), do: Path.join(dir(), "#{id}.json")
   def output_path(id) when is_integer(id), do: Path.join(dir(), "#{id}.output")
 
-  @doc "Where the run writes its results (`.json` for exunit, `.jsonl` for spex)."
-  def results_path(id, extension) when is_integer(id), do: Path.join(dir(), "#{id}#{extension}")
+  @doc """
+  Where the run writes its results (`.json` for exunit, `.jsonl` for spex).
+  Not `<id>.json`: that is the record itself.
+  """
+  def results_path(id, extension) when is_integer(id),
+    do: Path.join(dir(), "#{id}.results#{extension}")
 
   @doc """
   Whether the project at `root` links its runs to the harness (client_utils

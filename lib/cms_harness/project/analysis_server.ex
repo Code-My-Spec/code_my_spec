@@ -26,8 +26,8 @@ defmodule CmsHarness.Project.AnalysisServer do
   alias CmsHarness.Analysis
   alias CmsHarness.AnalysisSlots
   alias CmsHarness.Channel
-  alias CmsHarness.RunLink
   alias CmsHarness.DiskCapacity
+  alias CmsHarness.RunLink
   alias CmsHarness.Sync
   alias CodeMySpec.DurableRun
   alias CodeMySpec.ExecutionContexts.ExecutionContext
@@ -360,7 +360,11 @@ defmodule CmsHarness.Project.AnalysisServer do
      state}
   end
 
+  # At its node as well: a recovered run may not have rejoined yet.
   defp cancel_durable_run(run_id) do
+    with {:ok, manifest} <- DurableRun.read_manifest(run_id),
+         do: RunLink.cancel_at(manifest["node"], run_id)
+
     RunLink.cancel(run_id)
     DurableRun.cleanup(run_id)
   end
@@ -566,16 +570,35 @@ defmodule CmsHarness.Project.AnalysisServer do
   end
 
   # A recorded run finished after a restart: it rejoined, replayed, and its
-  # exit is in. What it wrote to its results file is the answer.
+  # exit is in. What it wrote to its results file is the answer, read once its
+  # node is gone: a runner can still be writing (sexy_spex's backstop lines,
+  # `cms.spex` merging its shards' JSONL) after the exit is reported.
   def handle_info({:run_exited, id, status}, state) do
     case Map.fetch(state.recovering, id) do
       {:ok, %{"status" => "running"} = manifest} ->
-        {:noreply,
-         answer_recovered(state, id, manifest, Analysis.recovered_result(manifest, status))}
+        manifest = Map.put(manifest, "exit_status", status)
+
+        if node_alive?(manifest["node"]) do
+          Node.monitor(String.to_atom(manifest["node"]), true)
+          {:noreply, %{state | recovering: Map.put(state.recovering, id, manifest)}}
+        else
+          {:noreply, answer_exited(state, id, manifest)}
+        end
 
       _ ->
         {:noreply, state}
     end
+  end
+
+  def handle_info({:nodedown, node}, state) do
+    node = Atom.to_string(node)
+
+    exited =
+      for {id, %{"status" => "running", "node" => ^node, "exit_status" => _} = manifest} <-
+            state.recovering,
+          do: {id, manifest}
+
+    {:noreply, Enum.reduce(exited, state, fn {id, m}, acc -> answer_exited(acc, id, m) end)}
   end
 
   # A run that has not finished within the grace: waited for while its node
@@ -583,12 +606,17 @@ defmodule CmsHarness.Project.AnalysisServer do
   def handle_info({:recovery_check, id}, state) do
     case Map.fetch(state.recovering, id) do
       {:ok, %{"status" => "running"} = manifest} ->
-        if node_alive?(manifest["node"]) do
-          Process.send_after(self(), {:recovery_check, id}, @recovery_grace_ms)
-          {:noreply, state}
-        else
-          result = {:error, "the run's node went away before it reported its result"}
-          {:noreply, answer_recovered(state, id, manifest, result)}
+        cond do
+          node_alive?(manifest["node"]) ->
+            Process.send_after(self(), {:recovery_check, id}, recovery_grace())
+            {:noreply, state}
+
+          Map.has_key?(manifest, "exit_status") ->
+            {:noreply, answer_exited(state, id, manifest)}
+
+          true ->
+            result = {:error, "the run's node went away before it reported its result"}
+            {:noreply, answer_recovered(state, id, manifest, result)}
         end
 
       _ ->
@@ -611,7 +639,7 @@ defmodule CmsHarness.Project.AnalysisServer do
 
   defp recover(root, id, manifest) do
     :ok = RunLink.claim(id, root, self())
-    Process.send_after(self(), {:recovery_check, id}, @recovery_grace_ms)
+    Process.send_after(self(), {:recovery_check, id}, recovery_grace())
     manifest
   end
 
@@ -620,6 +648,11 @@ defmodule CmsHarness.Project.AnalysisServer do
     manifest = DurableRun.complete(manifest, payloads)
     Enum.each(payloads, &Channel.deliver_analysis_result(state.project.root, &1))
     maybe_start_next(%{state | recovering: Map.put(state.recovering, id, manifest)})
+  end
+
+  defp answer_exited(state, id, manifest) do
+    result = Analysis.recovered_result(manifest, manifest["exit_status"])
+    answer_recovered(state, id, Map.delete(manifest, "exit_status"), result)
   end
 
   defp node_alive?(nil), do: false
@@ -1100,6 +1133,9 @@ defmodule CmsHarness.Project.AnalysisServer do
       tree
     )
   end
+
+  defp recovery_grace,
+    do: Application.get_env(:code_my_spec, :durable_run_recovery_grace_ms, @recovery_grace_ms)
 
   defp timeout,
     do: Application.get_env(:code_my_spec, :harness_analysis_timeout, @default_timeout)

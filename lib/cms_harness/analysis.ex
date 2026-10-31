@@ -33,8 +33,8 @@ defmodule CmsHarness.Analysis do
 
   alias CmsHarness.AnalyzerEnv
   alias CmsHarness.RunLink
-  alias CodeMySpec.Analysis.RunNode
   alias CodeMySpec.Analysis.Runners
+  alias CodeMySpec.Analysis.RunNode
   alias CodeMySpec.BddSpecs.Spex
   alias CodeMySpec.Compile
   alias CodeMySpec.DurableRun
@@ -397,12 +397,35 @@ defmodule CmsHarness.Analysis do
   to its results and output files, with the exit status it reported.
   """
   def recovered_result(manifest, status) do
+    case {recovered(manifest, status), manifest["partition"]} do
+      # The database it ran on, as `stamp_partition/3` reports a run answered here.
+      {{:ok, raw}, partition} when is_binary(partition) ->
+        {:ok, Map.put(raw, "partition", partition)}
+
+      {{:ok, raw}, _} ->
+        {:ok, raw}
+
+      # Sent on the wire as a string, like every other analyzer error.
+      {{:error, reason}, _} when is_binary(reason) ->
+        {:error, reason}
+
+      {{:error, reason}, _} ->
+        {:error, inspect(reason)}
+    end
+  end
+
+  defp recovered(manifest, status) do
     id = manifest["run_id"]
     output = read_output(id)
 
     case manifest["source"] do
       "exunit" ->
-        json = with {:error, _} <- File.read(DurableRun.results_path(id, ".json")), do: "{}"
+        # No results file reads as a suite that never ran, never as a pass.
+        json =
+          case File.read(DurableRun.results_path(id, ".json")) do
+            {:ok, json} -> json
+            {:error, _} -> "{}"
+          end
 
         with {:ok, run} <-
                CodeMySpec.Tests.results(json, %{exit_code: status, raw_output: output}),

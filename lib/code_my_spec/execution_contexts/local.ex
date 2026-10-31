@@ -294,7 +294,7 @@ defmodule CodeMySpec.ExecutionContexts.Local do
     output_path = DurableRun.output_path(id)
     File.write!(output_path, "")
     executable = System.find_executable(command) || raise("command not found: #{command}")
-    {program, argv} = launcher(executable, args)
+    {program, argv, spawn_opts} = launch(executable, args)
 
     env =
       [{"CMS_RUN_OUTPUT", output_path} | Keyword.get(opts, :env, [])]
@@ -303,23 +303,26 @@ defmodule CodeMySpec.ExecutionContexts.Local do
       end)
 
     port =
-      Port.open({:spawn_executable, String.to_charlist(program)}, [
-        :binary,
-        :exit_status,
-        :hide,
-        :stderr_to_stdout,
-        args: Enum.map(argv, &String.to_charlist/1),
-        cd: opts[:cd] |> String.to_charlist(),
-        env: env
-      ])
+      Port.open(
+        {:spawn_executable, String.to_charlist(program)},
+        [:binary, :exit_status | spawn_opts] ++
+          [
+            args: Enum.map(argv, &String.to_charlist/1),
+            cd: String.to_charlist(opts[:cd]),
+            env: env
+          ]
+      )
 
     # For RunGuard, which must leave a run that outlives its harness alone.
     with {:os_pid, pid} <- Port.info(port, :os_pid), do: DurableRun.update(id, %{"pid" => pid})
 
     # What it printed before it linked (compiling) came through the port; the
-    # rest is in its file.
+    # rest is in its file, which is gone when the run was cancelled with its
+    # copy (`CmsHarness.RunLink.cancel_copy/2` removes the run's files). Raised,
+    # that was logged as an error from this task after the cancel, into
+    # whatever ran next.
     {early, status} = await_durable_exit(port, [])
-    output = early <> File.read!(output_path)
+    output = early <> run_output(output_path)
 
     case opts[:into] do
       %{device: capture} -> IO.binwrite(capture, output)
@@ -329,11 +332,25 @@ defmodule CodeMySpec.ExecutionContexts.Local do
     {output, status}
   end
 
-  defp launcher(executable, args) do
+  defp run_output(path) do
+    case File.read(path) do
+      {:ok, output} -> output
+      {:error, :enoent} -> ""
+    end
+  end
+
+  @doc false
+  # How a durable run's command is spawned, the same on every platform but for
+  # a Windows `.bat` launcher (`mix.bat`), which needs `cmd.exe /d /c call`.
+  # `:hide` everywhere: on Windows without it the run's own output redirect
+  # comes out empty; elsewhere it does nothing.
+  @spec launch(String.t(), [String.t()]) :: {String.t(), [String.t()], [atom()]}
+  def launch(executable, args) do
     if Path.extname(executable) in [".bat", ".cmd"],
       do:
-        {System.find_executable("cmd.exe") || "cmd.exe", ["/d", "/c", "call", executable | args]},
-      else: {executable, args}
+        {System.find_executable("cmd.exe") || "cmd.exe", ["/d", "/c", "call", executable | args],
+         [:hide, :stderr_to_stdout]},
+      else: {executable, args, [:hide, :stderr_to_stdout]}
   end
 
   defp await_durable_exit(port, acc) do

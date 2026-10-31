@@ -16,6 +16,30 @@ defmodule CodeMySpec.ExecutionContexts.LocalGuardTest do
              )
   end
 
+  # Its copy stopped being served: `RunLink.cancel_copy/2` removed the run's
+  # files while it ran.
+  test "a durable run whose files were removed by its cancel still answers" do
+    id = 2_000_000_000 + System.unique_integer([:positive])
+    on_exit(fn -> CodeMySpec.DurableRun.cleanup(id) end)
+    CodeMySpec.DurableRun.begin_run(id, File.cwd!(), "exunit", [], "abc")
+
+    env =
+      CodeMySpec.ExecutionContexts.ExecutionContext.new(:local, File.cwd!(),
+        metadata: %{durable_run: id}
+      )
+
+    assert {"early", 3} =
+             CodeMySpec.ExecutionContexts.Local.cmd(
+               env,
+               "/bin/sh",
+               [
+                 "-c",
+                 ~s(rm "$CMS_RUN_OUTPUT"; printf early; exit 3)
+               ],
+               []
+             )
+  end
+
   test "a queued analyzer child stops after its harness BEAM is killed" do
     dir = Path.join(System.tmp_dir!(), "local_guard_#{System.unique_integer([:positive])}")
     File.mkdir_p!(dir)

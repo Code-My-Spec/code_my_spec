@@ -1,11 +1,10 @@
-defmodule CodeMySpecSpex.Story1142.Criterion2370Spex do
+defmodule CodeMySpecSpex.Story1142.Criterion2368Spex do
   @moduledoc """
-  Story 1142 — A run never outlives the harness that started it.
-  Criterion 2370 — Sam's run on Windows stops with its harness.
+  Story 1142 — A test run survives its harness and is answered once.
+  Criterion 2368 — Sam cancels a run.
 
-  The run stops with its harness by the same means on every platform. On
-  Windows there are no Unix process groups to signal, so nothing here may
-  depend on `CodeMySpec.RunGuard`, which does not start there.
+  Cancelling stops the run where it is, by a message to it, and records it as
+  cancelled, not as failed or finished.
   """
 
   # One harness tree and one machine-wide slot table per node.
@@ -24,14 +23,8 @@ defmodule CodeMySpecSpex.Story1142.Criterion2370Spex do
   alias CmsHarnessTest.ClusteredProject
   alias CmsHarnessTest.FakeServer
 
-  spex "Sam's run on Windows stops with its harness", criterion: 2370 do
-    scenario "the harness stops on a machine without Unix process groups" do
-      given_ "Sam works on Windows", context do
-        ensure_harness_supervisor_started()
-        :ok = ClusteredProject.as_on_windows()
-        {:ok, context}
-      end
-
+  spex "Sam cancels a run", criterion: 2368 do
+    scenario "Sam cancels a suite that is running" do
       given_ "Sam's working copy is served by his harness", context do
         ensure_harness_supervisor_started()
         project = project_dir()
@@ -50,14 +43,16 @@ defmodule CodeMySpecSpex.Story1142.Criterion2370Spex do
         {:ok, Map.put(context, :os_pid, ClusteredProject.await_running(context.project.root))}
       end
 
-      when_ "his harness stops", context do
-        stop_project(context.project.root)
+      when_ "Sam cancels it", context do
+        FakeServer.push_event("cancel_analysis", %{"run_id" => 1})
         {:ok, context}
       end
 
-      then_ "the run stops, as it would on macOS or Linux", context do
+      then_ "the run stops and is shown as cancelled", context do
+        assert await_result(1)["status"] == "cancelled"
+
         assert ClusteredProject.gone_within?(context.os_pid, 10_000),
-               "mix test (os pid #{context.os_pid}) is still running after its harness stopped"
+               "mix test (os pid #{context.os_pid}) is still running after it was cancelled"
 
         {:ok, context}
       end

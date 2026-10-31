@@ -22,7 +22,9 @@ defmodule CmsHarnessTest.ClusteredProject do
   @doc "Write the project into `root` and compile it where its analyzer builds."
   @spec make(String.t()) :: :ok
   def make(root) do
+    cancel_runs_on_exit(root)
     write(root, "mix.exs", mix_exs([]))
+    pin_toolchain(root)
     write(root, "test/test_helper.exs", "ExUnit.start()\n")
     write(root, "test/held_test.exs", held_test(pid_file(root), release_file(root)))
     seed_build(root, [])
@@ -36,7 +38,9 @@ defmodule CmsHarnessTest.ClusteredProject do
   """
   @spec make_credo(String.t()) :: :ok
   def make_credo(root) do
+    cancel_runs_on_exit(root)
     write(root, "mix.exs", mix_exs(@credo))
+    pin_toolchain(root)
     write(root, ".credo.exs", credo_config())
     write(root, "checks/held_check.ex", held_check(pid_file(root), release_file(root)))
     write(root, "lib/demo.ex", inspecting_module())
@@ -50,6 +54,20 @@ defmodule CmsHarnessTest.ClusteredProject do
   @spec finding() :: %{message: String.t(), file: String.t(), line: pos_integer()}
   def finding,
     do: %{message: "There should be no calls to `IO.inspect/1`.", file: "lib/demo.ex", line: 3}
+
+  # A run outlives its harness and waits for the next; a scenario's harness
+  # never comes back, so its runs are stopped when the scenario ends.
+  defp cancel_runs_on_exit(root),
+    do: ExUnit.Callbacks.on_exit(fn -> CmsHarness.RunLink.cancel_copy(root) end)
+
+  # The toolchain CodeMySpec pins, as a real project pins its own. A run's
+  # `mix` resolves through the version manager from the copy's directory
+  # (`ExecutionContexts.merge_clean_env/1`), and a temp dir pins nothing, so
+  # it ran the machine's global Elixir and OTP against a build made with
+  # these: every run recompiled every dependency first, long enough under
+  # load to miss what a scenario watches for.
+  defp pin_toolchain(root),
+    do: write(root, ".tool-versions", File.read!(Path.expand(".tool-versions")))
 
   defp compile!(root) do
     {output, status} =
@@ -171,6 +189,7 @@ defmodule CmsHarnessTest.ClusteredProject do
         root = CodeMySpec.TempFile.dir("clustered_project_template")
         File.mkdir_p!(root)
         write(root, "mix.exs", mix_exs(deps))
+        pin_toolchain(root)
         compile!(root)
         build = CmsHarness.AnalyzerEnv.build_path(root)
         :persistent_term.put({__MODULE__, :template, deps}, build)
