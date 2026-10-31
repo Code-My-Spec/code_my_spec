@@ -16,7 +16,17 @@ defmodule CmsHarness.RunLinkTest do
   setup do
     root = "/tmp/run-link-#{System.unique_integer([:positive])}"
     {:ok, _} = Registry.register(CmsHarness.Registry, {:channel, root}, nil)
-    link = start_supervised!({RunLink, name: :"run_link_#{System.unique_integer([:positive])}"})
+    test = self()
+
+    # Halts it schedules come here: under the analyzer this BEAM is itself a
+    # linked run, a node a real halt would take down.
+    link =
+      start_supervised!(
+        {RunLink,
+         name: :"run_link_#{System.unique_integer([:positive])}",
+         halt_nodes: &send(test, {:halt_nodes, &1})}
+      )
+
     run_id = System.unique_integer([:positive])
     %{link: link, root: root, run_id: run_id}
   end
@@ -183,16 +193,18 @@ defmodule CmsHarness.RunLinkTest do
     assert_receive {:run_refused, ^run_id}
   end
 
-  test "a run is cancelled at its node by its own session, adopted or not" do
-    Process.register(self(), ClientUtils.RunLink.Session)
+  # A name of the test's own: under the analyzer the run's real session holds
+  # `ClientUtils.RunLink.Session` in this BEAM.
+  test "a run is cancelled at its node by its own session, adopted or not", ctx do
+    session = stand_in_session()
 
-    :ok = RunLink.cancel_at(Atom.to_string(node()), 42)
+    :ok = RunLink.cancel_at(Atom.to_string(node()), 42, server: ctx.link, session: session)
 
     assert_receive {:run_cancel, 42}
   end
 
   test "a copy no longer served has every recorded run stopped and forgotten", ctx do
-    Process.register(self(), ClientUtils.RunLink.Session)
+    session = stand_in_session()
     id = 2_000_000_000 + System.unique_integer([:positive])
     other = id + 1
 
@@ -205,7 +217,7 @@ defmodule CmsHarness.RunLinkTest do
     CodeMySpec.DurableRun.update(id, %{"node" => Atom.to_string(node())})
     CodeMySpec.DurableRun.begin_run(other, "/still-served-#{id}", "exunit", [], "abc")
 
-    :ok = RunLink.cancel_copy(ctx.root, ctx.link)
+    :ok = RunLink.cancel_copy(ctx.root, server: ctx.link, session: session)
 
     assert_receive {:run_cancel, ^id}
     assert {:error, :enoent} = CodeMySpec.DurableRun.read_manifest(id)
@@ -281,6 +293,12 @@ defmodule CmsHarness.RunLinkTest do
     test "a run with no node recorded halts nothing" do
       assert :ok = RunLink.halt_nodes(nil, names: fn _ -> flunk("asked epmd") end)
     end
+  end
+
+  defp stand_in_session do
+    name = :"run_link_test_session_#{System.unique_integer([:positive])}"
+    Process.register(self(), name)
+    name
   end
 
   defp flush_acks(run_id) do

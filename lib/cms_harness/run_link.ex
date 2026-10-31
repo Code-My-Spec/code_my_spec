@@ -35,8 +35,15 @@ defmodule CmsHarness.RunLink do
   # unacknowledged, its run would wait for a harness forever.
   @tombstone_ms :timer.minutes(10)
 
+  @doc """
+  `:halt_nodes` replaces `halt_nodes/2` for the halts this server schedules,
+  for tests: a test BEAM that is itself a linked run is a node of that name.
+  """
   def start_link(opts \\ []),
-    do: GenServer.start_link(__MODULE__, :ok, name: opts[:name] || __MODULE__)
+    do:
+      GenServer.start_link(__MODULE__, Keyword.get(opts, :halt_nodes, &halt_nodes/1),
+        name: opts[:name] || __MODULE__
+      )
 
   @doc """
   What a run started for `run_id` in `root` needs in its environment to report
@@ -74,12 +81,12 @@ defmodule CmsHarness.RunLink do
   not been served since a restart is claimed by no harness), and its record
   removed so no harness claims it again.
   """
-  @spec cancel_copy(String.t(), GenServer.server()) :: :ok
-  def cancel_copy(root, server \\ __MODULE__) do
+  @spec cancel_copy(String.t(), keyword()) :: :ok
+  def cancel_copy(root, opts \\ []) do
     for %{"run_id" => id} = manifest <- DurableRun.for_root(root),
         manifest["status"] == "running" do
-      cancel_at(manifest["node"], id, server)
-      cancel(id, server)
+      cancel_at(manifest["node"], id, opts)
+      cancel(id, Keyword.get(opts, :server, __MODULE__))
       DurableRun.cleanup(id)
     end
 
@@ -91,14 +98,19 @@ defmodule CmsHarness.RunLink do
   is claimed by no harness, so only its own session can be asked. Its nodes
   are halted after the same grace as `cancel/2` gives (`halt_nodes/2`): a shard
   that has not linked yet has no session to ask.
-  """
-  @spec cancel_at(String.t() | nil, integer(), GenServer.server()) :: :ok
-  def cancel_at(node, run_id, server \\ __MODULE__)
-  def cancel_at(nil, _run_id, _server), do: :ok
 
-  def cancel_at(node, run_id, server) when is_binary(node) do
-    send({ClientUtils.RunLink.Session, String.to_atom(node)}, {:run_cancel, run_id})
-    GenServer.cast(server, {:halt_nodes_later, node})
+  `:server` is the link that schedules the halt, and `:session` the name a
+  run's session is registered under, for tests: in a test BEAM that is itself
+  a linked run, the real session holds `ClientUtils.RunLink.Session`.
+  """
+  @spec cancel_at(String.t() | nil, integer(), keyword()) :: :ok
+  def cancel_at(node, run_id, opts \\ [])
+  def cancel_at(nil, _run_id, _opts), do: :ok
+
+  def cancel_at(node, run_id, opts) when is_binary(node) do
+    session = Keyword.get(opts, :session, ClientUtils.RunLink.Session)
+    send({session, String.to_atom(node)}, {:run_cancel, run_id})
+    GenServer.cast(Keyword.get(opts, :server, __MODULE__), {:halt_nodes_later, node})
   end
 
   @doc """
@@ -142,7 +154,11 @@ defmodule CmsHarness.RunLink do
   def exited(run_id, server), do: GenServer.cast(server, {:exited, run_id})
 
   @impl true
-  def init(:ok), do: {:ok, %{}}
+  # The halter is kept out of the run map, which is keyed by run id.
+  def init(halt_nodes) do
+    Process.put({__MODULE__, :halt_nodes}, halt_nodes)
+    {:ok, %{}}
+  end
 
   @impl true
   def handle_call({:expect, run_id, root, owner}, _from, runs) do
@@ -199,7 +215,7 @@ defmodule CmsHarness.RunLink do
   end
 
   def handle_info({:halt_nodes, base}, runs) do
-    halt_nodes(base)
+    Process.get({__MODULE__, :halt_nodes}).(base)
     {:noreply, runs}
   end
 
