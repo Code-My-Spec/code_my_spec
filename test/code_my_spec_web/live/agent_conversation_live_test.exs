@@ -810,6 +810,58 @@ defmodule CodeMySpecWeb.AgentConversationLiveTest do
     {agent, conversation}
   end
 
+  describe "firing an agent from its conversation" do
+    test "a starting main agent can be fired from its conversation", %{
+      conn: conn,
+      scope: scope,
+      project: project
+    } do
+      {agent, conversation} =
+        agent_with_conversation(scope, project, %{role: "main", status: :starting})
+
+      project_scope = %{scope | active_project_id: project.id, active_project: project}
+      {:ok, _copy} = CodeMySpec.Staffing.designate_main(project_scope, agent.working_copy_id)
+      {:ok, view, _html} = live(conn, show_path(project, conversation))
+
+      assert has_element?(view, "[data-test='fire-agent']")
+      view |> element("[data-test='fire-agent']") |> render_click()
+      view |> element("[data-test='confirm-fire-agent']") |> render_click()
+
+      assert Repo.reload!(agent).retired_at
+      assert render(view) =~ "Agent fired."
+      refute has_element?(view, "[data-test='fire-agent']")
+    end
+
+    test "a refusal explains when the agent was already retired", %{
+      conn: conn,
+      scope: scope,
+      project: project
+    } do
+      {agent, conversation} = agent_with_conversation(scope, project)
+      {:ok, view, _html} = live(conn, show_path(project, conversation))
+      view |> element("[data-test='fire-agent']") |> render_click()
+
+      project_scope = %{scope | active_project_id: project.id, active_project: project}
+      {:ok, _retired} = CodeMySpec.Agents.retire_agent(project_scope, agent.id)
+      view |> element("[data-test='confirm-fire-agent']") |> render_click()
+
+      assert render(view) =~ "That agent is already retired."
+    end
+
+    test "a conversation without an agent explains why Fire cannot act", %{
+      conn: conn,
+      scope: scope,
+      project: project
+    } do
+      conversation = agent_conversation(scope, project)
+      {:ok, view, _html} = live(conn, show_path(project, conversation))
+
+      render_hook(view, "confirm_fire_agent", %{})
+
+      assert render(view) =~ "This conversation has no agent to fire."
+    end
+  end
+
   describe "what the agent is writing" do
     alias CodeMySpec.Conversations.Drafts
 
