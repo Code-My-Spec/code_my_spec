@@ -43,8 +43,7 @@ defmodule CodeMySpec.WorkingCopies.Tools.OffboardWorkingCopy do
     A source checkout with a persistent app instance cannot be discarded until
     that instance is explicitly disposed. Pass `instance_disposition: "discard"`
     to stop and dispose the instance first. An unreachable running instance is
-    left in place when its directory still exists. If the harness and directory
-    are both gone, the instance is recorded down and its stale row is removed.
+    left in place with its checkout so its runtime is not abandoned silently.
     """
   end
 
