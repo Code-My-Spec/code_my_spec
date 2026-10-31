@@ -241,7 +241,7 @@ defmodule CodeMySpec.ExecutionContexts.Local do
     {clean_terminal_output(output), exit_code}
   end
 
-  # A run without a durable event stream (`DurableRun.streams?/1`) must not
+  # A run that is not durable (compiler, credo, sobelow) must not
   # keep running after an abrupt harness exit. This watcher is an OS process
   # in the port's process group, so it survives a killed BEAM long enough to
   # terminate that group. The birth time prevents a reused owner PID from
@@ -285,39 +285,44 @@ defmodule CodeMySpec.ExecutionContexts.Local do
     )
   end
 
-  # A durable test must keep its output descriptor after this BEAM disappears.
-  # The shell execs the real command after redirecting both streams to a file,
-  # so the same OS pid can be verified and adopted by the next harness.
+  # A test run outlives this BEAM: it is a node of its own, linked to the
+  # harness (`ClientUtils.RunLink`), and writes its output to its own file, so
+  # nothing here has to keep a descriptor open for it. No shell: the command is
+  # spawned directly, through `cmd.exe /d /c call` for a Windows `.bat`
+  # launcher (`:hide`, or the run's output redirect comes out empty).
   defp durable_cmd(id, command, args, opts) do
     output_path = DurableRun.output_path(id)
     File.write!(output_path, "")
     executable = System.find_executable(command) || raise("command not found: #{command}")
-
-    shell =
-      "\"$@\" >\"$CMS_RUN_OUTPUT\" 2>&1; status=$?; printf '%s\\n' \"$status\" >\"$CMS_RUN_EXIT\"; exit \"$status\""
+    {program, argv, spawn_opts} = launch(executable, args)
 
     env =
-      [
-        {"CMS_RUN_OUTPUT", output_path},
-        {"CMS_RUN_EXIT", DurableRun.exit_path(id)} | Keyword.get(opts, :env, [])
-      ]
+      [{"CMS_RUN_OUTPUT", output_path} | Keyword.get(opts, :env, [])]
       |> Enum.map(fn {key, value} ->
         {String.to_charlist(key), if(is_nil(value), do: false, else: String.to_charlist(value))}
       end)
 
     port =
-      Port.open({:spawn_executable, ~c"/bin/sh"}, [
-        :binary,
-        :exit_status,
-        args: Enum.map(["-c", shell, "durable-run", executable | args], &String.to_charlist/1),
-        cd: opts[:cd] |> String.to_charlist(),
-        env: env
-      ])
+      Port.open(
+        {:spawn_executable, String.to_charlist(program)},
+        [:binary, :exit_status | spawn_opts] ++
+          [
+            args: Enum.map(argv, &String.to_charlist/1),
+            cd: String.to_charlist(opts[:cd]),
+            env: env
+          ]
+      )
 
-    {:os_pid, pid} = Port.info(port, :os_pid)
-    DurableRun.attach_pid(id, pid)
-    status = await_durable_exit(port)
-    output = File.read!(output_path)
+    # For RunGuard, which must leave a run that outlives its harness alone.
+    with {:os_pid, pid} <- Port.info(port, :os_pid), do: DurableRun.update(id, %{"pid" => pid})
+
+    # What it printed before it linked (compiling) came through the port; the
+    # rest is in its file, which is gone when the run was cancelled with its
+    # copy (`CmsHarness.RunLink.cancel_copy/2` removes the run's files). Raised,
+    # that was logged as an error from this task after the cancel, into
+    # whatever ran next.
+    {early, status} = await_durable_exit(port, [])
+    output = early <> run_output(output_path)
 
     case opts[:into] do
       %{device: capture} -> IO.binwrite(capture, output)
@@ -327,10 +332,31 @@ defmodule CodeMySpec.ExecutionContexts.Local do
     {output, status}
   end
 
-  defp await_durable_exit(port) do
+  defp run_output(path) do
+    case File.read(path) do
+      {:ok, output} -> output
+      {:error, :enoent} -> ""
+    end
+  end
+
+  @doc false
+  # How a durable run's command is spawned, the same on every platform but for
+  # a Windows `.bat` launcher (`mix.bat`), which needs `cmd.exe /d /c call`.
+  # `:hide` everywhere: on Windows without it the run's own output redirect
+  # comes out empty; elsewhere it does nothing.
+  @spec launch(String.t(), [String.t()]) :: {String.t(), [String.t()], [atom()]}
+  def launch(executable, args) do
+    if Path.extname(executable) in [".bat", ".cmd"],
+      do:
+        {System.find_executable("cmd.exe") || "cmd.exe", ["/d", "/c", "call", executable | args],
+         [:hide, :stderr_to_stdout]},
+      else: {executable, args, [:hide, :stderr_to_stdout]}
+  end
+
+  defp await_durable_exit(port, acc) do
     receive do
-      {^port, {:exit_status, status}} -> status
-      {^port, {:data, _data}} -> await_durable_exit(port)
+      {^port, {:exit_status, status}} -> {acc |> Enum.reverse() |> IO.iodata_to_binary(), status}
+      {^port, {:data, data}} -> await_durable_exit(port, [data | acc])
     end
   end
 

@@ -848,9 +848,22 @@ config :code_my_spec, CodeMySpecWeb.SourceGitController,
 # The run guard watches this machine's ports and sweeps what dead BEAMs left. A
 # test BEAM is neither: it polls only when a test asks, and records in its own
 # directory, so it never reaps another harness's runs.
+#
+# Durable run records go to a directory of this BEAM's own: in the shared state
+# directory, a test's run id meets the ids a live harness on this machine keeps
+# records for, and every run a test leaves behind is read there forever.
+durable_run_dir =
+  Path.join([System.tmp_dir!(), "codemyspec-test-#{System.pid()}", "durable_runs"])
+
+config :code_my_spec, :durable_run_dir, durable_run_dir
+
+# A recorded run is asked whether it lives this soon after a restart, not a minute.
+config :code_my_spec, :durable_run_recovery_grace_ms, 2_000
+
 config :code_my_spec, CodeMySpec.RunGuard,
   poll_ms: :infinity,
-  dir: Path.join([System.tmp_dir!(), "codemyspec-test", "runs"])
+  dir: Path.join([System.tmp_dir!(), "codemyspec-test", "runs"]),
+  durable_dir: durable_run_dir
 
 # Claude Code routines (story 1136): the fire call is answered by a stub.
 config :code_my_spec, CodeMySpec.Devices.RoutineFire,

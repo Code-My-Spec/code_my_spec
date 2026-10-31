@@ -1,84 +1,96 @@
 defmodule CmsHarness.ARecoveredRunIsAnsweredOnceTest do
   @moduledoc """
-  Each path a harness takes with a durable run it finds on boot, or is still
-  watching (issue 128c1b27): adopted while its process lives, answered from its
-  stream when it ends, answered as an error when its stream is incomplete, and
-  forgotten only once the server has every answer.
+  What a restarted harness does with each test run the previous one recorded
+  (issue 128c1b27): claims it, so the run's rejoin is adopted; answers it from
+  its results and output files once its exit arrives, once; reports it as gone
+  when its node no longer answers, never as a pass; and resends an answer the
+  server never acknowledged. A project whose client_utils cannot link a run is
+  refused, not run another way.
 
-  Driven through the queue's own callbacks on manifests written to disk; a
+  Driven through the queue's own callbacks on records written to disk. A fake
+  `CmsHarness.RunLink` answers the claim in place of the harness supervisor's
+  own, so no distribution is started; a
   fake channel is registered where `ChannelClient` is looked up by root.
   """
-  use ExUnit.Case, async: true
+  use ExUnit.Case, async: false
 
   alias CmsHarness.Project.AnalysisServer
+  alias CmsHarness.Sync
   alias CodeMySpec.DurableRun
 
   setup do
     root = "/recovered-#{System.unique_integer([:positive])}"
     {:ok, _} = Registry.register(CmsHarness.Registry, {:channel, root}, nil)
+    # Clear of the ids a real harness on this machine keeps records for.
     id = 2_000_000_000 + System.unique_integer([:positive])
     on_exit(fn -> DurableRun.cleanup(id) end)
     %{root: root, id: id}
   end
 
-  defp begin(ctx, tied \\ []),
-    do: DurableRun.begin_run(ctx.id, ctx.root, "exunit", [], "abc", tied)
+  # Answers `claim/3` as the real one does, and says what it was asked.
+  defp fake_run_link do
+    test = self()
+
+    # Unlinked: it must still hold the name when `on_exit` puts the real one back.
+    pid =
+      spawn(fn ->
+        Stream.repeatedly(fn ->
+          receive do
+            {:"$gen_call", from, request} ->
+              send(test, {:run_link, request})
+              GenServer.reply(from, :ok)
+          end
+        end)
+        |> Stream.run()
+      end)
+
+    # The harness supervisor's own stands aside for the test, and is put back.
+    # Awaited: a test before this one may have killed it (a harness restart),
+    # and its supervisor brings it back asynchronously.
+    real = registered(CmsHarness.RunLink)
+    true = Process.unregister(CmsHarness.RunLink)
+    Process.register(pid, CmsHarness.RunLink)
+
+    on_exit(fn ->
+      true = Process.unregister(CmsHarness.RunLink)
+      Process.exit(pid, :kill)
+      Process.register(real, CmsHarness.RunLink)
+    end)
+  end
+
+  defp registered(name, attempts \\ 250) do
+    Enum.find_value(1..attempts, fn _ ->
+      Process.whereis(name) ||
+        (
+          Process.sleep(20)
+          nil
+        )
+    end) || flunk("#{inspect(name)} never came back")
+  end
+
+  defp begin(ctx, source, tied \\ []),
+    do: DurableRun.begin_run(ctx.id, ctx.root, source, [], "abc", tied)
 
   defp boot(ctx) do
+    fake_run_link()
     {:ok, state} = AnalysisServer.init(%{root: ctx.root})
     state
   end
 
-  defp poll(state) do
-    {:noreply, state} = AnalysisServer.handle_info(:poll_recovery, state)
+  defp exited(state, ctx, status) do
+    {:noreply, state} = AnalysisServer.handle_info({:run_exited, ctx.id, status}, state)
     state
   end
 
-  # Attached to a process that has since ended: no process has this identity.
-  defp gone(ctx),
-    do:
-      DurableRun.update(ctx.id, %{"pid" => 999_999, "identity" => "ended", "status" => "running"})
-
-  # A process this test owns, attached as the run's.
-  defp live_process(ctx) do
-    port = Port.open({:spawn_executable, "/bin/sleep"}, [:binary, args: ["30"]])
-    {:os_pid, pid} = Port.info(port, :os_pid)
-
-    on_exit(fn ->
-      System.cmd("/bin/kill", ["-KILL", Integer.to_string(pid)], stderr_to_stdout: true)
-    end)
-
-    :ok = DurableRun.attach_pid(ctx.id, pid)
-    pid
-  end
-
-  defp append(ctx, events) do
-    File.write!(
-      DurableRun.stream_path(ctx.id),
-      Enum.map_join(events, &(Jason.encode!(&1) <> "\n")),
-      [:append]
-    )
-  end
-
-  defp finished(counts),
-    do:
-      Map.merge(
-        %{event: "suite_finished", pass: 0, fail: 0, skip: 0, excluded: 0, invalid: 0},
-        counts
-      )
-
-  defp failed(name),
-    do: %{event: "test_failed", name: name, file: "test/a_test.exs", line: 4, message: "boom"}
-
-  test "a run left by the previous harness is held and claimed on join", ctx do
-    begin(ctx, [ctx.id + 1])
+  test "a run left by the previous harness is claimed, held, and not queued again", ctx do
+    begin(ctx, "exunit", [ctx.id + 1])
     state = boot(ctx)
+    {id, root, owner} = {ctx.id, ctx.root, self()}
 
-    assert Map.has_key?(state.recovering, ctx.id)
+    assert_received {:run_link, {:expect, ^id, ^root, ^owner}}
     assert {:reply, ids, _} = AnalysisServer.handle_call(:in_flight, self(), state)
     assert Enum.sort(ids) == [ctx.id, ctx.id + 1]
 
-    # The server re-sends what it joined; held, it is not queued a second time.
     {:noreply, state} =
       AnalysisServer.handle_cast(
         {:enqueue, [%{"run_id" => ctx.id + 1, "source" => "exunit", "args" => []}]},
@@ -88,87 +100,95 @@ defmodule CmsHarness.ARecoveredRunIsAnsweredOnceTest do
     assert state.queue == []
   end
 
-  test "a run still alive is adopted: its events are relayed and nothing is answered", ctx do
-    begin(ctx)
-    live_process(ctx)
-    append(ctx, [%{event: "test_passed", name: "passes", file: "test/a_test.exs", line: 3}])
+  test "an exunit run that exits is answered from its results file, once", ctx do
+    begin(ctx, "exunit")
 
-    state = ctx |> boot() |> poll()
+    File.write!(
+      DurableRun.results_path(ctx.id, ".json"),
+      Jason.encode!(%{
+        "stats" => %{"passes" => 1, "failures" => 1, "pending" => 0, "invalid" => 0, "tests" => 2},
+        "tests" => [%{"title" => "passes", "fullTitle" => "ATest: passes", "duration" => 1.0}],
+        "failures" => [
+          %{
+            "title" => "fails",
+            "fullTitle" => "ATest: fails",
+            "duration" => 1.0,
+            "error" => %{"file" => "test/a_test.exs", "line" => 7, "message" => "boom"}
+          }
+        ],
+        "pending" => []
+      })
+    )
 
-    assert_receive {:"$gen_cast", {:analysis_event, %{"run_id" => id, "event" => event}}}
-    assert id == ctx.id
-    assert %{"event" => "test", "state" => "passed", "name" => "passes"} = event
-    refute_receive {:"$gen_cast", {:analysis_result, _}}, 100
-    assert state.recovering[ctx.id]["status"] == "running"
-
-    # The cursor is kept: the next poll relays nothing it already relayed.
-    poll(state)
-    refute_receive {:"$gen_cast", {:analysis_event, _}}, 100
-  end
-
-  test "a run that ended is answered from its stream, once", ctx do
-    begin(ctx)
-    gone(ctx)
-    DurableRun.update(ctx.id, %{"partition" => "h0a"})
-    append(ctx, [failed("fails"), finished(%{pass: 2, fail: 1})])
-    File.write!(DurableRun.exit_path(ctx.id), "2\n")
-
-    state = ctx |> boot() |> poll()
+    File.write!(DurableRun.output_path(ctx.id), "compiled\n2 tests, 1 failure\n")
+    state = ctx |> boot() |> exited(ctx, 2)
 
     assert_receive {:"$gen_cast", {:analysis_result, payload}}
+    assert payload["run_id"] == ctx.id
     assert payload["status"] == "ok"
-    assert payload["result"]["stats"] == %{"tests" => 3, "failures" => 1}
-    assert payload["result"]["execution_status"] == "failure"
+    result = payload["result"]
+    assert result["exit_status"] == 2
+    assert result["execution_status"] == "failure"
+    assert result["stats"]["tests"] == 2
+    assert result["output"] =~ "2 tests, 1 failure"
 
-    assert [%{"name" => "fails", "line" => 4, "message" => "boom"}] =
-             payload["result"]["diagnostics"]
+    assert [%{"name" => "fails", "file" => "test/a_test.exs", "line" => 7, "message" => "boom"}] =
+             result["diagnostics"]
 
-    assert payload["result"]["partition"] == "h0a"
-
-    poll(state)
+    exited(state, ctx, 2)
     refute_receive {:"$gen_cast", {:analysis_result, _}}, 100
   end
 
-  test "a run that ended mid-suite is an error, never a pass", ctx do
-    begin(ctx)
-    gone(ctx)
-    append(ctx, [%{event: "test_passed", name: "passes"}])
+  test "a spex run is answered from its JSONL with every shard's output", ctx do
+    begin(ctx, "spex")
 
-    ctx |> boot() |> poll()
+    File.write!(
+      DurableRun.results_path(ctx.id, ".jsonl"),
+      Jason.encode!(%{
+        "spex" => "A spex",
+        "scenario" => "it fails",
+        "spec_file" => "test/spex/1_a/criterion_1_spex.exs",
+        "error" => %{
+          "message" => "boom",
+          "file" => "test/spex/1_a/criterion_1_spex.exs",
+          "line" => 12,
+          "stacktrace" => []
+        }
+      }) <> "\n"
+    )
+
+    File.write!(DurableRun.output_path(ctx.id), "runner\n")
+    File.write!(DurableRun.output_path(ctx.id) <> ".shard-1", "shard one\n")
+    File.write!(DurableRun.output_path(ctx.id) <> ".shard-2", "shard two\n")
+
+    ctx |> boot() |> exited(ctx, 1)
+
+    assert_receive {:"$gen_cast", {:analysis_result, %{"status" => "ok"} = payload}}
+    result = payload["result"]
+    assert result["exit_status"] == 1
+    assert result["output"] =~ "runner"
+    assert result["output"] =~ "shard one"
+    assert result["output"] =~ "shard two"
+
+    assert [%{"spex" => "A spex", "scenario" => "it fails", "message" => "boom"}] =
+             result["diagnostics"]
+  end
+
+  test "a run whose node no longer answers is reported as gone, not passed", ctx do
+    begin(ctx, "exunit")
+    DurableRun.update(ctx.id, %{"node" => "gone_#{ctx.id}@127.0.0.1"})
+    state = boot(ctx)
+
+    {:noreply, _state} = AnalysisServer.handle_info({:recovery_check, ctx.id}, state)
 
     assert_receive {:"$gen_cast", {:analysis_result, payload}}
     assert payload["status"] == "error"
-    assert payload["error"] =~ "without a complete suite result"
-  end
-
-  test "a run that finished its suite but left no exit status is an error", ctx do
-    begin(ctx)
-    gone(ctx)
-    append(ctx, [finished(%{pass: 1})])
-
-    ctx |> boot() |> poll()
-
-    assert_receive {:"$gen_cast", {:analysis_result, %{"status" => "error"} = payload}}
-    assert payload["error"] =~ "without a recorded exit status"
-  end
-
-  test "a run that never got a process is answered once it is stale", ctx do
-    begin(ctx)
-    state = boot(ctx)
-
-    # Still starting: its port may be opening now.
-    poll(state)
-    refute_receive {:"$gen_cast", {:analysis_result, _}}, 100
-
-    stale = DateTime.utc_now() |> DateTime.add(-60) |> DateTime.to_iso8601()
-    DurableRun.update(ctx.id, %{"started_at" => stale})
-    poll(state)
-
-    assert_receive {:"$gen_cast", {:analysis_result, %{"status" => "error"}}}
+    assert payload["error"] =~ "node went away"
+    refute Map.has_key?(payload, "result")
   end
 
   test "an answer the server never took is sent again by the next harness", ctx do
-    manifest = begin(ctx, [ctx.id + 1])
+    manifest = begin(ctx, "exunit", [ctx.id + 1])
 
     DurableRun.complete(manifest, [
       %{"run_id" => ctx.id, "status" => "ok"},
@@ -178,134 +198,31 @@ defmodule CmsHarness.ARecoveredRunIsAnsweredOnceTest do
     {:ok, manifest} = DurableRun.read_manifest(ctx.id)
     {:pending, _} = DurableRun.acknowledge(manifest, ctx.id)
 
-    state = ctx |> boot() |> poll()
+    state = boot(ctx)
 
     assert_receive {:"$gen_cast", {:analysis_result, %{"run_id" => id}}}
     assert id == ctx.id + 1
     refute_receive {:"$gen_cast", {:analysis_result, _}}, 100
-
-    poll(state)
-    refute_receive {:"$gen_cast", {:analysis_result, _}}, 100
-  end
-
-  test "a run is forgotten only when every run tied to it is acknowledged", ctx do
-    manifest = begin(ctx, [ctx.id + 1])
-    DurableRun.complete(manifest, [%{"run_id" => ctx.id}, %{"run_id" => ctx.id + 1}])
-    state = ctx |> boot() |> poll()
-
-    {:noreply, state} = AnalysisServer.handle_cast({:acknowledge, ctx.id}, state)
-    assert Map.has_key?(state.recovering, ctx.id)
-    assert {:ok, _} = DurableRun.read_manifest(ctx.id)
+    refute_received {:run_link, _}
 
     {:noreply, state} = AnalysisServer.handle_cast({:acknowledge, ctx.id + 1}, state)
     assert state.recovering == %{}
     assert {:error, :enoent} = DurableRun.read_manifest(ctx.id)
   end
 
-  test "the queue waits behind an adopted run", ctx do
-    begin(ctx)
-    live_process(ctx)
-
-    {:noreply, state} =
-      AnalysisServer.handle_cast(
-        {:enqueue, [%{"run_id" => ctx.id + 5, "source" => "credo", "args" => []}]},
-        boot(ctx)
-      )
-
-    assert state.running == nil
-    assert [%{run_id: queued}] = state.queue
-    assert queued == ctx.id + 5
-  end
-
-  test "a run this harness answered as it finished is not answered again by its poll", ctx do
-    manifest = begin(ctx)
-    state = boot(ctx)
-
-    # What `deliver/4` writes for the run it just answered, read here before
-    # its `:track_completed` arrives.
-    DurableRun.complete(manifest, [%{"run_id" => ctx.id}])
-    poll(state)
-
-    refute_receive {:"$gen_cast", {:analysis_result, _}}, 100
-  end
-
-  test "cancelling an adopted run stops its process and answers every tied run", ctx do
-    begin(ctx, [ctx.id + 1])
-    live_process(ctx)
-    {:ok, manifest} = DurableRun.read_manifest(ctx.id)
-    state = boot(ctx)
-
-    assert {:reply, :ok, state} =
-             AnalysisServer.handle_call({:cancel_run, ctx.id + 1}, self(), state)
-
-    for id <- [ctx.id, ctx.id + 1] do
-      assert_receive {:"$gen_cast",
-                      {:analysis_result, %{"run_id" => ^id, "status" => "cancelled"}}}
-    end
-
-    assert state.recovering == %{}
-    refute DurableRun.alive?(manifest)
-    assert {:error, :enoent} = DurableRun.read_manifest(ctx.id)
-  end
-
-  test "a project whose client_utils writes no event stream is not run durably" do
-    root = Path.join(System.tmp_dir!(), "streams-#{System.unique_integer([:positive])}")
+  test "a project whose client_utils cannot link a run is refused, not run", ctx do
+    root = Path.join(System.tmp_dir!(), "no-link-#{ctx.id}")
+    File.mkdir_p!(root)
     on_exit(fn -> File.rm_rf(root) end)
-    refute DurableRun.streams?(root)
+    {:ok, _} = Registry.register(CmsHarness.Registry, {:channel, root}, nil)
+    start_supervised!({Task.Supervisor, name: Sync.task_supervisor(root)})
+    start_supervised!({AnalysisServer, project: %{root: root}})
 
-    source = Path.join(root, "deps/client_utils/lib/client_utils/test_formatter/event_stream.ex")
-    File.mkdir_p!(Path.dirname(source))
-    File.write!(source, "")
-    assert DurableRun.streams?(root)
+    AnalysisServer.enqueue(root, [%{"run_id" => ctx.id, "source" => "exunit", "args" => []}])
 
-    File.rm_rf!(Path.join(root, "deps"))
-
-    beam =
-      Path.join(
-        root,
-        "_build/analyzer/test/lib/client_utils/ebin/Elixir.ClientUtils.TestFormatter.EventStream.beam"
-      )
-
-    File.mkdir_p!(Path.dirname(beam))
-    File.write!(beam, "")
-    assert DurableRun.streams?(root), "a path dep has no deps/ entry, only its build"
-  end
-
-  test "advancing the cursor keeps what the launch wrote after it was read", ctx do
-    begin(ctx)
-    {:ok, read_before_attach} = DurableRun.read_manifest(ctx.id)
-    live_process(ctx)
-
-    DurableRun.advance(read_before_attach, %{"a" => 1})
-
-    assert {:ok, %{"status" => "running", "pid" => pid, "offsets" => %{"a" => 1}}} =
-             DurableRun.read_manifest(ctx.id)
-
-    assert is_integer(pid)
-  end
-
-  test "a sharded run is answered once every shard that ran has finished", ctx do
-    begin(ctx)
-    gone(ctx)
-    File.write!(DurableRun.exit_path(ctx.id), "2\n")
-    shard = fn i, events -> Enum.map(events, &Map.merge(&1, %{shard: i, shards: 2})) end
-
-    File.write!(
-      DurableRun.stream_path(ctx.id) <> ".shard-1",
-      Enum.map_join(shard.(1, [finished(%{pass: 1})]), &(Jason.encode!(&1) <> "\n"))
-    )
-
-    File.write!(
-      DurableRun.stream_path(ctx.id) <> ".shard-2",
-      Enum.map_join(
-        shard.(2, [failed("fails"), finished(%{fail: 1})]),
-        &(Jason.encode!(&1) <> "\n")
-      )
-    )
-
-    ctx |> boot() |> poll()
-
-    assert_receive {:"$gen_cast", {:analysis_result, %{"status" => "ok"} = payload}}
-    assert payload["result"]["stats"] == %{"tests" => 2, "failures" => 1}
+    assert_receive {:"$gen_cast", {:analysis_result, payload}}, 15_000
+    assert payload["status"] == "error"
+    assert payload["error"] =~ "needs client_utils 0.4.0 or later"
+    assert {:error, :enoent} = DurableRun.read_manifest(ctx.id)
   end
 end

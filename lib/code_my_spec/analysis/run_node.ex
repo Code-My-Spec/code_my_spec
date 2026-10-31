@@ -33,7 +33,7 @@ defmodule CodeMySpec.Analysis.RunNode do
   # test processes registered globally (`Mox.Server`) collided across runs,
   # and global's conflict resolution killed the harness's own, taking the
   # harness down.
-  @spec env(integer(), module()) :: [{String.t(), String.t()}]
+  @spec env(integer(), module()) :: [{String.t(), String.t() | nil}]
   def env(run_id, listener) do
     :yes = :global.re_register_name({:cms_run, run_id}, self())
     cookie = Atom.to_string(Node.get_cookie())
@@ -49,7 +49,13 @@ defmodule CodeMySpec.Analysis.RunNode do
       {"CMS_HARNESS_NODE", Atom.to_string(node())},
       {"CMS_HARNESS_COOKIE", cookie},
       {"CMS_RUN_ID", Integer.to_string(run_id)},
-      {"CMS_RUN_LISTENER", Atom.to_string(listener)}
+      {"CMS_RUN_LISTENER", Atom.to_string(listener)},
+      # Unset: a run started from inside a shard of another run (a spex
+      # driving a fixture's suite) inherited that shard's numbering, reported
+      # its exit as shard 2 of 4, and was never finished. `mix cms.spex` sets
+      # its own shards' after this.
+      {"CMS_RUN_SHARD", nil},
+      {"CMS_RUN_SHARDS", nil}
     ]
   end
 

@@ -21,6 +21,7 @@ defmodule CmsHarness.Projects do
   alias CmsHarness.Channel
   alias CmsHarness.Copy.Supervisor, as: Copy
   alias CmsHarness.ProjectIdentity
+  alias CmsHarness.RunLink
   alias CmsHarness.ServedRoots
   alias CmsHarness.WorkingCopies.Create
 
@@ -127,6 +128,8 @@ defmodule CmsHarness.Projects do
   @spec stop_serving(String.t()) :: :ok | {:error, :not_serving}
   def stop_serving(root) when is_binary(root) do
     ServedRoots.forget(root)
+    # Deliberately no longer served, so its test runs stop with it.
+    RunLink.cancel_copy(root)
 
     # App dependencies are disposed explicitly by offboarding before this call.
     # This stops the copy channel and agents; app supervision is independent.

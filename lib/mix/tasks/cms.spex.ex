@@ -63,6 +63,12 @@ defmodule Mix.Tasks.Cms.Spex do
   end
 
   defp run_shards(jsonl, formatters) do
+    # A run the harness watches outlives it (`ClientUtils.RunLink`); this task
+    # prints its shards' output, so its output goes to the run's file too, or
+    # the first print after the harness's pipe closes kills it mid-merge.
+    with path when is_binary(path) and path != "" <- System.get_env("CMS_RUN_OUTPUT"),
+         do: ClientUtils.RunLink.redirect_output(path)
+
     # The template has to be current; these are the `spex` alias's own first steps.
     Mix.Task.run("ecto.create", ["--quiet"])
     Mix.Task.run("ecto.migrate", ["--quiet"])
@@ -125,8 +131,7 @@ defmodule Mix.Tasks.Cms.Spex do
       [_, name] ->
         [
           {"ELIXIR_ERL_OPTIONS",
-           String.replace(options, "-name #{name}@", "-name #{name}_s#{i}@")},
-          {"CMS_RUN_SHARDS", Integer.to_string(@shards)}
+           String.replace(options, "-name #{name}@", "-name #{name}_s#{i}@")}
         ]
 
       _ ->
@@ -135,28 +140,23 @@ defmodule Mix.Tasks.Cms.Spex do
   end
 
   @doc """
-  Each shard that runs: its files, its number, and the event-stream env it
-  writes under when the run has a stream.
+  Each shard that runs: its files, its number, and, when a harness watches the
+  run, which shard of how many it is.
   """
   # The count is of the shards that run, not `@shards`: a suite of fewer files
-  # has fewer, and a recovered run waits for every one's `suite_finished`.
-  def shards(files, stream \\ System.get_env("CMS_RUN_EVENT_STREAM")) do
+  # has fewer, and the harness finishes the run once every one's exit is in.
+  def shards(files, harness \\ System.get_env("CMS_HARNESS_NODE")) do
     groups = groups(files)
 
     groups
     |> Enum.with_index(1)
-    |> Enum.map(fn {files, i} -> {files, i, run_event_env(stream, i, length(groups))} end)
+    |> Enum.map(fn {files, i} -> {files, i, shard_env(harness, i, length(groups))} end)
   end
 
-  defp run_event_env(nil, _i, _shards), do: []
+  defp shard_env(harness, _i, _shards) when harness in [nil, ""], do: []
 
-  defp run_event_env(path, i, shards) do
-    [
-      {"CMS_RUN_EVENT_STREAM", "#{path}.shard-#{i}"},
-      {"CMS_RUN_SHARD", Integer.to_string(i)},
-      {"CMS_RUN_SHARDS", Integer.to_string(shards)}
-    ]
-  end
+  defp shard_env(_harness, i, shards),
+    do: [{"CMS_RUN_SHARD", Integer.to_string(i)}, {"CMS_RUN_SHARDS", Integer.to_string(shards)}]
 
   defp read_jsonl({_, _, _, path}) do
     case File.read(path) do

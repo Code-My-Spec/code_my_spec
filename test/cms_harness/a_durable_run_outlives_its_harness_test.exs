@@ -3,35 +3,42 @@ defmodule CmsHarness.ADurableRunOutlivesItsHarnessTest do
   An exunit or spex run survives the harness that started it (issue 128c1b27).
 
   A real `mix test` (or `mix spex`, sexy_spex's task) of a three-test project,
-  launched through the
-  `AnalysisServer` the way the server's request is, writing its events through
-  `ClientUtils.TestFormatter`. The queue and its task are killed mid-run, which
-  is what a harness restart does to them; a fresh queue for the same checkout
-  adopts the surviving process from its manifest and answers the run from the
-  event stream. A run whose process dies with no harness watching is answered
-  as an error, never as a pass.
+  launched through the `AnalysisServer` the way the server's request is. The
+  run is a node of its own, linked to this one through `CmsHarness.RunLink`.
+  The queue, its task and the link are killed mid-run, which is what a
+  harness restart does to them; a fresh queue claims the run from its record,
+  the run rejoins the restarted link and is adopted, and its one result is
+  answered from what it wrote. A run whose node dies with no harness watching
+  is answered as an error, never as a pass.
 
-  A fake channel is registered where `ChannelClient` is looked up by root.
+  The test BEAM becomes the harness node (distribution started by the link,
+  as in the harness). A fake channel is registered where `ChannelClient` is
+  looked up by root.
   """
   use ExUnit.Case, async: false
+
+  # Three real `mix` runs of a fixture project, compiled cold.
+  @moduletag timeout: :timer.minutes(5)
 
   alias CmsHarness.Project.AnalysisServer
   alias CmsHarness.Sync
   alias CodeMySpec.Analysis.Runners
   alias CodeMySpec.DurableRun
 
-  @failing_line 7
+  @failing_test_line 6
   @failing_spex_line 16
 
   setup do
     root = Path.join(System.tmp_dir!(), "durable-run-#{System.unique_integer([:positive])}")
     write_project(root)
     {:ok, _} = Registry.register(CmsHarness.Registry, {:channel, root}, nil)
-    # Clear of the ids a real harness on this machine keeps manifests for.
+    # Clear of the ids a real harness on this machine keeps records for.
     run_id = 2_000_000_000 + System.unique_integer([:positive])
 
+    # The run waits for a harness forever; it is stopped as an offboarded
+    # copy's runs are.
     on_exit(fn ->
-      run_id |> DurableRun.read_manifest() |> cancel_if_attached()
+      CmsHarness.RunLink.cancel_copy(root)
       DurableRun.cleanup(run_id)
       File.rm_rf(root)
     end)
@@ -39,77 +46,80 @@ defmodule CmsHarness.ADurableRunOutlivesItsHarnessTest do
     %{root: root, run_id: run_id}
   end
 
-  test "a fresh harness adopts the surviving run and answers it from its stream", ctx do
+  test "a fresh harness adopts the surviving run and answers it once", ctx do
     harness = start_harness(ctx.root, :first)
     enqueue(ctx, "exunit")
-    manifest = await_gated_run(ctx.run_id)
+    node = await_linked_run(ctx)
 
     kill_harness(ctx.root, harness)
-    assert DurableRun.alive?(manifest), "the run died with its harness"
+    assert Node.ping(node) == :pong, "the run died with its harness"
 
     start_harness(ctx.root, :second)
     assert eventually(fn -> ctx.run_id in AnalysisServer.in_flight(ctx.root) end)
     File.write!(Path.join(ctx.root, "gate"), "")
 
     assert_receive {:"$gen_cast", {:analysis_result, %{"run_id" => run_id} = payload}},
-                   60_000
+                   60_000,
+                   "no result; the run printed: " <> run_output(ctx.run_id)
 
     assert run_id == ctx.run_id
     assert payload["status"] == "ok", inspect(payload)
     raw = payload["result"]
     assert raw["exit_status"] != 0
     assert raw["execution_status"] == "failure"
-    assert raw["stats"] == %{"tests" => 3, "failures" => 1}
+    assert %{"tests" => 3, "failures" => 1} = raw["stats"]
 
-    assert [%{"name" => "fails", "file" => "test/tiny_test.exs", "line" => @failing_line}] =
+    # As the formatter's results file names it, the same as a live result.
+    assert [%{"name" => "test fails", "file" => "test/tiny_test.exs"} = failure] =
              raw["diagnostics"]
 
-    assert hd(raw["diagnostics"])["message"] =~ "Assertion with == failed"
+    assert failure["line"] == @failing_test_line
+    assert failure["message"] =~ "Assertion with == failed"
     assert raw["partition"] == "durablea", "the database it ran on, as a live result says"
+
+    assert raw["output"] =~ "Result: 2/3 passed",
+           "printed after its harness died: " <> raw["output"]
 
     # Read as the server reads a harness's result.
     assert {:ok, %{problems: [problem], exit_status: status}} = Runners.from_raw("exunit", raw)
     assert status == raw["exit_status"]
     assert problem.file_path == "test/tiny_test.exs"
 
-    # Answered once, then forgotten when the server takes it.
+    # The run exits once its exit is acknowledged; answered once, then
+    # forgotten when the server takes it.
+    assert eventually(fn -> Node.ping(node) == :pang end), "the run never exited"
     refute_receive {:"$gen_cast", {:analysis_result, _}}, 1_000
     AnalysisServer.acknowledge(ctx.root, ctx.run_id)
     assert eventually(fn -> AnalysisServer.idle?(ctx.root) end)
     assert {:error, :enoent} = DurableRun.read_manifest(ctx.run_id)
   end
 
-  test "a spex run is adopted and answered from its stream the same way", ctx do
+  test "a spex run is adopted and answered the same way", ctx do
     harness = start_harness(ctx.root, :first)
     enqueue(ctx, "spex")
-    manifest = await_gated_run(ctx.run_id)
+    node = await_linked_run(ctx)
 
     kill_harness(ctx.root, harness)
-    assert DurableRun.alive?(manifest), "the run died with its harness"
+    assert Node.ping(node) == :pong, "the run died with its harness"
 
     start_harness(ctx.root, :second)
     assert eventually(fn -> ctx.run_id in AnalysisServer.in_flight(ctx.root) end)
     File.write!(Path.join(ctx.root, "gate"), "")
 
     assert_receive {:"$gen_cast", {:analysis_result, %{"run_id" => run_id} = payload}},
-                   60_000
+                   60_000,
+                   "no result; the run printed: " <> run_output(ctx.run_id)
 
     assert run_id == ctx.run_id
     assert payload["status"] == "ok", inspect(payload)
     raw = payload["result"]
     assert raw["exit_status"] != 0
-    assert raw["stats"] == %{"tests" => 3, "failures" => 1}
     assert raw["partition"] == "durables"
 
-    assert [
-             %{
-               "spex" => "TinySpex",
-               "file" => "test/spex/tiny_spex.exs",
-               "line" => @failing_spex_line
-             } = failure
-           ] = raw["diagnostics"]
+    assert [%{"spex" => "fails", "file" => "test/spex/tiny_spex.exs"} = failure] =
+             raw["diagnostics"]
 
-    assert failure["scenario"] == "Spex: fails"
+    assert failure["line"] == @failing_spex_line
     assert failure["message"] =~ "Assertion with == failed"
 
     assert {:ok, %{problems: [problem]}} = Runners.from_raw("spex", raw)
@@ -118,23 +128,25 @@ defmodule CmsHarness.ADurableRunOutlivesItsHarnessTest do
     refute_receive {:"$gen_cast", {:analysis_result, _}}, 1_000
   end
 
-  test "a run whose process died with no harness watching is an error, not a pass", ctx do
+  test "a run whose node died with no harness watching is an error, not a pass", ctx do
     harness = start_harness(ctx.root, :first)
     enqueue(ctx, "exunit")
-    manifest = await_gated_run(ctx.run_id)
+    node = await_linked_run(ctx)
 
     kill_harness(ctx.root, harness)
-    :ok = DurableRun.cancel(manifest)
-    refute DurableRun.alive?(manifest)
+    :rpc.cast(node, :erlang, :halt, [137])
+    assert eventually(fn -> Node.ping(node) == :pang end)
 
-    start_harness(ctx.root, :second)
+    %{server: server} = start_harness(ctx.root, :second)
+    # What the grace timer sends, now rather than in a minute.
+    send(server, {:recovery_check, ctx.run_id})
 
     assert_receive {:"$gen_cast", {:analysis_result, %{"run_id" => run_id} = payload}},
                    30_000
 
     assert run_id == ctx.run_id
     assert payload["status"] == "error"
-    assert payload["error"] =~ "analyzer process ended during harness restart"
+    assert payload["error"] =~ "node went away"
     refute Map.has_key?(payload, "result")
   end
 
@@ -167,10 +179,12 @@ defmodule CmsHarness.ADurableRunOutlivesItsHarnessTest do
 
   # Killed, not stopped: a restarted harness runs no cleanup. The task dies
   # with its supervisor and closes the port the run was started through.
+  # The harness's link goes too, and comes back empty as a new harness's would.
   defp kill_harness(root, %{sup: sup, server: server}) do
     refs = Enum.map([server, sup], &Process.monitor/1)
     Enum.each([server, sup], &Process.exit(&1, :kill))
     for ref <- refs, do: assert_receive({:DOWN, ^ref, :process, _, _}, 5_000)
+    restart_run_link()
 
     assert eventually(fn ->
              Registry.lookup(CmsHarness.Registry, {:analysis, root}) == [] and
@@ -178,24 +192,29 @@ defmodule CmsHarness.ADurableRunOutlivesItsHarnessTest do
            end)
   end
 
-  # The run is past its two quick tests' start and held at the gate.
-  defp await_gated_run(run_id) do
-    assert eventually(
-             fn ->
-               with {:ok, %{"status" => "running"} = manifest} <- DurableRun.read_manifest(run_id),
-                    {:ok, stream} <- File.read(DurableRun.stream_path(run_id)),
-                    true <- stream =~ "waits for the gate" do
-                 manifest
-               else
-                 _ -> false
-               end
-             end,
-             1_200
-           ),
-           "the run never reached the gate: " <> run_output(run_id)
+  # Through its supervisor rather than killed: a kill spends the harness
+  # supervisor's restart budget, which every child in the suite shares, and a
+  # crash elsewhere in the same seconds took the whole tree down.
+  defp restart_run_link do
+    :ok = Supervisor.terminate_child(CmsHarness.Supervisor, CmsHarness.RunLink)
+    {:ok, _pid} = Supervisor.restart_child(CmsHarness.Supervisor, CmsHarness.RunLink)
+  end
 
-    {:ok, manifest} = DurableRun.read_manifest(run_id)
-    manifest
+  # The run is linked (its node answers and it is inside its test file),
+  # and held at the gate until the test opens it.
+  defp await_linked_run(ctx) do
+    run_id = ctx.run_id
+
+    assert_receive {:"$gen_cast",
+                    {:analysis_event,
+                     %{"run_id" => ^run_id, "event" => %{"event" => "file_started"}}}},
+                   120_000,
+                   "the run never linked: " <> run_output(run_id)
+
+    {:ok, %{"node" => node}} = DurableRun.read_manifest(run_id)
+    node = String.to_atom(node)
+    assert Node.ping(node) == :pong
+    node
   end
 
   defp run_output(run_id), do: run_id |> DurableRun.output_path() |> File.read() |> output()
@@ -236,7 +255,7 @@ defmodule CmsHarness.ADurableRunOutlivesItsHarnessTest do
 
     gate = Path.join(root, "gate")
 
-    # `@failing_line` is the line of the failing assertion below.
+    # `@failing_test_line` is the line of the failing test below.
     File.write!(Path.join(root, "test/tiny_test.exs"), """
     defmodule TinyTest do
       use ExUnit.Case
@@ -289,9 +308,6 @@ defmodule CmsHarness.ADurableRunOutlivesItsHarnessTest do
     end
     """)
   end
-
-  defp cancel_if_attached({:ok, manifest}), do: DurableRun.cancel(manifest)
-  defp cancel_if_attached(_), do: :ok
 
   defp eventually(fun, attempts \\ 200) do
     Enum.find_value(1..attempts, false, fn _ ->
