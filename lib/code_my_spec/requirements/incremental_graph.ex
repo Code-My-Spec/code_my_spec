@@ -434,8 +434,7 @@ defmodule CodeMySpec.Requirements.IncrementalGraph do
   end
 
   defp settle_drain(state, marks, base_scope, config) do
-    {state, handled, recomputed, kinds, _settled} =
-      settle_project({state, 0, 0, %{}, MapSet.new()}, marks, base_scope, config)
+    {state, handled, recomputed, kinds} = settle_project(state, marks, base_scope, config)
 
     state = draw_edges(%{state | scope: base_scope}, config)
 
@@ -477,19 +476,15 @@ defmodule CodeMySpec.Requirements.IncrementalGraph do
   # Each event offered to its handler; anything without one handed back.
   # `{:ok, []}` (moved nothing the graph reads) is not `:no_handler` (unknown,
   # must re-derive).
-  defp apply_handlers(state, marks, settled) do
-    {handled, rest} = split_handled(state, marks, settled)
+  defp apply_handlers(state, marks) do
+    {handled, rest} = split_handled(state, marks)
 
     # An invalidation beside a handled event is that event's fallback: dropped by
     # observation id, or the handled event would recompute its entities too. A
-    # partial event's fallback that only re-establishes project-wide nodes runs
-    # at the first vantage that sees the event.
+    # partial event's fallback still runs.
     answered =
       handled
-      |> Enum.reject(fn {mark, _c, _w} ->
-        Handlers.partial_event?(mark) and
-          not (mark.kind in settled and Handlers.fallback_project_wide?(mark))
-      end)
+      |> Enum.reject(fn {mark, _c, _w} -> Handlers.partial_event?(mark) end)
       |> MapSet.new(fn {mark, _c, _w} -> mark.observation_id end)
 
     {handled,
@@ -501,15 +496,13 @@ defmodule CodeMySpec.Requirements.IncrementalGraph do
   # One settle per distinct kind, not per mark: a handler is a function of
   # current state (it ignores the payload), so running it twice in a drain pays
   # twice for the same answer, and marks arrive in bulk. Every mark of a handled
-  # kind is still returned — `apply_handlers/3` drops fallbacks by observation
+  # kind is still returned — `apply_handlers/2` drops fallbacks by observation
   # id — but only the first carries the changes, so work is counted once.
-  defp split_handled(state, marks, settled) do
+  defp split_handled(state, marks) do
     marks
     |> Enum.group_by(& &1.kind)
     |> Enum.reduce({[], []}, fn {_kind, kind_marks}, {handled, unhandled} ->
-      skip = if hd(kind_marks).kind in settled, do: GraphStore.project_wide_names(), else: []
-
-      case handler_result(state.scope, hd(kind_marks), skip) do
+      case handler_result(state.scope, hd(kind_marks)) do
         {:ok, changes, sweeps} ->
           written = settle(state.scope, changes, sweeps)
           {attribute(kind_marks, changes, written) ++ handled, unhandled}
@@ -538,11 +531,11 @@ defmodule CodeMySpec.Requirements.IncrementalGraph do
     written
   end
 
-  defp handler_result(_scope, %Invalidation{kind: kind}, _skip) when kind in [nil, "invalidate"],
+  defp handler_result(_scope, %Invalidation{kind: kind}) when kind in [nil, "invalidate"],
     do: :no_handler
 
-  defp handler_result(scope, %Invalidation{kind: kind, payload: payload}, skip),
-    do: Handlers.apply_event(scope, kind, payload || %{}, skip)
+  defp handler_result(scope, %Invalidation{kind: kind, payload: payload}),
+    do: Handlers.apply_event(scope, kind, payload || %{})
 
   defp write_change(scope, change) do
     {:ok, count} = GraphStore.put_verdict(scope, change)
@@ -552,9 +545,9 @@ defmodule CodeMySpec.Requirements.IncrementalGraph do
   # Applies the handled events, then whatever is left: a seed for an
   # unestablished project (whatever the marks say — the seed has none), a
   # baseline or edge redraw when handlers covered everything, else a plan.
-  defp settle_project({state, handled, recomputed, kinds, settled}, marks, base_scope, config) do
+  defp settle_project(state, marks, base_scope, config) do
     state = %{state | scope: base_scope}
-    {applied, unhandled} = apply_handlers(state, marks, settled)
+    {applied, unhandled} = apply_handlers(state, marks)
 
     shape_moved? =
       Enum.any?(applied, fn {mark, _c, _w} -> mark.kind in Handlers.shape_kinds() end)
@@ -576,9 +569,7 @@ defmodule CodeMySpec.Requirements.IncrementalGraph do
     state = %{state | established: true}
     log_handled(state, applied)
 
-    {state, handled + length(applied), recomputed + length(unhandled),
-     tally(kinds, applied, unhandled),
-     Enum.into(applied, settled, fn {mark, _c, _w} -> mark.kind end)}
+    {state, length(applied), length(unhandled), tally(applied, unhandled)}
   end
 
   defp refuse_if_faulted(project_id) do
@@ -622,11 +613,10 @@ defmodule CodeMySpec.Requirements.IncrementalGraph do
 
   # Which kinds this drain handled and which it fell back on, by mark count,
   # so the cost line attributes queries to kinds.
-  defp tally(kinds, applied, unhandled) do
+  defp tally(applied, unhandled) do
     applied
     |> Enum.frequencies_by(fn {mark, _changes, _written} -> {:handled, kind_of(mark)} end)
     |> Map.merge(Enum.frequencies_by(unhandled, &{:recomputed, kind_of(&1)}))
-    |> Map.merge(kinds, fn _key, a, b -> a + b end)
   end
 
   defp kind_of(%Invalidation{kind: kind}) when kind in [nil, "invalidate"], do: "invalidation"

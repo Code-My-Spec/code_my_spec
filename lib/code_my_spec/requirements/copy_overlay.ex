@@ -43,8 +43,10 @@ defmodule CodeMySpec.Requirements.CopyOverlay do
           {story_id, Enum.map(criteria, & &1.number)}
         end),
       "authored" => architecture.authored?,
-      "story_numbers" => architecture.story_numbers,
-      "context_names" => architecture.context_names
+      # Sorted: the database returns them in no fixed order, and the read
+      # model's fingerprint must not move when nothing did.
+      "story_numbers" => Enum.sort(architecture.story_numbers),
+      "context_names" => Enum.sort(architecture.context_names)
     }
   end
 
@@ -191,6 +193,7 @@ defmodule CodeMySpec.Requirements.CopyOverlay do
     |> Report.changeset(%{
       project_id: project,
       read_model: payload["read_model"],
+      files: payload["files"],
       head: payload["head"],
       behind: payload["behind"],
       dirty: payload["dirty"],
@@ -199,7 +202,8 @@ defmodule CodeMySpec.Requirements.CopyOverlay do
     })
     |> Repo.insert(
       on_conflict:
-        {:replace, ~w(project_id read_model head behind dirty verdicts reported_at updated_at)a},
+        {:replace,
+         ~w(project_id read_model files head behind dirty verdicts reported_at updated_at)a},
       conflict_target: :working_copy_id
     )
   end
@@ -232,24 +236,64 @@ defmodule CodeMySpec.Requirements.CopyOverlay do
 
     case Repo.get(Report, copy) do
       %Report{read_model: fingerprint} = report when fingerprint == read_model.fingerprint ->
-        {:reported, :erlang.binary_to_term(report.verdicts, [:safe]),
-         DateTime.to_naive(report.reported_at)}
+        current(report, copy, read_model)
 
       _none_or_stale ->
         computed(copy, read_model)
     end
   end
 
+  # A report answers only for the files it was computed from: a manifest, or
+  # files that reached the server another way, moves the rows past it.
+  defp current(report, copy, read_model) do
+    if report.files == rows_digest(copy) do
+      {:reported, :erlang.binary_to_term(report.verdicts, [:safe]),
+       DateTime.to_naive(report.reported_at)}
+    else
+      computed(copy, read_model)
+    end
+  end
+
+  # The copy's File rows digested, read again only once they move.
+  defp rows_digest(copy) do
+    Cache.fetch({:files, copy}, files_moved(copy), fn ->
+      from(f in CodeMySpec.Files.File,
+        where: f.working_copy_id == ^copy,
+        select: map(f, [:path, :fingerprint])
+      )
+      |> Repo.all()
+      |> files_digest()
+    end)
+  end
+
+  # When the copy's files last moved, and how many it has: a deletion moves
+  # the count.
+  defp files_moved(copy) do
+    Repo.one(
+      from(f in CodeMySpec.Files.File,
+        where: f.working_copy_id == ^copy,
+        select: {max(f.updated_at), count(f.id)}
+      )
+    )
+  end
+
+  @doc """
+  The digest of a scan, or of a copy's File rows: paths and content
+  fingerprints. A report carries its scan's; it is served while the rows match.
+  """
+  @spec files_digest([map()]) :: String.t()
+  def files_digest(entries) do
+    entries
+    |> Enum.map(&"#{&1.path}\0#{&1[:fingerprint]}")
+    |> Enum.sort()
+    |> Enum.join("\n")
+    |> then(&:crypto.hash(:md5, &1))
+    |> Base.encode16(case: :lower)
+  end
+
   # What the copy's last manifest left, as the harness would have scanned it.
   defp computed(copy, read_model) do
-    {synced_at, _count} =
-      files =
-      Repo.one(
-        from(f in CodeMySpec.Files.File,
-          where: f.working_copy_id == ^copy,
-          select: {max(f.updated_at), count(f.id)}
-        )
-      )
+    {synced_at, _count} = files = files_moved(copy)
 
     verdicts =
       Cache.fetch(copy, {read_model.fingerprint, files}, fn ->

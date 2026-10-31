@@ -14,8 +14,8 @@ defmodule CodeMySpecSpex.Story1062.Criterion3358Spex do
 
   ## Why it could happen
 
-  A miss answers with what it computed. A hit answers with `Projection.load/2` —
-  the projection tables read back — and that is lossy by construction:
+  A miss answers with what it computed. A hit answers with `CopyGraph.load/2` —
+  the stored rows read back — and that is lossy by construction:
   `rehydrate/2` returns nil when `entity_for/2` cannot place a row's entity or
   `definition_for/2` cannot find its definition, and those rows are dropped.
   Nothing was wrong with either the write or the read, which is why it survived
