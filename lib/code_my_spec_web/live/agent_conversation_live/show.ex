@@ -596,6 +596,16 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
   defp power_flash(_error, _was, false),
     do: {:error, "Agent turned off, but its machine could not be reached to end it."}
 
+  defp fire_error(:no_agent), do: "This conversation has no agent to fire."
+  defp fire_error(:not_found), do: "That agent was not found in this project."
+  defp fire_error(:already_retired), do: "That agent is already retired."
+
+  defp fire_error(reason) when is_atom(reason),
+    do:
+      "That agent could not be fired: #{reason |> Atom.to_string() |> String.replace("_", " ")}."
+
+  defp fire_error(reason), do: "That agent could not be fired: #{inspect(reason)}."
+
   # Keeps the header's controls in step when the team panel toggled this
   # conversation's agent.
   defp sync_header_state(socket, agent) do
@@ -1088,35 +1098,36 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
   def handle_event("confirm_fire_agent", _params, socket) do
     scope = socket.assigns.current_scope
     agent_id = socket.assigns.conversation && socket.assigns.conversation.agent_id
+    socket = assign(socket, :firing?, false)
 
-    if is_binary(agent_id) do
-      result = Agents.retire_agent(scope, agent_id, by: Agents.actor(scope))
-
-      socket = assign(socket, :firing?, false)
-
-      case result do
-        {:ok, agent} ->
-          {:noreply,
-           socket
-           |> sync_header_state(agent)
-           |> refresh_team_status()
-           |> put_flash(:info, "Agent fired.")}
-
-        {:ok, agent, {:unreachable, _machine}} ->
-          {:noreply,
-           socket
-           |> sync_header_state(agent)
-           |> refresh_team_status()
-           |> put_flash(
-             :info,
-             "Agent fired; its machine could not be reached to end the process."
-           )}
-
-        {:error, _reason} ->
-          {:noreply, put_flash(socket, :error, "That agent could not be fired. Try again.")}
+    result =
+      with id when is_binary(id) <- agent_id,
+           {:ok, agent} <- Agents.fetch_agent(scope, id),
+           false <- Agent.retired?(agent) do
+        Agents.retire_agent(scope, id, by: Agents.actor(scope))
+      else
+        nil -> {:error, :no_agent}
+        true -> {:error, :already_retired}
+        {:error, reason} -> {:error, reason}
       end
-    else
-      {:noreply, assign(socket, :firing?, false)}
+
+    case result do
+      {:ok, agent} ->
+        {:noreply,
+         socket
+         |> sync_header_state(agent)
+         |> refresh_team_status()
+         |> put_flash(:info, "Agent fired.")}
+
+      {:ok, agent, {:unreachable, _machine}} ->
+        {:noreply,
+         socket
+         |> sync_header_state(agent)
+         |> refresh_team_status()
+         |> put_flash(:info, "Agent fired; its machine could not be reached to end the process.")}
+
+      {:error, reason} ->
+        {:noreply, put_flash(socket, :error, fire_error(reason))}
     end
   end
 

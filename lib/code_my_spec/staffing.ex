@@ -320,7 +320,7 @@ defmodule CodeMySpec.Staffing do
         :ok
 
       {:error, reason} ->
-        {:error, reason}
+        if missing_source?(instance, reason), do: :ok, else: {:error, reason}
     end
   end
 
@@ -338,9 +338,20 @@ defmodule CodeMySpec.Staffing do
         :ok
 
       {:error, reason} ->
-        {:error, reason}
+        if missing_source?(instance, reason) do
+          with {:ok, _} <- AppInstances.record_status(scope, instance, %{status: "down"}),
+               do: :ok
+        else
+          {:error, reason}
+        end
     end
   end
+
+  defp missing_source?(%{source_root: root}, reason)
+       when reason in [:harness_not_connected, :invalid_source] and is_binary(root),
+       do: not File.exists?(root)
+
+  defp missing_source?(_, _), do: false
 
   defp remove(scope, %WorkingCopy{project_id: project_id, id: id} = copy) do
     Repo.transaction(fn ->
