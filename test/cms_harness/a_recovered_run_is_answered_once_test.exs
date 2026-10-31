@@ -45,7 +45,9 @@ defmodule CmsHarness.ARecoveredRunIsAnsweredOnceTest do
       end)
 
     # The harness supervisor's own stands aside for the test, and is put back.
-    real = Process.whereis(CmsHarness.RunLink)
+    # Awaited: a test before this one may have killed it (a harness restart),
+    # and its supervisor brings it back asynchronously.
+    real = registered(CmsHarness.RunLink)
     true = Process.unregister(CmsHarness.RunLink)
     Process.register(pid, CmsHarness.RunLink)
 
@@ -54,6 +56,16 @@ defmodule CmsHarness.ARecoveredRunIsAnsweredOnceTest do
       Process.exit(pid, :kill)
       Process.register(real, CmsHarness.RunLink)
     end)
+  end
+
+  defp registered(name, attempts \\ 250) do
+    Enum.find_value(1..attempts, fn _ ->
+      Process.whereis(name) ||
+        (
+          Process.sleep(20)
+          nil
+        )
+    end) || flunk("#{inspect(name)} never came back")
   end
 
   defp begin(ctx, source, tied \\ []),

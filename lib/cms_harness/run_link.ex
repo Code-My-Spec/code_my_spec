@@ -78,7 +78,7 @@ defmodule CmsHarness.RunLink do
   def cancel_copy(root, server \\ __MODULE__) do
     for %{"run_id" => id} = manifest <- DurableRun.for_root(root),
         manifest["status"] == "running" do
-      cancel_at(manifest["node"], id)
+      cancel_at(manifest["node"], id, server)
       cancel(id, server)
       DurableRun.cleanup(id)
     end
@@ -88,14 +88,48 @@ defmodule CmsHarness.RunLink do
 
   @doc """
   Stop a run at its node, adopted or not: a run whose copy is no longer served
-  is claimed by no harness, so only its own session can be asked.
+  is claimed by no harness, so only its own session can be asked. Its nodes
+  are halted after the same grace as `cancel/2` gives (`halt_nodes/2`): a shard
+  that has not linked yet has no session to ask.
   """
-  @spec cancel_at(String.t() | nil, integer()) :: :ok
-  def cancel_at(nil, _run_id), do: :ok
+  @spec cancel_at(String.t() | nil, integer(), GenServer.server()) :: :ok
+  def cancel_at(node, run_id, server \\ __MODULE__)
+  def cancel_at(nil, _run_id, _server), do: :ok
 
-  def cancel_at(node, run_id) when is_binary(node) do
+  def cancel_at(node, run_id, server) when is_binary(node) do
     send({ClientUtils.RunLink.Session, String.to_atom(node)}, {:run_cancel, run_id})
+    GenServer.cast(server, {:halt_nodes_later, node})
+  end
+
+  @doc """
+  Halt a run's nodes by name: its runner, `base`, and its shards,
+  `<base>_s<n>` (`Mix.Tasks.Cms.Spex.run_link_env/2`), linked or not. Each is
+  a distributed node from VM boot, so one hung before anything links still
+  answers. Exact names only: a prefix would reach another run's nodes.
+  `:names` and `:cast` are for tests.
+  """
+  @spec halt_nodes(String.t() | nil, keyword()) :: :ok
+  def halt_nodes(base, opts \\ [])
+  def halt_nodes(nil, _opts), do: :ok
+
+  def halt_nodes(base, opts) when is_binary(base) do
+    names = Keyword.get(opts, :names, &epmd_names/1)
+    cast = Keyword.get(opts, :cast, &:erpc.cast/4)
+    [name, host] = String.split(base, "@", parts: 2)
+    run = ~r/\A#{Regex.escape(name)}(_s\d+)?\z/
+
+    for other <- names.(host),
+        Regex.match?(run, other),
+        do: cast.(:"#{other}@#{host}", :erlang, :halt, [137])
+
     :ok
+  end
+
+  defp epmd_names(host) do
+    case :erl_epmd.names(String.to_charlist(host)) do
+      {:ok, names} -> Enum.map(names, fn {name, _port} -> List.to_string(name) end)
+      _ -> []
+    end
   end
 
   @doc """
@@ -164,6 +198,11 @@ defmodule CmsHarness.RunLink do
     {:noreply, runs}
   end
 
+  def handle_info({:halt_nodes, base}, runs) do
+    halt_nodes(base)
+    {:noreply, runs}
+  end
+
   def handle_info({:forget, run_id}, runs) do
     case Map.fetch(runs, run_id) do
       {:ok, %{finished: true}} -> {:noreply, Map.delete(runs, run_id)}
@@ -180,6 +219,11 @@ defmodule CmsHarness.RunLink do
       Process.send_after(self(), {:halt, run_id}, @halt_after_ms)
     end
 
+    {:noreply, runs}
+  end
+
+  def handle_cast({:halt_nodes_later, base}, runs) do
+    Process.send_after(self(), {:halt_nodes, base}, @halt_after_ms)
     {:noreply, runs}
   end
 

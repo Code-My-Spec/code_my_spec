@@ -92,26 +92,13 @@ defmodule CodeMySpecSpex.Story1142.Criterion2370Spex do
   end
 
   # What a harness restart does to it: its copy's queue and the node's run
-  # link go, and come back empty.
+  # link go, and come back empty. The link through its supervisor, not killed:
+  # a kill spends the restart budget every harness child shares.
   defp restart_harness(root) do
     stop_project(root)
-    link = Process.whereis(CmsHarness.RunLink)
-    ref = Process.monitor(link)
-    Process.exit(link, :kill)
-    assert_receive {:DOWN, ^ref, :process, _, _}, 5_000
-    assert eventually_restarted(link), "the run link did not come back"
-
+    :ok = Supervisor.terminate_child(CmsHarness.Supervisor, CmsHarness.RunLink)
+    {:ok, _pid} = Supervisor.restart_child(CmsHarness.Supervisor, CmsHarness.RunLink)
     {:ok, _pid} = ensure_started(root)
     await_connected(root)
-  end
-
-  defp eventually_restarted(old, attempts \\ 100) do
-    Enum.any?(1..attempts, fn _ ->
-      Process.whereis(CmsHarness.RunLink) not in [nil, old] or
-        (
-          Process.sleep(20)
-          false
-        )
-    end)
   end
 end

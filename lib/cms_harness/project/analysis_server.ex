@@ -432,6 +432,11 @@ defmodule CmsHarness.Project.AnalysisServer do
     cleanup_deadline = System.monotonic_time(:millisecond) + @cleanup_confirm_deadline
     ownership = Execution.capture(task_pid)
 
+    # A test run's shards are sessions of their own, outside the groups below:
+    # halted by name, linked or not.
+    with {:ok, manifest} <- DurableRun.read_manifest(run_id),
+         do: RunLink.halt_nodes(manifest["node"])
+
     cleanup =
       Task.Supervisor.async_nolink(Sync.task_supervisor(state.project.root), fn ->
         Execution.stop_owned(ownership)
@@ -603,6 +608,24 @@ defmodule CmsHarness.Project.AnalysisServer do
 
   # A run that has not finished within the grace: waited for while its node
   # answers, reported as gone when it does not. Never answered as a pass.
+  def handle_info({:recovered_timeout, id}, state) do
+    case Map.fetch(state.recovering, id) do
+      {:ok, %{"status" => "running"} = manifest} ->
+        Logger.error(
+          "[CmsHarness] #{manifest["source"]} run #{id} for #{state.project.root} exceeded " <>
+            "#{timeout()}ms since it started — halting it"
+        )
+
+        RunLink.cancel(id)
+        RunLink.halt_nodes(manifest["node"])
+        result = {:error, "analyzer timed out after #{timeout()}ms"}
+        {:noreply, answer_recovered(state, id, manifest, result)}
+
+      _ ->
+        {:noreply, state}
+    end
+  end
+
   def handle_info({:recovery_check, id}, state) do
     case Map.fetch(state.recovering, id) do
       {:ok, %{"status" => "running"} = manifest} ->
@@ -637,10 +660,23 @@ defmodule CmsHarness.Project.AnalysisServer do
     id
   end
 
+  # The same ceiling as a run started here, counted from when it started: a
+  # run whose runner answers but which never reports is not waited on forever.
   defp recover(root, id, manifest) do
     :ok = RunLink.claim(id, root, self())
     Process.send_after(self(), {:recovery_check, id}, recovery_grace())
+    Process.send_after(self(), {:recovered_timeout, id}, remaining(manifest))
     manifest
+  end
+
+  defp remaining(%{"started_at" => started_at}) do
+    case DateTime.from_iso8601(started_at) do
+      {:ok, started, _} ->
+        max(timeout() - DateTime.diff(DateTime.utc_now(), started, :millisecond), 0)
+
+      _ ->
+        0
+    end
   end
 
   defp answer_recovered(state, id, manifest, result) do

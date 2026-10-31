@@ -179,19 +179,25 @@ defmodule CmsHarness.ADurableRunOutlivesItsHarnessTest do
 
   # Killed, not stopped: a restarted harness runs no cleanup. The task dies
   # with its supervisor and closes the port the run was started through.
-  # The harness's link goes too, restarted empty by its supervisor as a new
-  # harness would start it.
+  # The harness's link goes too, and comes back empty as a new harness's would.
   defp kill_harness(root, %{sup: sup, server: server}) do
-    link = Process.whereis(CmsHarness.RunLink)
-    refs = Enum.map([server, sup, link], &Process.monitor/1)
-    Enum.each([server, sup, link], &Process.exit(&1, :kill))
+    refs = Enum.map([server, sup], &Process.monitor/1)
+    Enum.each([server, sup], &Process.exit(&1, :kill))
     for ref <- refs, do: assert_receive({:DOWN, ^ref, :process, _, _}, 5_000)
+    restart_run_link()
 
     assert eventually(fn ->
              Registry.lookup(CmsHarness.Registry, {:analysis, root}) == [] and
-               GenServer.whereis(Sync.task_supervisor(root)) == nil and
-               Process.whereis(CmsHarness.RunLink) not in [nil, link]
+               GenServer.whereis(Sync.task_supervisor(root)) == nil
            end)
+  end
+
+  # Through its supervisor rather than killed: a kill spends the harness
+  # supervisor's restart budget, which every child in the suite shares, and a
+  # crash elsewhere in the same seconds took the whole tree down.
+  defp restart_run_link do
+    :ok = Supervisor.terminate_child(CmsHarness.Supervisor, CmsHarness.RunLink)
+    {:ok, _pid} = Supervisor.restart_child(CmsHarness.Supervisor, CmsHarness.RunLink)
   end
 
   # The run is linked (its node answers and it is inside its test file),

@@ -47,13 +47,12 @@ defmodule CodeMySpecSpex.Story1142.Criterion2369Spex do
 
       when_ "his harness restarts, and the run dies before it is back", context do
         stop_project(context.project.root)
-        link = Process.whereis(CmsHarness.RunLink)
-        ref = Process.monitor(link)
-        Process.exit(link, :kill)
-        assert_receive {:DOWN, ^ref, :process, _, _}, 5_000
+        :ok = Supervisor.terminate_child(CmsHarness.Supervisor, CmsHarness.RunLink)
 
         :ok = ClusteredProject.kill(context.os_pid)
         assert ClusteredProject.gone_within?(context.os_pid, 10_000)
+
+        {:ok, _pid} = Supervisor.restart_child(CmsHarness.Supervisor, CmsHarness.RunLink)
 
         {:ok, _pid} = ensure_started(context.project.root)
         await_connected(context.project.root)

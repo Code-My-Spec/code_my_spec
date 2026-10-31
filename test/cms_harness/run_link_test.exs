@@ -231,6 +231,58 @@ defmodule CmsHarness.RunLinkTest do
     refute log =~ "noconnection"
   end
 
+  describe "halt_nodes/2" do
+    # Every node epmd lists on the run's host, as `names` answers; each halt
+    # comes here.
+    defp halted(base, listed) do
+      test = self()
+
+      :ok =
+        RunLink.halt_nodes(base,
+          names: fn "127.0.0.1" -> listed end,
+          cast: fn node, :erlang, :halt, [137] -> send(test, {:halted, node}) end
+        )
+
+      receive_halted([])
+    end
+
+    defp receive_halted(acc) do
+      receive do
+        {:halted, node} -> receive_halted([node | acc])
+      after
+        0 -> Enum.sort(acc)
+      end
+    end
+
+    test "halts the run's runner and every shard of it, linked or not" do
+      assert halted("cms_run_7_100_5@127.0.0.1", [
+               "cms_run_7_100_5",
+               "cms_run_7_100_5_s1",
+               "cms_run_7_100_5_s12",
+               "cms_harness_100"
+             ]) ==
+               Enum.sort([
+                 :"cms_run_7_100_5@127.0.0.1",
+                 :"cms_run_7_100_5_s1@127.0.0.1",
+                 :"cms_run_7_100_5_s12@127.0.0.1"
+               ])
+    end
+
+    test "never a node whose name only begins with the run's" do
+      assert halted("cms_run_7_100_5@127.0.0.1", [
+               "cms_run_7_100_50",
+               "cms_run_7_100_5_s1x",
+               "cms_run_7_100_5_sx",
+               "cms_run_7_100_5_s",
+               "xcms_run_7_100_5"
+             ]) == []
+    end
+
+    test "a run with no node recorded halts nothing" do
+      assert :ok = RunLink.halt_nodes(nil, names: fn _ -> flunk("asked epmd") end)
+    end
+  end
+
   defp flush_acks(run_id) do
     receive do
       {:run_ack, ^run_id, _} -> flush_acks(run_id)
