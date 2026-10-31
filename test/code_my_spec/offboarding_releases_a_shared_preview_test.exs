@@ -138,7 +138,7 @@ defmodule CodeMySpec.OffboardingReleasesASharedPreviewTest do
   test "an unreachable running instance keeps its source checkout", %{scope: scope} do
     device = device_fixture(scope)
     {:ok, copy} = WorkingCopies.issue(scope, nil, label: "still-running", device: device)
-    {:ok, copy} = WorkingCopies.report_root(copy, "/tmp/unreachable_running")
+    {:ok, copy} = WorkingCopies.report_root(copy, File.cwd!())
     {:ok, instance} = AppInstances.ensure_default(scope, copy)
 
     {:ok, _instance} =
@@ -149,6 +149,25 @@ defmodule CodeMySpec.OffboardingReleasesASharedPreviewTest do
 
     assert instance_id == instance.id
     assert {:ok, _copy} = WorkingCopies.fetch(copy.id)
+  end
+
+  test "a missing directory and disconnected harness allow explicit persistent discard", %{
+    scope: scope
+  } do
+    device = device_fixture(scope)
+    root = Path.join(System.tmp_dir!(), "removed-copy-#{System.unique_integer([:positive])}")
+    refute File.exists?(root)
+    {:ok, copy} = WorkingCopies.issue(scope, nil, label: "removed", device: device)
+    {:ok, copy} = WorkingCopies.report_root(copy, root)
+    {:ok, instance} = AppInstances.ensure_default(scope, copy)
+    {:ok, _} = AppInstances.update(scope, instance, %{persistent: true, status: "serving"})
+
+    assert {:error, :persistent_instances_require_explicit_discard} =
+             Staffing.offboard(scope, copy)
+
+    assert {:ok, _counts} = Staffing.offboard(scope, copy, instance_disposition: :discard)
+    assert AppInstances.get(scope, instance.id) == nil
+    assert {:error, :not_found} = WorkingCopies.fetch(copy.id)
   end
 
   test "re-ensuring the main default refreshes its root but preserves instance policies", %{

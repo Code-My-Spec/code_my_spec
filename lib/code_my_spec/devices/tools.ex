@@ -4,6 +4,8 @@ defmodule CodeMySpec.Devices.Tools do
     top_level?: true,
     deps: [
       CodeMySpec.Devices,
+      CodeMySpec.Accounts,
+      CodeMySpec.Agents,
       CodeMySpec.WorkingCopies,
       CodeMySpec.Analysis.HarnessRegistry,
       CodeMySpec.Tools
@@ -13,7 +15,7 @@ defmodule CodeMySpec.Devices.Tools do
   alias CodeMySpec.Devices.Device
   alias CodeMySpec.WorkingCopies
 
-  def all, do: [__MODULE__.ListDevices, __MODULE__.GetDevice]
+  def all, do: [__MODULE__.ListDevices, __MODULE__.GetDevice, __MODULE__.RetireDevice]
 
   @doc "Group the current project's working-copy IDs by their device UUID."
   def copies_by_device(scope) do

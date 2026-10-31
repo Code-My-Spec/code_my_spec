@@ -8,6 +8,7 @@ defmodule CodeMySpec.Tools.InfrastructureDomainsTest do
     expected = [
       {"list_devices", CodeMySpec.Devices.Tools.ListDevices},
       {"get_device", CodeMySpec.Devices.Tools.GetDevice},
+      {"retire_device", CodeMySpec.Devices.Tools.RetireDevice},
       {"list_app_instances", CodeMySpec.AppInstances.Tools.ListAppInstances},
       {"get_app_instance", CodeMySpec.AppInstances.Tools.GetAppInstance},
       {"ensure_environment", CodeMySpec.Environments.Tools.EnsureEnvironment},
