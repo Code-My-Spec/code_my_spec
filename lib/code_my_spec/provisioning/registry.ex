@@ -240,6 +240,66 @@ defmodule CodeMySpec.Provisioning.Registry do
     end
   end
 
+  @doc "Replace a project's registry credential and verify the live registry."
+  @spec rotate_credential(Scope.t(), keyword()) :: :ok | {:error, atom()}
+  def rotate_credential(%Scope{} = scope, opts) do
+    run = Keyword.fetch!(opts, :run)
+
+    with true <- container_running?(run),
+         {:ok, old} <- credential(scope),
+         {:ok, replacement} <- mint_password(scope, old.username),
+         {:ok, served} <- serve(scope, Keyword.put(opts, :registry_credentials, replacement)),
+         :ok <- verify_rotation(run, served, old, replacement, scope) do
+      :ok
+    else
+      false -> {:error, :registry_not_provisioned}
+      {:error, :registry_not_provisioned} -> {:error, :registry_not_provisioned}
+      {:error, :old_credential_still_accepted} -> {:error, :old_credential_still_accepted}
+      {:error, :new_credential_rejected} -> {:error, :new_credential_rejected}
+      {:error, :docker_login_failed} -> {:error, :docker_login_failed}
+      {:error, :docker_pull_failed} -> {:error, :docker_pull_failed}
+      {:error, _} -> {:error, :rotation_failed}
+    end
+  end
+
+  defp verify_rotation(run, served, old, replacement, scope) do
+    with :error <- probe(run, served.bind, old),
+         :ok <- probe(run, served.bind, replacement),
+         :ok <- verify_docker_pull(run, served, replacement, scope) do
+      :ok
+    else
+      :ok -> {:error, :old_credential_still_accepted}
+      :error -> {:error, :new_credential_rejected}
+      {:error, _} = error -> error
+    end
+  end
+
+  defp verify_docker_pull(run, served, credential, scope) do
+    host = "#{served.bind}:#{served.port}"
+
+    with {:ok, repository} <- image(scope, registry_host: host),
+         {output, 0} <-
+           run.([
+             "docker image ls --format '{{.Repository}}:{{.Tag}}' | grep -F #{shell_escape(repository <> ":")} | head -n 1"
+           ]),
+         reference when is_binary(reference) and reference != "" <- String.trim(output),
+         true <- String.starts_with?(reference, repository <> ":") do
+      command =
+        "config=$(mktemp -d) || exit 41; trap 'rm -rf \"$config\"' EXIT; " <>
+          "printf '%s' #{shell_escape(credential.password)} | " <>
+          "docker --config \"$config\" login #{shell_escape(host)} -u #{shell_escape(credential.username)} --password-stdin >/dev/null 2>&1 || exit 41; " <>
+          "docker --config \"$config\" pull #{shell_escape(reference)} >/dev/null 2>&1 || exit 42"
+
+      case run.([command]) do
+        {_output, 0} -> :ok
+        {_output, 41} -> {:error, :docker_login_failed}
+        _ -> {:error, :docker_pull_failed}
+      end
+    else
+      _ -> {:error, :docker_pull_failed}
+    end
+  end
+
   defp tenant_username(scope) do
     case project_slug(scope) do
       slug when is_binary(slug) and slug != "" ->
