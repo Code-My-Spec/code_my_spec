@@ -109,7 +109,6 @@ defmodule CodeMySpec do
       CodeMySpec.Users.Scope,
       CodeMySpec.LocalScope,
       CodeMySpec.Utils,
-      CodeMySpec.Utils.Data,
       CodeMySpec.Validation,
       CodeMySpec.Vault,
       CodeMySpec.WorkingCopies,

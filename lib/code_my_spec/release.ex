@@ -3,9 +3,7 @@ defmodule CodeMySpec.Release do
   Used for executing DB release tasks when run in production without Mix
   installed.
   """
-  use Boundary, top_level?: true, deps: [CodeMySpec.Utils.Data]
-
-  alias CodeMySpec.Utils.Data
+  use Boundary, top_level?: true
 
   @app :code_my_spec
 
@@ -20,26 +18,6 @@ defmodule CodeMySpec.Release do
   def rollback(repo, version) do
     load_app()
     {:ok, _, _} = Ecto.Migrator.with_repo(repo, &Ecto.Migrator.run(&1, :down, to: version))
-  end
-
-  def import_project(file_path, opts \\ []) do
-    load_app()
-    Application.ensure_all_started(@app)
-
-    # Raised rather than returned, because this is the boundary a shell script
-    # calls through `bin/code_my_spec eval`. A refusal handed back as a tuple
-    # exits 0, and sync-project.sh reports a successful migration over an import
-    # that declined to run.
-    case Data.import_project(file_path, opts) do
-      {:error, reason} -> raise Data.explain(reason)
-      result -> result
-    end
-  end
-
-  def export_project(project_id, file_path) do
-    load_app()
-    Application.ensure_all_started(@app)
-    Data.export_project(project_id, file_path)
   end
 
   defp repos do
